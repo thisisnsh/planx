@@ -16,6 +16,11 @@ import { SAMPLE_PLAN, tempStore } from './helpers.js';
  * and this suite exists partly to prove the TUI mounts without one.
  */
 class FakeStdout extends EventEmitter {
+  // Ink treats a non-TTY stream as "not worth drawing to" and withholds
+  // frames, the same way it does in CI. A review UI is only ever mounted on a
+  // real terminal, so claiming to be one is what makes this a fake terminal
+  // rather than a fake pipe.
+  isTTY = true;
   columns = 100;
   rows = 30;
   frames: string[] = [];
