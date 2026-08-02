@@ -27,7 +27,7 @@ jobs:
         env:
           PLANX_NO_POSTINSTALL: '1'
       - run: npm run docs:build
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v4
         with:
           path: site/.vitepress/dist
