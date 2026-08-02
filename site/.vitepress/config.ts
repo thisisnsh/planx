@@ -9,7 +9,13 @@ export default defineConfig({
   cleanUrls: true,
   lastUpdated: true,
 
-  head: [['meta', { name: 'theme-color', content: '#ffd400' }]],
+  head: [
+    ['meta', { name: 'theme-color', content: '#ffd400' }],
+    // The wordmark's block cursor, on its own. Paths are base-relative because
+    // the site is served from /planx/.
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/planx/favicon.svg' }],
+    ['link', { rel: 'apple-touch-icon', href: '/planx/apple-touch-icon.png' }],
+  ],
 
   // Black and yellow, and only that. A light variant of this palette is a
   // different design, not the same one inverted, so there is no toggle.
@@ -20,8 +26,9 @@ export default defineConfig({
     // carries only what the sidebar cannot: the places planx lives elsewhere.
     nav: [{ text: 'npm', link: 'https://www.npmjs.com/package/@thisisnsh/planx' }],
 
+    // The nav title already links to '/', so the overview does not need a
+    // sidebar entry of its own — the wordmark is the way back to it.
     sidebar: [
-      { text: 'What planx is', link: '/' },
       {
         text: 'Guide',
         items: [

@@ -20,9 +20,6 @@
   --pnx-ink-2: #9c9ca4;
   --pnx-ink-3: #6a6a72;
 
-  /* Caution tape. One use only: the rule under the nav bar. */
-  --pnx-tape: repeating-linear-gradient(-45deg, var(--pnx-signal) 0 6px, #0b0b0c 6px 12px);
-
   /* --- type ---------------------------------------------------------- */
   --vp-font-family-mono:
     ui-monospace, 'SFMono-Regular', 'SF Mono', 'JetBrains Mono', Menlo, Consolas, 'Liberation Mono',
@@ -47,7 +44,9 @@
 
   --vp-c-divider: var(--pnx-line);
   --vp-c-border: var(--pnx-line);
-  --vp-c-gutter: #000;
+  /* The gutter draws the nav bar's divider line, so it has to be visible
+     against a near-black page rather than blending into it. */
+  --vp-c-gutter: var(--pnx-line);
 
   --vp-c-brand-1: var(--pnx-signal);
   --vp-c-brand-2: var(--pnx-signal-hi);
@@ -130,29 +129,11 @@
 
 /* --- nav ------------------------------------------------------------- */
 
-.VPNav {
-  border-bottom: none;
-}
-
-/* The signature: caution tape across the full width, directly under the nav.
-   It is the only decorative element on the site and it means the same thing
-   here as it does in the TUI — past this line, things are held.
-
-   It has to sit above the nav bar's curtain, which is a translucent panel
-   parked over the bottom edge to mask content scrolling underneath. */
+/* The stock divider line, plus a shadow so the bar reads as sitting above the
+   page rather than painted onto it — a 1px hairline alone disappears at this
+   contrast. */
 .VPNavBar {
-  border-bottom: none;
-}
-
-.VPNavBar::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 3px;
-  background: var(--pnx-tape);
-  z-index: 3;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.55);
 }
 
 .VPNavBar.has-sidebar .curtain {
@@ -163,7 +144,6 @@
   font-family: var(--pnx-font-display);
   font-weight: 700;
   letter-spacing: -0.02em;
-  border-bottom: none !important;
 }
 
 .VPNavBarTitle .title::before {
