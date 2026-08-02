@@ -510,7 +510,7 @@ describe('locking', () => {
     await app.press('l');
     await app.frame('⚿');
     await app.press('l');
-    await app.frame('unlocked lines');
+    await app.frame('unlocked line 1');
 
     expect(Object.keys(readLocks(id).locks)).toHaveLength(0);
     app.unmount();

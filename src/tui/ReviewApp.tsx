@@ -323,14 +323,16 @@ export function ReviewApp(props: ReviewAppProps) {
       const removed = unlockLines(props.planId, model.docLines, span);
       setStatus(
         removed.length
-          ? `unlocked lines ${span.start}–${span.end}`
-          : `nothing was locking lines ${span.start}–${span.end}`,
+          ? `unlocked line${span.start === span.end ? '' : 's'} ${describeSpan(span)}`
+          : `nothing was locking line${span.start === span.end ? '' : 's'} ${describeSpan(span)}`,
       );
     } else {
       const result = lockLines(props.planId, model.docLines, versionB, span);
       // Say what happened rather than claiming the whole span: half of it may
       // already have been frozen by an earlier press.
-      const parts = result.locked.map((l) => `locked lines ${l.start}–${l.end} as ${l.id}`);
+      const parts = result.locked.map(
+        (l) => `locked line${l.start === l.end ? '' : 's'} ${describeSpan(l)} as ${l.id}`,
+      );
       if (result.skipped.length) {
         const single = result.skipped.length === 1 && result.skipped[0]!.start === result.skipped[0]!.end;
         parts.push(
