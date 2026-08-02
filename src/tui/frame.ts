@@ -1,4 +1,4 @@
-import { bold, dim, padEnd, signal, stripAnsi, truncate } from '../render/ansi.js';
+import { bold, colorEnabled, dim, padEnd, signal, stripAnsi, truncate } from '../render/ansi.js';
 
 /**
  * The one frame, for everything planx draws.
@@ -76,27 +76,89 @@ export function terminalWidth(): number {
  * A line too wide for the frame is folded, not cut.
  *
  * `truncate` is right for a document row — the plan is still there, one arrow
- * key away — but a help line that ends in `…` has genuinely lost the half of
- * the sentence that said what the flag does. Folding is only safe because these
- * blocks are text; the review's own rows go through `frameLine` directly.
+ * key away — but a help line ending in `…` has genuinely lost the half of the
+ * sentence that said what the flag does. Folding is only safe because these
+ * blocks are prose; the review's own rows go through `frameLine` directly.
+ *
+ * It folds on *visible* width with the escapes carried along, so a narrow
+ * terminal keeps its colour. Measuring the stripped string and re-emitting it
+ * would silently turn a framed listing monochrome on exactly the terminals
+ * where the fold happens.
  */
-function wrapToFrame(line: string, inner: number): string[] {
-  if (visible(line) <= inner) return [line];
-  // Styled help lines are built from padded columns, so re-flowing them would
-  // mean re-measuring inside the escapes. Indent the continuation instead.
-  const words = stripAnsi(line).split(' ');
-  const indent = ' '.repeat(Math.min(4, Math.max(0, line.length - line.trimStart().length)));
+function wrapToFrame(raw: string, inner: number): string[] {
+  if (visible(raw) <= inner) return [raw];
+
+  const indent = ' '.repeat(Math.min(6, raw.length - raw.trimStart().length));
   const out: string[] = [];
-  let current = '';
-  for (const word of words) {
-    const candidate = current ? `${current} ${word}` : word;
-    if (current && candidate.length > inner) {
-      out.push(current);
-      current = `${indent}${word}`;
-    } else {
-      current = candidate;
+  let line = '';
+  let lineWidth = 0;
+  let word = '';
+  let wordWidth = 0;
+
+  /** Put the pending word on the line, opening a new one if it will not fit. */
+  const place = () => {
+    if (!wordWidth) return;
+    if (lineWidth && lineWidth + wordWidth > inner) {
+      out.push(closeStyles(line));
+      line = indent;
+      lineWidth = indent.length;
     }
+    line += word;
+    lineWidth += wordWidth;
+    word = '';
+    wordWidth = 0;
+  };
+
+  for (const unit of cells(raw)) {
+    if (unit.ch === ' ') {
+      place();
+      // Including at the head of the line: the leading spaces are the row's
+      // indent, and dropping them puts a help entry flush against the frame.
+      if (lineWidth < inner) {
+        line += ' ';
+        lineWidth++;
+      }
+      continue;
+    }
+    word += unit.text;
+    wordWidth++;
+    // A single word wider than the frame has to break somewhere.
+    if (wordWidth >= inner) place();
   }
-  if (current) out.push(current);
+  place();
+  if (line.trim()) out.push(closeStyles(line));
+  return out.length ? out : [raw];
+}
+
+/**
+ * One visible character, with any escape sequences that precede it.
+ *
+ * Splitting on characters alone would strand `\x1b[36m` at the end of a folded
+ * line and paint the wrong half of the next one.
+ */
+function cells(text: string): Array<{ text: string; ch: string }> {
+  const out: Array<{ text: string; ch: string }> = [];
+  const escape = /\x1b\[[0-9;]*m/y;
+  let pending = '';
+  let i = 0;
+  while (i < text.length) {
+    escape.lastIndex = i;
+    const found = escape.exec(text);
+    if (found) {
+      pending += found[0];
+      i = escape.lastIndex;
+      continue;
+    }
+    out.push({ text: pending + text[i], ch: text[i]! });
+    pending = '';
+    i++;
+  }
+  // Trailing resets belong to the character they were closing.
+  if (pending && out.length) out[out.length - 1]!.text += pending;
   return out;
+}
+
+/** A fold can land inside a style, so each piece closes whatever is open. */
+function closeStyles(line: string): string {
+  return colorEnabled() && line.includes('\x1b[') ? `${line}\x1b[0m` : line;
 }
