@@ -1,6 +1,18 @@
 import { bold, cyan, dim, yellow } from '../render/ansi.js';
+import { brandTitle, frameBlock } from '../tui/frame.js';
 import type { CommandSpec } from './args.js';
 import { COMMANDS, GLOBAL_FLAGS } from './spec.js';
+
+/**
+ * Frame help only when a person is going to read it.
+ *
+ * Piped output ends up in an agent's context or in a file, and box-drawing
+ * characters there are noise wrapped around the only part that matters.
+ */
+function forPerson(lines: string[], version?: string): string {
+  if (!process.stdout.isTTY) return lines.join('\n');
+  return frameBlock(lines, { title: brandTitle(version) });
+}
 
 /**
  * Sections, in the order someone reading this needs them.
@@ -20,6 +32,7 @@ export function topLevelHelp(version: string): string {
     `${bold('planx')} ${dim(version)} — plan capture, review and locking`,
     '',
     `  ${dim('planx')}                    review a plan`,
+    `  ${dim('planx <plan> [version]')}   review that plan`,
     `  ${dim('planx <command> [args]')}`,
     '',
   ];
@@ -42,10 +55,10 @@ export function topLevelHelp(version: string): string {
     out.push(`  ${yellow(flagLabel(flag.name, flag.arg).padEnd(width + 2))}  ${dim(flag.summary)}`);
   }
   out.push('', dim('  planx <command> --help for detail.'));
-  return out.join('\n');
+  return forPerson(out, version);
 }
 
-export function commandHelp(spec: CommandSpec): string {
+export function commandHelp(spec: CommandSpec, version?: string): string {
   const out: string[] = [`${bold(spec.name)} — ${spec.summary}`, '', `  ${dim(spec.usage)}`];
 
   if (spec.description) {
@@ -62,7 +75,7 @@ export function commandHelp(spec: CommandSpec): string {
     out.push('', dim('  Examples:'));
     for (const example of spec.examples) out.push(`    ${example}`);
   }
-  return out.join('\n');
+  return forPerson(out, version);
 }
 
 function flagLabel(name: string, arg?: string): string {

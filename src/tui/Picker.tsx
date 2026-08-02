@@ -1,6 +1,15 @@
 import { Box, Text, useApp, useInput, useStdout } from 'ink';
 import { useMemo, useState } from 'react';
-import { truncate } from '../render/ansi.js';
+import { bold, dim, inverse, padEnd, signal, stripAnsi, truncate } from '../render/ansi.js';
+import {
+  bottomRule,
+  brandTitle,
+  frameLine,
+  FRAME_PADDING,
+  MAX_FRAME_WIDTH,
+  REPO,
+  topRule,
+} from './frame.js';
 import { fuzzyFilter } from './fuzzy.js';
 
 export interface PickerItem<T> {
@@ -13,19 +22,35 @@ export interface PickerItem<T> {
 
 export interface PickerProps<T> {
   title: string;
+  subtitle?: string;
   items: Array<PickerItem<T>>;
   multi?: boolean;
   footer?: string;
+  version?: string;
   onDone: (chosen: T[]) => void;
   onCancel: () => void;
 }
 
 /**
  * One picker for every "choose a thing" moment: plan, version, agent, model,
- * and the multi-select `planx clean` uses. Filtering is a fuzzy subsequence
- * match, so `gcr` finds guard-clock-regression.
+ * the multi-select `planx clean` uses, and the yes/no confirmations. Filtering
+ * is a fuzzy subsequence match, so `gcr` finds guard-clock-regression.
+ *
+ * It wears the same frame the review does. Bare `planx` used to show two
+ * unrelated visual languages before you reached the plan — a list of plain rows,
+ * then a bordered document — which made the picker look like something else's
+ * output that happened to appear first.
  */
-export function Picker<T>({ title, items, multi, footer, onDone, onCancel }: PickerProps<T>) {
+export function Picker<T>({
+  title,
+  subtitle,
+  items,
+  multi,
+  footer,
+  version,
+  onDone,
+  onCancel,
+}: PickerProps<T>) {
   const { exit } = useApp();
   const { stdout } = useStdout();
   const [query, setQuery] = useState('');
@@ -40,7 +65,8 @@ export function Picker<T>({ title, items, multi, footer, onDone, onCancel }: Pic
     [query, items],
   );
 
-  const height = Math.max(3, Math.min(filtered.length, (stdout?.rows ?? 24) - 6));
+  // The frame costs four rows of chrome above the list and three below it.
+  const height = Math.max(3, Math.min(filtered.length, (stdout?.rows ?? 24) - 9));
   const start = Math.max(0, Math.min(cursor - Math.floor(height / 2), filtered.length - height));
   const visible = filtered.slice(start, start + height);
 
@@ -88,40 +114,53 @@ export function Picker<T>({ title, items, multi, footer, onDone, onCancel }: Pic
     }
   });
 
-  const width = (stdout?.columns ?? 80) - 4;
+  const frameWidth = Math.max(48, Math.min(MAX_FRAME_WIDTH, (stdout?.columns ?? 80) - 1));
+  const inner = frameWidth - FRAME_PADDING;
+  const labelWidth = Math.max(12, Math.floor((inner - 6) * 0.55));
+
+  // The query takes the subtitle's row when there is one, so the frame does not
+  // change height the moment you start typing.
+  const count = `${filtered.length}/${items.length}`;
+  const lead = query ? `filter: ${query}${inverse(' ')}` : dim(subtitle ?? '');
+  const subtitleRow = `  ${padEnd(lead, inner - 2 - count.length)}${dim(count)}`;
+
+  const rows = [
+    `  ${bold(title)}`,
+    subtitleRow,
+    '',
+    ...visible.map((item) => {
+      const index = filtered.indexOf(item);
+      const active = index === cursor;
+      const isMarked = marked.has(items.indexOf(item));
+      const mark = multi ? (isMarked ? '◉ ' : '◯ ') : active ? '❯ ' : '  ';
+      const label = padEnd(truncate(item.label, labelWidth), labelWidth);
+      const hint = item.hint ? dim(`  ${truncate(item.hint, inner - labelWidth - 6)}`) : '';
+      const line = `${mark}${label}${hint}`;
+      // Inverse video has to own the whole row: a dim hint inside an inverse
+      // run closes its own style and leaves the rest painted normally, which
+      // reads as a highlight that stops half way.
+      return `  ${active ? inverse(signal(padEnd(stripAnsi(line), inner - 2))) : line}`;
+    }),
+    ...(filtered.length ? [] : [dim('  no matches')]),
+    '',
+    dim(
+      `  ${
+        footer ??
+        (multi
+          ? '↑↓ choose · space mark · x mark all · enter confirm · esc cancel'
+          : '↑↓ choose · enter open · esc cancel')
+      }`,
+    ),
+  ];
 
   return (
     <Box flexDirection="column">
-      <Text bold color="cyan">
-        {title}
-      </Text>
-      <Box>
-        <Text>{'❯ '}</Text>
-        <Text>{query}</Text>
-        <Text inverse> </Text>
-        <Text dimColor>{`  ${filtered.length}/${items.length}`}</Text>
-      </Box>
-      {visible.map((item) => {
-        const index = filtered.indexOf(item);
-        const active = index === cursor;
-        const isMarked = marked.has(items.indexOf(item));
-        return (
-          <Text key={item.label + index} inverse={active}>
-            {multi ? (isMarked ? '◉ ' : '◯ ') : active ? '❯ ' : '  '}
-            {truncate(item.label, Math.floor(width * 0.6))}
-            {item.hint ? (
-              <Text dimColor>{`  ${truncate(item.hint, Math.floor(width * 0.35))}`}</Text>
-            ) : null}
-          </Text>
-        );
-      })}
-      {filtered.length === 0 ? <Text dimColor>no matches</Text> : null}
-      <Text dimColor>
-        {footer ??
-          (multi
-            ? 'space mark · x mark all · enter confirm · esc cancel'
-            : 'enter select · esc cancel')}
-      </Text>
+      <Text>{topRule(frameWidth, brandTitle(version))}</Text>
+      <Text>{frameLine('', inner)}</Text>
+      {rows.map((line, i) => (
+        <Text key={i}>{frameLine(line, inner)}</Text>
+      ))}
+      <Text>{bottomRule(frameWidth, ` ★ ${REPO} `)}</Text>
     </Box>
   );
 }
