@@ -82,8 +82,19 @@ export function renderGutter(row: DiffRow, opts: GutterOptions): string {
           : ' ';
   const number = row.newLine ?? row.oldLine;
   const num = padStart(number === null ? '' : String(number), opts.numberWidth);
+  // The number carries the change as well as the sign does. A `+` is one glyph
+  // wide in a column nobody reads; the number beside the text is already in
+  // view. Under the cursor it goes yellow instead — finding where you are beats
+  // knowing what changed on the one line you are looking at.
+  const paint = opts.active
+    ? signal
+    : row.kind === 'add'
+      ? green
+      : row.kind === 'del'
+        ? red
+        : dim;
   // One space after the marker, so `⚿10` does not read as one token.
-  return `${lock} ${sign}${opts.active ? signal(num) : dim(num)}  `;
+  return `${lock} ${sign}${paint(num)}  `;
 }
 
 /**

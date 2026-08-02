@@ -32,7 +32,7 @@ export function ensureConfig(): Config {
   return seeded;
 }
 
-const SCALAR_KEYS = ['enabled', 'defaultAgent', 'render'] as const;
+const SCALAR_KEYS = ['enabled', 'defaultAgent', 'render', 'mouse'] as const;
 export type ScalarKey = (typeof SCALAR_KEYS)[number];
 
 export function isScalarKey(key: string): key is ScalarKey {

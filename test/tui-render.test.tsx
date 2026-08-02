@@ -116,7 +116,12 @@ interface Harness {
   frame: (text: string) => Promise<void>;
 }
 
-function mount(planId: string, versionA: number | null, versionB: number): Harness {
+function mount(
+  planId: string,
+  versionA: number | null,
+  versionB: number,
+  versions: number[] = [versionB],
+): Harness {
   const stdout = new FakeStdout();
   const stdin = new FakeStdin();
   let resolve!: (value: ReviewResult) => void;
@@ -128,6 +133,7 @@ function mount(planId: string, versionA: number | null, versionB: number): Harne
       title="Guard the clock regression"
       versionA={versionA}
       versionB={versionB}
+      versions={versions}
       mode="rich"
       version="9.9.9"
       previous={[]}
@@ -177,6 +183,7 @@ const ESC = '\x1b';
 const ENTER = '\r';
 const SPACE = ' ';
 const DOWN = '\x1b[B';
+const BACKSPACE = '\x7f';
 const ARROW = '▸';
 /** The closing corner of a note box — the thing that used to be missing. */
 const BOX_CLOSE = '╮';
@@ -189,6 +196,16 @@ function frameRows(frame: string): string[] {
 /** Rows inside the frame — the top and bottom rules carry corners of their own. */
 function bodyRows(frame: string): string[] {
   return frameRows(frame).filter((line) => line.startsWith('│'));
+}
+
+/**
+ * The rail's own column: `│ ` of the frame, then the arrow and its space.
+ *
+ * It is a column of the gutter rather than of the cursor, which is the point —
+ * a rail pressed against the arrow reads as part of it, and the arrow moves.
+ */
+function railColumn(row: string): string {
+  return row[4] ?? '';
 }
 
 describe('the review frame', () => {
@@ -301,7 +318,7 @@ describe('feedback lives in the document', () => {
     app.unmount();
   });
 
-  it('space folds the note under the cursor down to its title, and back', async () => {
+  it('space folds the note on this line down to its rail, and back', async () => {
     const app = mount(seed(), null, 1);
     await app.ready();
 
@@ -311,12 +328,15 @@ describe('feedback lives in the document', () => {
     await app.frame('fold me');
     expect(bodyRows(app.stdout.lastFrame).filter((l) => l.includes('╯'))).toHaveLength(1);
 
-    await app.press(DOWN);
+    // From the annotated line itself: the cursor cannot get into the box.
     await app.press(SPACE);
     await new Promise((r) => setTimeout(r, 120));
-    // One row left, still naming itself so a folded note is not a mystery.
+    // One row left, still naming itself so a folded note is not a mystery, and
+    // still on the rail rather than boxed off from the line it belongs to.
     expect(bodyRows(app.stdout.lastFrame).filter((l) => l.includes('╯'))).toHaveLength(0);
-    expect(app.stdout.lastFrame).toContain('fold me');
+    const folded = bodyRows(app.stdout.lastFrame).find((l) => l.includes('fold me'))!;
+    expect(folded).toContain('├─ ▸ fold me');
+    expect(folded).not.toContain('╮');
 
     await app.press(SPACE);
     await new Promise((r) => setTimeout(r, 120));
@@ -341,7 +361,7 @@ describe('feedback lives in the document', () => {
     app.unmount();
   });
 
-  it('d removes the note the cursor is standing on', async () => {
+  it('emptying a note deletes it, and no key claims to', async () => {
     const app = mount(seed(), null, 1);
     await app.ready();
 
@@ -349,12 +369,64 @@ describe('feedback lives in the document', () => {
     await app.press('delete me');
     await app.press(ENTER);
     await app.frame('delete me');
+    expect(app.stdout.lastFrame).not.toContain('d delete');
 
-    await app.press(DOWN);
-    await app.press('d');
+    // f reopens it on the line it is attached to; clearing it and committing
+    // is the whole gesture.
+    await app.press('f');
+    for (let i = 0; i < 'delete me'.length; i++) await app.press(BACKSPACE);
+    await app.press(ENTER);
     await new Promise((r) => setTimeout(r, 120));
 
     expect(app.stdout.lastFrame).not.toContain('delete me');
+    app.unmount();
+  });
+
+  it('runs a rail down the annotated lines and hangs the box off it', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    // Line 1 and line 2, so the rail has more than one row to span.
+    await app.press('v');
+    await app.press(DOWN);
+    await app.press('f');
+    await app.press('two lines');
+    await app.press(ENTER);
+    await app.frame('two lines');
+
+    const rows = bodyRows(app.stdout.lastFrame);
+    const first = rows.findIndex((l) => l.includes('# Guard the clock regression'));
+
+    // Lines 1 and 2 are both covered, so the rail runs down both of them, then
+    // the box opens off it with `├` — a `╭` there would read as two separate
+    // objects that happen to be adjacent.
+    expect(railColumn(rows[first]!)).toBe('│');
+    expect(railColumn(rows[first + 1]!)).toBe('│');
+    expect(rows[first + 2]).toContain('├─');
+
+    // …and nowhere else: an unannotated line keeps its blank rail column.
+    expect(railColumn(rows.find((l) => l.includes('## Context'))!)).toBe(' ');
+    app.unmount();
+  });
+
+  it('steps over the note instead of into it, and draws no arrow beside one', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('f');
+    await app.press('on line one');
+    await app.press(ENTER);
+    await app.frame('on line one');
+
+    await app.press(DOWN);
+    await new Promise((r) => setTimeout(r, 120));
+
+    const rows = bodyRows(app.stdout.lastFrame);
+    // The arrow is on the next document line, not on any row of the box.
+    const arrowed = rows.filter((l) => l.includes(ARROW));
+    expect(arrowed).toHaveLength(1);
+    expect(arrowed[0]).not.toContain('on line one');
+    expect(arrowed[0]).not.toContain('│ │');
     app.unmount();
   });
 });
@@ -422,7 +494,8 @@ describe('submitting and approving', () => {
 
     const result = await app.result;
     expect(result.action).toBe('submit');
-    expect(result.annotations[0]?.comment).toBe('needs work');
+    expect(result.batches[0]?.version).toBe(1);
+    expect(result.batches[0]?.annotations[0]?.comment).toBe('needs work');
     app.unmount();
   });
 

@@ -1,5 +1,6 @@
 import { render } from 'ink';
 import type { RenderMode } from '../render/diff.js';
+import { readConfig } from '../store/config.js';
 import type { Feedback } from '../store/types.js';
 import { Picker, type PickerItem } from './Picker.js';
 import { ReviewApp, type ReviewResult } from './ReviewApp.js';
@@ -24,9 +25,13 @@ export interface RunReviewOptions {
   title: string;
   versionA: number | null;
   versionB: number;
+  /** Every stored version, ascending — what `[`, `]` and `d` can reach. */
+  versions: number[];
   mode: RenderMode;
   /** planx's own version, for the frame. */
   version: string;
+  /** Every note left on this plan; the review shows the ones for the version
+   *  you are on, which is a thing that changes while you are in there. */
   previous: Feedback[];
 }
 
@@ -51,25 +56,35 @@ export async function runReview(opts: RunReviewOptions): Promise<ReviewResult> {
         title={opts.title}
         versionA={opts.versionA}
         versionB={opts.versionB}
+        versions={opts.versions}
         mode={opts.mode}
         version={opts.version}
         previous={opts.previous}
+        mouse={readConfig().mouse === 'on'}
         onDone={finish}
       />,
-      // ctrl-c should leave, the same as x. With mouse capture gone there is
-      // nothing to tear down first.
+      // ctrl-c should leave, the same as x. Wheel tracking, when it is on at
+      // all, is turned off by the effect that turned it on.
       { exitOnCtrlC: true },
     );
 
-    instance.waitUntilExit().then(() => finish({ action: 'quit', annotations: [], general: '' }));
+    instance
+      .waitUntilExit()
+      .then(() =>
+        finish({ action: 'quit', batches: [], version: opts.versionB, general: '' }),
+      );
   });
 }
 
 export interface RunPickerOptions<T> {
   title: string;
+  /** One dim line under the heading, saying what picking one does. */
+  subtitle?: string;
   items: Array<PickerItem<T>>;
   multi?: boolean;
   footer?: string;
+  /** planx's own version, for the frame's top edge. */
+  version?: string;
 }
 
 export async function runPicker<T>(opts: RunPickerOptions<T>): Promise<T[]> {
@@ -85,9 +100,11 @@ export async function runPicker<T>(opts: RunPickerOptions<T>): Promise<T[]> {
     const instance = render(
       <Picker
         title={opts.title}
+        subtitle={opts.subtitle}
         items={opts.items}
         multi={opts.multi ?? false}
         footer={opts.footer}
+        version={opts.version}
         onDone={finish}
         onCancel={() => finish([])}
       />,
@@ -99,10 +116,11 @@ export async function runPicker<T>(opts: RunPickerOptions<T>): Promise<T[]> {
 }
 
 /** Ask one yes/no question outside the TUI, for confirmations in plain commands. */
-export async function confirm(question: string): Promise<boolean> {
+export async function confirm(question: string, version?: string): Promise<boolean> {
   if (!isInteractive()) return false;
   const [answer] = await runPicker<boolean>({
     title: question,
+    version,
     items: [
       { value: false, label: 'no', hint: 'nothing happens' },
       { value: true, label: 'yes', hint: 'go ahead' },
