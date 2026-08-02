@@ -170,6 +170,29 @@ export function ReviewApp(props: ReviewAppProps) {
     [bodyHeight, rows],
   );
 
+  /**
+   * A screenful, or half of one — the viewport moves with the cursor.
+   *
+   * `move` only scrolls when the cursor would leave the screen, which is right
+   * for an arrow key and wrong for a pager: the first ^d from the top of a
+   * plan would move the cursor into the middle of an unchanged screen and look
+   * like nothing happened.
+   */
+  const page = useCallback(
+    (delta: number) => {
+      setSelection((s) => {
+        const next = reduceSelection(s, { type: 'move', delta }, rows);
+        const travelled = next.cursor - s.cursor;
+        setOffset((o) => {
+          const shifted = Math.max(0, Math.min(o + travelled, Math.max(0, rows.length - bodyHeight)));
+          return scrollFor(next.cursor, shifted, bodyHeight, rows.length);
+        });
+        return next;
+      });
+    },
+    [bodyHeight, rows],
+  );
+
   const jumpTo = useCallback(
     (index: number) => {
       setSelection((s) => {
@@ -385,13 +408,13 @@ export function ReviewApp(props: ReviewAppProps) {
       // exist, and Ink redraws in place so the terminal's own scrollback shows
       // stale frames rather than more plan.
       if (key.ctrl && (input === 'd' || input === 'f')) {
-        return move(input === 'd' ? Math.floor(bodyHeight / 2) : bodyHeight);
+        return page(input === 'd' ? Math.floor(bodyHeight / 2) : bodyHeight);
       }
       if (key.ctrl && (input === 'u' || input === 'b')) {
-        return move(input === 'u' ? -Math.floor(bodyHeight / 2) : -bodyHeight);
+        return page(input === 'u' ? -Math.floor(bodyHeight / 2) : -bodyHeight);
       }
-      if (key.pageDown) return move(Math.floor(bodyHeight / 2));
-      if (key.pageUp) return move(-Math.floor(bodyHeight / 2));
+      if (key.pageDown) return page(Math.floor(bodyHeight / 2));
+      if (key.pageUp) return page(-Math.floor(bodyHeight / 2));
       if (input === 'g') return jumpTo(0);
       if (input === 'G') return jumpTo(rows.length - 1);
 

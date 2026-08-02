@@ -8,6 +8,7 @@ import {
   lockedLineMap,
   rearmLocks,
   sealPlan,
+  uncoveredRuns,
   unlockRange,
 } from '../src/locks/manage.js';
 import { hasMarkers, MarkerError, renderSkeleton, splice } from '../src/locks/markers.js';
@@ -235,6 +236,71 @@ describe('sealing', () => {
     const created = sealPlan(locks, normalizedLines(PLAN), 2);
     expect(created.some((l) => l.section === '## Rollout')).toBe(false);
     expect(locks.locks['L1']!.origin).toBe('user');
+  });
+
+  it('does not overlay a section lock on a block locked by hand inside it', () => {
+    const locks = emptyLocks();
+    const doc = normalizedLines(PLAN);
+    // One line in the middle of ## Rollout, so the section is neither wholly
+    // free nor an exact match for the hand-made lock.
+    addLock(locks, { docLines: doc, range: { start: 9, end: 9 }, origin: 'user', version: 1 });
+
+    sealPlan(locks, doc, 2);
+    expect(coverageOf(locks, doc).every((n) => n <= 1)).toBe(true);
+    expect(locks.locks['L1']!.origin).toBe('user');
+  });
+});
+
+/**
+ * How many records cover each line of the document.
+ *
+ * Locks are disjoint by construction, so this is a vector of ones and zeroes.
+ * A two anywhere means the gutter has to pick one of the covering ids
+ * arbitrarily and an unlock has to split more than one record.
+ */
+function coverageOf(locks: LocksFile, doc: string[]): number[] {
+  const counts = new Array<number>(doc.length).fill(0);
+  for (const lock of Object.values(locks.locks)) {
+    const found = locateLock(doc, lock);
+    if (!found.ok) continue;
+    for (let i = found.range.start; i <= found.range.end; i++) counts[i] = (counts[i] ?? 0) + 1;
+  }
+  return counts;
+}
+
+describe('overlapping lock requests', () => {
+  it('locks only the part of a span that is not locked already', () => {
+    const locks = emptyLocks();
+    const doc = normalizedLines(PLAN);
+    addLock(locks, { docLines: doc, range: { start: 3, end: 5 }, origin: 'user', version: 1 });
+
+    const runs = uncoveredRuns(locks, doc, { start: 0, end: 9 });
+    expect(runs).toEqual([
+      { start: 0, end: 2 },
+      { start: 6, end: 9 },
+    ]);
+    for (const run of runs) {
+      addLock(locks, { docLines: doc, range: run, origin: 'user', version: 1 });
+    }
+
+    // Every line of 0–9 covered, and none of them covered twice.
+    expect(coverageOf(locks, doc).slice(0, 10)).toEqual(new Array(10).fill(1));
+  });
+
+  it('frees a line that two requests asked to lock, leaving no orphans', () => {
+    const locks = emptyLocks();
+    const doc = normalizedLines(PLAN);
+    addLock(locks, { docLines: doc, range: { start: 3, end: 5 }, origin: 'user', version: 1 });
+    for (const run of uncoveredRuns(locks, doc, { start: 0, end: 9 })) {
+      addLock(locks, { docLines: doc, range: run, origin: 'user', version: 1 });
+    }
+
+    unlockRange(locks, doc, { start: 4, end: 4 });
+    const map = lockedLineMap(doc, locks);
+    expect(map.get(5)).toBeUndefined(); // 1-based: line 4 is gone
+    expect(map.get(4)).toBeDefined();
+    expect(map.get(6)).toBeDefined();
+    expect(coverageOf(locks, doc).every((n) => n <= 1)).toBe(true);
   });
 });
 

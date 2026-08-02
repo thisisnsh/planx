@@ -179,6 +179,24 @@ function seed(): string {
   return capture({ text: SAMPLE_PLAN, source: 'test' }).planId;
 }
 
+/** A plan on v2, so there is a diff to toggle and a version to step back to. */
+function seedTwoVersions(): string {
+  const id = seed();
+  capture({
+    text: SAMPLE_PLAN.replace('10% then 50% then 100%', '1% then 10% then 100%'),
+    planId: id,
+    source: 'test',
+  });
+  return id;
+}
+
+/** A plan taller than the fake terminal, for the scroll keys. */
+function seedLongPlan(): string {
+  const body = Array.from({ length: 80 }, (_, i) => `- step ${i + 1}`).join('\n');
+  return capture({ text: `# A long plan\n\n## Steps\n${body}\n\nTHE LAST LINE\n`, source: 'test' })
+    .planId;
+}
+
 const ESC = '\x1b';
 const ENTER = '\r';
 const SPACE = ' ';
@@ -244,6 +262,18 @@ describe('the review frame', () => {
     app.unmount();
   });
 
+  it('leaves a blank row under the top rule, matching the one above the status', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    const rows = frameRows(app.stdout.lastFrame);
+    expect(rows[1]).toMatch(/^│\s+│$/);
+    // The first line of the plan is on the row after it, not jammed against
+    // the header.
+    expect(rows[2]).toContain('# Guard the clock regression');
+    app.unmount();
+  });
+
   it('marks the current line with an arrow in the left gutter', async () => {
     const app = mount(seed(), null, 1);
     await app.frame(ARROW);
@@ -288,6 +318,34 @@ describe('feedback lives in the document', () => {
     // `s` submits in browse mode; here it has to be a letter.
     await app.press('slow start');
     await app.frame('slow start');
+    app.unmount();
+  });
+
+  it('shows the space you just typed, mid-note', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('f');
+    await app.press('a');
+    await app.press(SPACE);
+    await app.press('b');
+    // Without a trailing space surviving the wrap, `a` and `a ` render
+    // identically and the caret never moves as you type the space.
+    await app.frame('a b');
+    app.unmount();
+  });
+
+  it('wraps a word wider than the box instead of ending it in an ellipsis', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('f');
+    await app.press('x'.repeat(90));
+    await new Promise((r) => setTimeout(r, 160));
+
+    const box = bodyRows(app.stdout.lastFrame).filter((l) => l.includes('xxx'));
+    expect(box.length).toBeGreaterThan(1);
+    expect(box.some((l) => l.includes('…'))).toBe(false);
     app.unmount();
   });
 
@@ -533,6 +591,135 @@ describe('the whole-plan note', () => {
 
     await app.press('n');
     await app.frame('press f instead');
+    app.unmount();
+  });
+
+  it('shows what is being typed, before enter and not only after it', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('n');
+    await app.press('halfway through');
+    await app.frame('halfway through');
+
+    // In the same box the inline notes get, hanging off nothing rather than
+    // off a rail, and pinned at the foot of the frame above the status line.
+    const rows = bodyRows(app.stdout.lastFrame);
+    const box = rows.findIndex((l) => l.includes('halfway through'));
+    expect(rows[box - 1]).toContain('╭─');
+    expect(rows[box + 1]).toContain('╰─');
+    app.unmount();
+  });
+});
+
+describe('the plan, the diff and the versions', () => {
+  it('opens on the plan itself, with no sign column to pay for', async () => {
+    const app = mount(seedTwoVersions(), null, 2, [1, 2]);
+    await app.ready();
+
+    const frame = app.stdout.lastFrame;
+    expect(frame).toContain('1% then 10% then 100%');
+    expect(frame).not.toContain('10% then 50% then 100%');
+    expect(frameRows(frame)[0]).toContain('v2');
+    expect(frameRows(frame)[0]).not.toContain('← v1');
+    app.unmount();
+  });
+
+  it('d brings the diff and d again takes it away', async () => {
+    const app = mount(seedTwoVersions(), null, 2, [1, 2]);
+    await app.ready();
+    expect(app.stdout.lastFrame).toContain('d diff');
+
+    await app.press('d');
+    await app.frame('← v1');
+    // The removed line is only visible in a diff.
+    expect(app.stdout.lastFrame).toContain('10% then 50% then 100%');
+
+    await app.press('d');
+    await new Promise((r) => setTimeout(r, 120));
+    expect(app.stdout.lastFrame).not.toContain('← v1');
+    app.unmount();
+  });
+
+  it('paints an added line’s number in its own colour', async () => {
+    setColorEnabled(true);
+    const app = mount(seedTwoVersions(), 1, 2, [1, 2]);
+    await app.ready();
+
+    // The raw frame, escapes intact. The digits have to be inside the coloured
+    // run, not merely next to a coloured sign: `\x1b[32m+12\x1b[39m` passes,
+    // and the old `\x1b[32m+\x1b[39m\x1b[2m12\x1b[22m` does not.
+    const raw = app.stdout.frames.join('');
+    expect(raw).toMatch(/\x1b\[32m\+\s*\d+\x1b\[39m/);
+    expect(raw).toMatch(/\x1b\[31m-\s*\d+\x1b\[39m/);
+    // A context line is still dim — the colour is the signal, so it has to
+    // mean something.
+    expect(raw).toMatch(/\x1b\[2m\s*\d+\x1b\[22m/);
+    setColorEnabled(false);
+    app.unmount();
+  });
+
+  it('[ steps back a version and the header follows', async () => {
+    const app = mount(seedTwoVersions(), null, 2, [1, 2]);
+    await app.ready();
+
+    await app.press('[');
+    await app.frame('10% then 50% then 100%');
+    expect(frameRows(app.stdout.lastFrame)[0]).toContain('v1');
+
+    await app.press(']');
+    await app.frame('1% then 10% then 100%');
+    app.unmount();
+  });
+
+  it('sends a note left on each version as its own submission', async () => {
+    const app = mount(seedTwoVersions(), null, 2, [1, 2]);
+    await app.ready();
+
+    await app.press('f');
+    await app.press('about v2');
+    await app.press(ENTER);
+    await app.frame('about v2');
+
+    await app.press('[');
+    await new Promise((r) => setTimeout(r, 120));
+    await app.press('f');
+    await app.press('about v1');
+    await app.press(ENTER);
+    await app.frame('about v1');
+
+    await app.press('s');
+    const result = await app.result;
+    expect(result.batches.map((b) => b.version)).toEqual([1, 2]);
+    expect(result.batches[0]?.annotations[0]?.comment).toBe('about v1');
+    expect(result.batches[1]?.annotations[0]?.comment).toBe('about v2');
+    expect(result.version).toBe(1);
+    app.unmount();
+  });
+});
+
+describe('getting around a long plan', () => {
+  it('G reaches the last row of a plan taller than the screen', async () => {
+    const app = mount(seedLongPlan(), null, 1);
+    await app.ready();
+    expect(app.stdout.lastFrame).not.toContain('THE LAST LINE');
+
+    await app.press('G');
+    await app.frame('THE LAST LINE');
+
+    await app.press('g');
+    await app.frame('# A long plan');
+    app.unmount();
+  });
+
+  it('^d moves half a screen without leaving the plan', async () => {
+    const app = mount(seedLongPlan(), null, 1);
+    await app.ready();
+
+    await app.press('\x04'); // ctrl-d
+    await new Promise((r) => setTimeout(r, 120));
+    expect(app.stdout.lastFrame).not.toContain('# A long plan');
+    expect(app.stdout.lastFrame).toContain('step ');
     app.unmount();
   });
 });

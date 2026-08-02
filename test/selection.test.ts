@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fuzzyFilter, fuzzyMatch } from '../src/tui/fuzzy.js';
+import { wrapComment } from '../src/tui/model.js';
 import {
   initialSelection,
   reduceSelection,
@@ -128,6 +129,38 @@ describe('scrolling', () => {
 
   it('never scrolls past the end of a short document', () => {
     expect(scrollFor(4, 8, 10, 5)).toBe(0);
+  });
+});
+
+/**
+ * The two bugs that made typing a note feel broken were both here, and this is
+ * the cheapest place to pin them: no terminal, no render, no timing.
+ */
+describe('wrapping a note', () => {
+  it('keeps a trailing space, so pressing space moves the caret', () => {
+    expect(wrapComment('hello ', 20)).toEqual(['hello ']);
+    expect(wrapComment('hello', 20)).toEqual(['hello']);
+  });
+
+  it('carries a trailing space onto the next line when it lands on the edge', () => {
+    // Ten characters in a ten-wide box: the space has nowhere to go but down,
+    // and it has to go somewhere or the caret never moves.
+    expect(wrapComment('abcdefghij ', 10)).toEqual(['abcdefghij', ' ']);
+  });
+
+  it('breaks a word wider than the box instead of leaving it to be truncated', () => {
+    expect(wrapComment('a'.repeat(25), 10)).toEqual(['aaaaaaaaaa', 'aaaaaaaaaa', 'aaaaa']);
+    // With something already on the line, the long word starts on a fresh one.
+    expect(wrapComment(`hi ${'b'.repeat(12)}`, 10)).toEqual(['hi', 'bbbbbbbbbb', 'bb']);
+  });
+
+  it('fills the box exactly before it wraps', () => {
+    expect(wrapComment('abcde fghij', 11)).toEqual(['abcde fghij']);
+    expect(wrapComment('abcde fghijk', 11)).toEqual(['abcde', 'fghijk']);
+  });
+
+  it('still collapses runs of spaces — a note is prose, not code', () => {
+    expect(wrapComment('one     two', 20)).toEqual(['one two']);
   });
 });
 
