@@ -9,16 +9,19 @@ export default defineConfig({
   cleanUrls: true,
   lastUpdated: true,
 
-  head: [['meta', { name: 'theme-color', content: '#3c7d5c' }]],
+  head: [['meta', { name: 'theme-color', content: '#ffd400' }]],
+
+  // Black and yellow, and only that. A light variant of this palette is a
+  // different design, not the same one inverted, so there is no toggle.
+  appearance: 'force-dark',
 
   themeConfig: {
-    nav: [
-      { text: 'Guide', link: '/guide/install' },
-      { text: 'Reference', link: '/reference/cli' },
-      { text: 'npm', link: 'https://www.npmjs.com/package/@thisisnsh/planx' },
-    ],
+    // Every page is a doc page reachable from the sidebar, so the nav bar
+    // carries only what the sidebar cannot: the places planx lives elsewhere.
+    nav: [{ text: 'npm', link: 'https://www.npmjs.com/package/@thisisnsh/planx' }],
 
     sidebar: [
+      { text: 'What planx is', link: '/' },
       {
         text: 'Guide',
         items: [

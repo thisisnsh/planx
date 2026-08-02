@@ -1,0 +1,448 @@
+/*
+ * planx docs — black & yellow.
+ *
+ * The palette is the one the tool already lives in: a terminal at night, with
+ * yellow doing the single job it does in a terminal — marking the thing you are
+ * not allowed to walk past. Locks are the product, so caution-tape yellow is
+ * the accent and nothing else competes with it.
+ */
+
+:root {
+  /* --- palette ------------------------------------------------------- */
+  --pnx-void: #0b0b0c; /* page */
+  --pnx-panel: #141416; /* sidebar, code, cards */
+  --pnx-panel-2: #1a1a1d; /* raised: search modal, hover */
+  --pnx-line: #26262a; /* hairlines */
+  --pnx-signal: #ffd400; /* the yellow */
+  --pnx-signal-hi: #ffe45c; /* hover */
+  --pnx-signal-dim: rgba(255, 212, 0, 0.14);
+  --pnx-ink: #eaeaec;
+  --pnx-ink-2: #9c9ca4;
+  --pnx-ink-3: #6a6a72;
+
+  /* Caution tape. One use only: the rule under the nav bar. */
+  --pnx-tape: repeating-linear-gradient(-45deg, var(--pnx-signal) 0 6px, #0b0b0c 6px 12px);
+
+  /* --- type ---------------------------------------------------------- */
+  --vp-font-family-mono:
+    ui-monospace, 'SFMono-Regular', 'SF Mono', 'JetBrains Mono', Menlo, Consolas, 'Liberation Mono',
+    monospace;
+  /* Headings run in mono against an Inter body: the docs read the way the tool
+     prints. Restrained to h1/h2 so the page still has a text voice. */
+  --pnx-font-display: var(--vp-font-family-mono);
+}
+
+/* The site commits to one appearance (`appearance: 'force-dark'` in config), so
+   both blocks carry the same values and neither can lose to the other. */
+:root,
+.dark {
+  --vp-c-bg: var(--pnx-void);
+  --vp-c-bg-alt: #0e0e10;
+  --vp-c-bg-elv: var(--pnx-panel);
+  --vp-c-bg-soft: var(--pnx-panel);
+
+  --vp-c-text-1: var(--pnx-ink);
+  --vp-c-text-2: var(--pnx-ink-2);
+  --vp-c-text-3: var(--pnx-ink-3);
+
+  --vp-c-divider: var(--pnx-line);
+  --vp-c-border: var(--pnx-line);
+  --vp-c-gutter: #000;
+
+  --vp-c-brand-1: var(--pnx-signal);
+  --vp-c-brand-2: var(--pnx-signal-hi);
+  --vp-c-brand-3: var(--pnx-signal);
+  --vp-c-brand-soft: var(--pnx-signal-dim);
+
+  --vp-c-default-1: var(--pnx-ink-2);
+  --vp-c-default-soft: rgba(255, 255, 255, 0.06);
+  --vp-c-tip-1: var(--pnx-signal);
+  --vp-c-tip-soft: var(--pnx-signal-dim);
+  --vp-c-warning-1: #ffb020;
+  --vp-c-warning-soft: rgba(255, 176, 32, 0.08);
+  --vp-c-danger-1: #ff6b5a;
+  --vp-c-danger-soft: rgba(255, 107, 90, 0.08);
+
+  --vp-nav-bg-color: rgba(11, 11, 12, 0.86);
+  --vp-sidebar-bg-color: var(--pnx-void);
+  --vp-local-nav-bg-color: var(--pnx-void);
+  --vp-backdrop-bg-color: rgba(0, 0, 0, 0.7);
+
+  --vp-code-bg: var(--pnx-panel);
+  --vp-code-color: var(--pnx-signal);
+  --vp-code-block-bg: var(--pnx-panel);
+  --vp-code-block-divider-color: #000;
+  --vp-code-tab-divider: var(--pnx-line);
+  --vp-code-tab-active-text-color: var(--pnx-signal);
+  --vp-code-tab-active-bar-color: var(--pnx-signal);
+  --vp-code-copy-code-bg: var(--pnx-panel-2);
+  --vp-code-copy-code-hover-bg: #232327;
+
+  --vp-button-brand-border: transparent;
+  --vp-button-brand-text: var(--pnx-void);
+  --vp-button-brand-bg: var(--pnx-signal);
+  --vp-button-brand-hover-border: transparent;
+  --vp-button-brand-hover-text: var(--pnx-void);
+  --vp-button-brand-hover-bg: var(--pnx-signal-hi);
+  --vp-button-brand-active-border: transparent;
+  --vp-button-brand-active-text: var(--pnx-void);
+  --vp-button-brand-active-bg: #e6bf00;
+
+  --vp-custom-block-tip-border: transparent;
+  --vp-custom-block-tip-text: var(--pnx-ink);
+  --vp-custom-block-tip-bg: rgba(255, 212, 0, 0.07);
+  --vp-custom-block-tip-code-bg: var(--pnx-panel);
+}
+
+/* Callouts carry the rail rather than a box, so the yellow reads as an
+   annotation on the text instead of a coloured panel behind it. */
+.vp-doc .custom-block {
+  border: none;
+  border-left: 3px solid var(--vp-c-brand-1);
+  border-radius: 0 6px 6px 0;
+}
+
+.vp-doc .custom-block.warning {
+  border-left-color: var(--vp-c-warning-1);
+}
+
+.vp-doc .custom-block.danger {
+  border-left-color: var(--vp-c-danger-1);
+}
+
+.vp-doc .custom-block-title {
+  font-family: var(--pnx-font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+::selection {
+  background: var(--pnx-signal);
+  color: var(--pnx-void);
+}
+
+:focus-visible {
+  outline: 2px solid var(--pnx-signal);
+  outline-offset: 2px;
+}
+
+/* --- nav ------------------------------------------------------------- */
+
+.VPNav {
+  border-bottom: none;
+}
+
+/* The signature: caution tape across the full width, directly under the nav.
+   It is the only decorative element on the site and it means the same thing
+   here as it does in the TUI — past this line, things are held.
+
+   It has to sit above the nav bar's curtain, which is a translucent panel
+   parked over the bottom edge to mask content scrolling underneath. */
+.VPNavBar {
+  border-bottom: none;
+}
+
+.VPNavBar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--pnx-tape);
+  z-index: 3;
+}
+
+.VPNavBar.has-sidebar .curtain {
+  background-color: var(--pnx-void);
+}
+
+.VPNavBarTitle .title {
+  font-family: var(--pnx-font-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  border-bottom: none !important;
+}
+
+.VPNavBarTitle .title::before {
+  content: '';
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  margin-right: 0.45em;
+  vertical-align: -0.14em;
+  background: var(--pnx-signal);
+}
+
+.VPNavBarMenuLink,
+.VPNavBarMenuGroup .VPMenuLink {
+  font-family: var(--pnx-font-display);
+  font-size: 13px;
+}
+
+/* --- sidebar --------------------------------------------------------- */
+
+.VPSidebar {
+  border-right: 1px solid var(--pnx-line);
+}
+
+.VPSidebarItem.level-0 > .item > .text,
+.VPSidebarItem.level-0 > .item > .indicator + .link .text {
+  font-family: var(--pnx-font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pnx-ink-3);
+}
+
+/* A top-level entry that is a link in its own right (Overview,
+   Troubleshooting) is a destination, not a section heading — read it as one. */
+.VPSidebarItem.level-0.is-link > .item .link .text {
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 500;
+  color: var(--pnx-ink-2);
+}
+
+.VPSidebarItem.level-1 .link .text,
+.VPSidebarItem.level-0.is-link .link .text {
+  transition: color 0.15s ease;
+}
+
+.VPSidebarItem .link:hover .text {
+  color: var(--pnx-signal-hi);
+}
+
+/* Active page carries the same left rail the TUI puts beside a selected
+   line. */
+.VPSidebarItem.is-active > .item {
+  position: relative;
+}
+
+.VPSidebarItem.is-active > .item::before {
+  content: '';
+  position: absolute;
+  left: -17px;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  background: var(--pnx-signal);
+}
+
+.VPSidebarItem.is-active > .item .link .text {
+  color: var(--pnx-signal) !important;
+  font-weight: 600;
+}
+
+.VPSidebarItem.level-0.is-active > .item::before {
+  left: -17px;
+}
+
+/* --- content --------------------------------------------------------- */
+
+.vp-doc h1,
+.vp-doc h2 {
+  font-family: var(--pnx-font-display);
+  letter-spacing: -0.03em;
+}
+
+.vp-doc h1 {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.vp-doc h2 {
+  margin-top: 52px;
+  padding-top: 26px;
+  border-top: 1px solid var(--pnx-line);
+  font-size: 21px;
+  font-weight: 600;
+}
+
+.vp-doc h3 {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.vp-doc a {
+  font-weight: 500;
+  text-underline-offset: 3px;
+  text-decoration-color: rgba(255, 212, 0, 0.4);
+}
+
+.vp-doc a:hover {
+  text-decoration-color: var(--pnx-signal);
+}
+
+.vp-doc :not(pre) > code {
+  background: var(--pnx-panel);
+  border: 1px solid var(--pnx-line);
+  color: var(--pnx-signal);
+  font-size: 0.86em;
+  padding: 2px 5px;
+}
+
+.vp-doc div[class*='language-'] {
+  border: 1px solid var(--pnx-line);
+  border-radius: 6px;
+}
+
+.vp-doc div[class*='language-'] .lang {
+  font-family: var(--pnx-font-display);
+  color: var(--pnx-ink-3);
+}
+
+.vp-doc blockquote {
+  border-left: 2px solid var(--pnx-signal);
+  padding-left: 18px;
+  color: var(--pnx-ink-2);
+}
+
+.vp-doc blockquote > p {
+  font-size: 15px;
+}
+
+.vp-doc th {
+  font-family: var(--pnx-font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pnx-ink-2);
+  background: transparent;
+}
+
+.vp-doc tr {
+  background: transparent;
+  border-top: 1px solid var(--pnx-line);
+}
+
+.vp-doc td,
+.vp-doc th {
+  border: none;
+  border-bottom: 1px solid var(--pnx-line);
+}
+
+.vp-doc hr {
+  border-top: 1px solid var(--pnx-line);
+}
+
+/* --- page furniture -------------------------------------------------- */
+
+.VPDocFooter .edit-link-button,
+.VPDocFooter .pager-link .title {
+  font-family: var(--pnx-font-display);
+  font-size: 13px;
+}
+
+.VPDocFooter .pager-link {
+  border-color: var(--pnx-line);
+  background: transparent;
+  transition: border-color 0.15s ease;
+}
+
+.VPDocFooter .pager-link:hover {
+  border-color: rgba(255, 212, 0, 0.4);
+}
+
+.VPDocFooter .pager-link .desc {
+  font-family: var(--pnx-font-display);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pnx-ink-3);
+}
+
+.VPDocAsideOutline .outline-title,
+.VPDocOutlineItem a {
+  font-size: 13px;
+}
+
+.VPDocAsideOutline .outline-title {
+  font-family: var(--pnx-font-display);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pnx-ink-3);
+}
+
+.VPDocAsideOutline .outline-marker {
+  background-color: var(--pnx-signal);
+}
+
+.VPLocalNav {
+  border-bottom: 1px solid var(--pnx-line);
+}
+
+.VPFooter {
+  border-top: 1px solid var(--pnx-line);
+  background: var(--pnx-void) !important;
+}
+
+.VPFooter .message,
+.VPFooter .copyright {
+  font-family: var(--pnx-font-display);
+  font-size: 12px;
+  color: var(--pnx-ink-3);
+}
+
+/* --- search ---------------------------------------------------------- */
+
+.DocSearch-Button {
+  background: var(--pnx-panel) !important;
+  border: 1px solid var(--pnx-line);
+}
+
+.DocSearch-Button:hover {
+  border-color: rgba(255, 212, 0, 0.4);
+}
+
+.VPLocalSearchBox .search-bar {
+  border-color: var(--pnx-line);
+}
+
+.VPLocalSearchBox .result.selected {
+  border-color: var(--pnx-signal) !important;
+}
+
+/* --- overview page --------------------------------------------------- */
+
+/* The lede on the landing doc: the problem, stated once, at reading size. */
+.pnx-lede {
+  font-size: 19px;
+  line-height: 1.65;
+  color: var(--pnx-ink);
+  margin: 22px 0 34px;
+  padding-left: 20px;
+  border-left: 3px solid var(--pnx-signal);
+}
+
+.pnx-lede strong {
+  color: var(--pnx-signal);
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .vp-doc h1 {
+    font-size: 27px;
+  }
+
+  .pnx-lede {
+    font-size: 17px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
