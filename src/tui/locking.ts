@@ -1,4 +1,4 @@
-import { addLock, unlockRange } from '../locks/manage.js';
+import { addLock, uncoveredRuns, unlockRange } from '../locks/manage.js';
 import { sectionOf } from '../render/markdown.js';
 import { updateLocks } from '../store/plans.js';
 import type { LineSpan } from './selection.js';
@@ -19,23 +19,60 @@ function toRange(span: LineSpan): { start: number; end: number } {
   return { start: Math.max(0, span.start - 1), end: Math.max(0, span.end - 1) };
 }
 
-/** Freeze a span. Returns the id of the lock now covering it. */
+function toSpan(range: { start: number; end: number }): LineSpan {
+  return { start: range.start + 1, end: range.end + 1 };
+}
+
+export interface LockResult {
+  /** What was frozen by this press, and under which id. */
+  locked: Array<LineSpan & { id: string }>;
+  /** Parts of the span a lock already covered, left alone. */
+  skipped: LineSpan[];
+}
+
+/**
+ * Freeze the parts of a span that are not frozen already.
+ *
+ * Locking the whole span again would leave lines covered by two records for a
+ * job that needs one. It reports both halves so the status line can say what
+ * actually happened rather than claiming the whole span every time.
+ */
 export function lockLines(
   planId: string,
   docLines: string[],
   version: number,
   span: LineSpan,
-): string {
+): LockResult {
   const range = toRange(span);
   return updateLocks(planId, (locks) => {
-    return addLock(locks, {
-      docLines,
-      range,
-      origin: 'user',
-      version,
-      section: sectionOf(docLines, range.start),
-    }).id;
+    const runs = uncoveredRuns(locks, docLines, range);
+    const locked = runs.map((run) => ({
+      ...toSpan(run),
+      id: addLock(locks, {
+        docLines,
+        range: run,
+        origin: 'user',
+        version,
+        section: sectionOf(docLines, run.start),
+      }).id,
+    }));
+    return { locked, skipped: gapsBetween(range, runs).map(toSpan) };
   });
+}
+
+/** The parts of `range` the runs do not account for — what was already locked. */
+function gapsBetween(
+  range: { start: number; end: number },
+  runs: Array<{ start: number; end: number }>,
+): Array<{ start: number; end: number }> {
+  const gaps: Array<{ start: number; end: number }> = [];
+  let cursor = range.start;
+  for (const run of runs) {
+    if (run.start > cursor) gaps.push({ start: cursor, end: run.start - 1 });
+    cursor = run.end + 1;
+  }
+  if (cursor <= range.end) gaps.push({ start: cursor, end: range.end });
+  return gaps;
 }
 
 /**

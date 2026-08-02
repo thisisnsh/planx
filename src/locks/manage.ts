@@ -61,16 +61,17 @@ export function sealPlan(locks: LocksFile, docLines: string[], version: number):
 
   for (const section of splitSections(docLines)) {
     const range = { start: section.start, end: section.end };
-    const text = rangeText(docLines, range);
-    if (!text.trim()) continue; // a run of blank lines is not worth a lock
+    if (!rangeText(docLines, range).trim()) continue; // blank lines are not worth a lock
 
-    // A section already locked by hand stays as it is — re-locking it would
-    // renumber it and orphan any grant the user already issued against it.
-    if (isAlreadyLocked(locks, docLines, range)) continue;
-
-    created.push(
-      addLock(locks, { docLines, range, origin: 'seal', version, section: section.heading }),
-    );
+    // Lines already locked by hand stay as they are — re-locking them would
+    // renumber them and orphan any grant the user already issued, and laying a
+    // section lock over the top would leave the line covered twice.
+    for (const run of uncoveredRuns(locks, docLines, range)) {
+      if (!rangeText(docLines, run).trim()) continue;
+      created.push(
+        addLock(locks, { docLines, range: run, origin: 'seal', version, section: section.heading }),
+      );
+    }
   }
 
   locks.sealed_at = new Date().toISOString();
@@ -78,12 +79,41 @@ export function sealPlan(locks: LocksFile, docLines: string[], version: number):
   return created;
 }
 
-function isAlreadyLocked(locks: LocksFile, docLines: string[], range: LineRange): boolean {
+/**
+ * The parts of `range` no lock covers yet, as contiguous runs.
+ *
+ * Locks are disjoint by construction: locking a span that is already half
+ * locked adds records only for the other half. Two overlapping requests used to
+ * become two whole-span records, so a line was covered twice — `planx locks`
+ * listed it in two blocks with duplicated text, the gutter and `--json` picked
+ * an arbitrary one of the covering ids, and an unlock had to split both. The
+ * lock *state* was always right, because a line is locked if any record covers
+ * it, but the bookkeeping under it was not.
+ */
+export function uncoveredRuns(
+  locks: LocksFile,
+  docLines: string[],
+  range: LineRange,
+): LineRange[] {
+  const covered = new Set<number>();
   for (const lock of Object.values(locks.locks)) {
     const found = locateLock(docLines, lock);
-    if (found.ok && found.range.start === range.start && found.range.end === range.end) return true;
+    if (!found.ok) continue;
+    for (let i = found.range.start; i <= found.range.end; i++) covered.add(i);
   }
-  return false;
+
+  const runs: LineRange[] = [];
+  let start: number | null = null;
+  for (let i = range.start; i <= range.end; i++) {
+    if (covered.has(i)) {
+      if (start !== null) runs.push({ start, end: i - 1 });
+      start = null;
+    } else if (start === null) {
+      start = i;
+    }
+  }
+  if (start !== null) runs.push({ start, end: range.end });
+  return runs;
 }
 
 export interface UnlockResult {
