@@ -1,0 +1,66 @@
+{
+  "name": "@thisisnsh/planx",
+  "version": "0.1.0",
+  "description": "Turn an agent's plan into a versioned artifact you can annotate, lock, and execute.",
+  "keywords": [
+    "claude-code",
+    "codex",
+    "agent",
+    "plan",
+    "review",
+    "cli",
+    "tui"
+  ],
+  "homepage": "https://thisisnsh.github.io/planx/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thisisnsh/planx.git"
+  },
+  "bugs": {
+    "url": "https://github.com/thisisnsh/planx/issues"
+  },
+  "license": "MIT",
+  "author": "thisisnsh",
+  "type": "module",
+  "bin": {
+    "planx": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "scripts/postinstall.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node scripts/chmod-bin.js",
+    "dev": "node --experimental-strip-types src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "prettier --check \"src/**/*.{ts,tsx}\" \"scripts/*.js\" \"test/**/*.ts\"",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\" \"scripts/*.js\" \"test/**/*.ts\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "docs:cli": "node dist/cli.js __gen-cli-docs > site/reference/cli.md",
+    "docs:dev": "vitepress dev site",
+    "docs:build": "vitepress build site",
+    "postinstall": "node scripts/postinstall.js",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "diff": "^8.0.2",
+    "ink": "^6.4.0",
+    "react": "^19.2.0",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/node": "^24.7.0",
+    "@types/react": "^19.2.2",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3",
+    "vitepress": "^1.6.4",
+    "vitest": "^3.2.4"
+  }
+}
