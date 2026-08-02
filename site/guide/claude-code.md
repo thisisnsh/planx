@@ -32,25 +32,22 @@ Drag to select lines, or press `V` and move with `j`/`k`. Then:
 | `l` | Lock the selection |
 | `u` | Unlock (splits a lock if partial) |
 | `n` | A general note about the whole plan |
-| `S` | Submit everything at once |
-| `A` | Approve — seals the plan |
+| `s` | Submit everything at once |
+| `a` | Approve — seals the plan |
 | `?` | Full key list |
 
 Claude picks the feedback up wherever it is in the loop and revises.
 
-## The 600-second cap
+## Nothing blocks, so nothing has to be resumed
 
 Claude Code caps a single Bash call at 600 seconds, and you will often take
-longer than that to review a plan properly. `planx await` handles this by
-returning a resumable message rather than dying:
+longer than that to review a plan properly. planx used to work around that by
+blocking in slices and having Claude re-run the command — which is why you would
+see `PLANX: no feedback yet (waited 480s)` scroll past.
 
-```
-PLANX: no feedback yet (waited 480s) — run the same command again to keep waiting
-```
-
-The skill instructs Claude to re-run the identical command. All state is on
-disk, so re-running costs nothing and no feedback can be missed in the gap. You
-will see this happen and it is not an error.
+That is gone. Claude captures the plan, tells you to run `planx`, and ends its
+turn. You review whenever you like. The reviewer prints the command to hand
+back, and pasting it starts the next round with the session's context intact.
 
 ## When Claude hits a lock
 
@@ -58,16 +55,20 @@ If Claude tries to modify a locked block, `capture` exits non-zero and nothing
 is written. The skill tells it to either fix its output — usually by using the
 `[[planx:keep L2]]` marker instead of retyping the block — or to ask:
 
+It has to ask you in chat first — what the block says, what it wants instead,
+and why. Only once you agree does it run:
+
 ```bash
-planx unlock-request <plan-id> L2 --reason "the flag adds no value here"
+planx unlock <plan-id> L2 --reason "the flag adds no value here"
 ```
 
-That blocks, and your TUI shows a banner with its reason and the proposed
-replacement. Press `y` to grant a single-use unlock or `n` to refuse.
+That grants exactly one capture and records the reason, which is what makes the
+decision reviewable later in `planx locks`.
 
 ## After approval
 
-Approving seals the plan and planx asks where to execute it.
+Approving seals the plan and prints one command to paste back — no questions
+about agents or models.
 
 **New window** applies your model choice automatically. **Same window** cannot:
 no agent CLI lets a running session change its own model, so planx prints the

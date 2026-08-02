@@ -16,14 +16,17 @@ Skills are read at session start for both agents, so restart the session
 afterwards. If `~/.codex` does not exist on your machine, the installer skips it
 on purpose rather than creating it — pass `--agent codex` to force it.
 
-## The agent keeps printing "no feedback yet (waited 480s)"
+## The agent prints "no feedback yet (waited 480s)"
 
-That is correct behaviour, not an error. Claude Code caps a Bash call at 600
-seconds, so `await` returns a resumable message and the skill re-runs it. Take
-as long as you like reviewing.
+Its skill is out of date. planx no longer blocks or polls: the agent captures
+the plan, tells you to run `planx`, and ends its turn. Reinstall with
+`planx install`, which also removes the retired `planx-diff` and `planx-execute`
+skills, then restart the session.
 
-If the agent *stops* re-running, its skill is out of date — reinstall with
-`planx install`.
+## The agent just stopped after capturing
+
+That is correct. Nothing is waiting. Run `planx`, review, submit — the reviewer
+prints the command to paste back, and that starts the next round.
 
 ## I submitted, but the agent did not pick it up
 
@@ -56,9 +59,14 @@ planx capture --plan-id <id> --splice --stdin
 
 **You did mean to change it.** Ask:
 
+It has to explain the change to you first, and only run this once you agree:
+
 ```bash
-planx unlock-request <id> L2 --reason "..."
+planx unlock <id> L2 --reason "..."
 ```
+
+The reason lands on the record. `planx locks <id>` shows every grant that was
+issued, which is how you spot one you never agreed to.
 
 ## "locked block L2 now appears more than once"
 
@@ -76,11 +84,6 @@ Markers **inside a fenced code block are left literal** and not expanded — so
 you can document the syntax. `capture` prints a note saying which lines those
 were.
 
-## The mouse selects planx rows instead of letting me copy text
-
-Press `m` to release mouse capture. Keyboard selection (`V`, then `j`/`k`)
-always works, so nothing is lost.
-
 ## The TUI looks broken, or colours bleed
 
 ```bash
@@ -89,16 +92,7 @@ NO_COLOR=1 planx diff <id>
 planx config set render plain     # make it the default
 ```
 
-If the terminal is left reporting clicks after a crash, run `reset`.
-
-## `planx execute` says the command is not on PATH
-
-planx runs whatever `cmd` says in `~/.planx/config.json`. Check it resolves:
-
-```bash
-which claude
-planx execute <id> --dry-run      # shows the exact argv without running it
-```
+If the terminal is left in a strange state after a crash, run `reset`.
 
 ## Everything looks wrong after an interrupted write
 

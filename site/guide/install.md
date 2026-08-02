@@ -11,10 +11,11 @@ run, no daemon to start, and nothing to add to a config file.
 
 A `postinstall` step runs `planx install`, which:
 
-- writes the three skills into `~/.claude/skills/planx*/` and
-  `~/.codex/skills/planx*/`, for whichever of those directories exists;
-- seeds `~/.planx/` with a `config.json` containing `claude` and `codex` agent
-  entries;
+- writes the `planx` skill into `~/.claude/skills/planx/` and
+  `~/.codex/skills/planx/`, for whichever of those directories exists;
+- removes skills an older planx installed that this version no longer ships,
+  leaving anything you wrote by hand alone;
+- seeds `~/.planx/` with a `config.json`;
 - prints a summary of exactly what it touched.
 
 It does **not** modify `~/.claude/settings.json`, `~/.codex/config.toml`, or any
@@ -83,10 +84,7 @@ planx on
   plans      0 (0 approved)
   trash      0
   render     rich
-  agent      claude
   skills     /Users/you/.claude/skills/planx
-             /Users/you/.claude/skills/planx-diff
-             /Users/you/.claude/skills/planx-execute
 ```
 
 If something looks wrong, `planx doctor` checks the store and rebuilds its

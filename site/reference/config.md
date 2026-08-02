@@ -6,9 +6,7 @@
 {
   "format_version": 1,
   "enabled": true,
-  "defaultAgent": "claude",
   "render": "rich",
-  "awaitTimeout": 480,
   "agents": {
     "claude": {
       "cmd": "claude",
@@ -32,9 +30,7 @@ planx config set render plain
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `enabled` | boolean | `true` | `planx off` sets this false. Write commands then print a notice and exit 0, so the skills degrade quietly instead of erroring. |
-| `defaultAgent` | string | `"claude"` | Which agent `planx execute` uses when none is named. |
 | `render` | `rich` \| `plain` | `"rich"` | Default rendering for `diff` and `show`. |
-| `awaitTimeout` | integer | `480` | Seconds `await` and `unlock-request` block before returning to be resumed. Kept under Claude Code's 600 s Bash ceiling. |
 
 Agent definitions are edited in `config.json` directly. There is no
 `planx config set agents.claude.args[2]` — a flag syntax for nested argv arrays

@@ -39,13 +39,13 @@ npm run build && node dist/cli.js --dir .planx-dev diff
 src/
   cli.ts, cli/       arg parsing, dispatch, the command spec, the doc generator
   store/             ~/.planx: atomic writes, index, versions, trash
-  protocol/          capture, await, submit, unlock handshake
+  protocol/          capture, resume, submit, unlock grants
   locks/             anchoring, verification, seal, split, splice/skeleton
   diff/, render/     line diff, collapsing, rich + plain rendering
   tui/               pure interaction model + Ink components
   adapters/          claude, codex import
-  exec/, install/    agent spawning, skill installation
-skills/              the three SKILL.md files, shipped as-is
+  install/           skill installation
+skills/planx/        SKILL.md plus references/, shipped as-is
 site/                VitePress docs
 ```
 
@@ -64,7 +64,7 @@ npx vitest                        # watch
 Four kinds, and it matters which one a change belongs in:
 
 - **`test/integration.test.ts`** drives the built binary as real subprocesses
-  with real timing. The `capture`/`await`/submit handshake lives here because it
+  with real timing. The `capture`/submit/`resume` hand-off lives here because it
   is the thing most likely to break, and mocking the process boundary would mock
   away the only part under test.
 - **`test/locks.test.ts`** is adversarial by design: reworded block, whitespace

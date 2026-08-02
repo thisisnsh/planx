@@ -15,7 +15,6 @@ citizen, forever.
       locks.json                  # active locks — plan-level, carried across versions
       v1.md  v2.md  v3.md
       feedback/  v2-01K9X4….json
-      inbox/     req-01K9X4….json  resp-01K9X4….json
   .trash/                         # soft-deleted plans
   logs/
 ```
@@ -24,13 +23,13 @@ citizen, forever.
 
 The thing planx needs is a **tool call that blocks** while a human does
 something out of band. A blocking shell command gets it: the agent runs
-`planx await <id> <version>`, the process sits there until the TUI in another
+`planx resume <id>`, the command reads what the TUI in another
 tab submits, and then it prints the feedback to stdout.
 
 That works in Claude Code, Codex, Gemini CLI, Cursor, Amp — anything that can
 run a subprocess. No server, no lifecycle, nothing to install alongside.
 
-Its one real weakness is the timeout ceiling, solved by making `await`
+Its one real weakness was the timeout ceiling, which is gone now that nothing
 resumable. See [The review loop](/guide/review-loop).
 
 ## Plans are global
@@ -75,7 +74,7 @@ diffing, execution and rendering never learn they existed.
 - `index.json` and `locks.json` take an advisory lock: an `O_EXCL` lockfile,
   stolen if it is more than 10 seconds old. Not `flock`, because dotfiles live
   on network filesystems where `flock` lies.
-- Two `await`s on the same version both receive the same feedback.
+- Two `resume`s on the same version both read the same feedback.
 
 ## Corruption
 

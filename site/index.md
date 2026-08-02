@@ -61,11 +61,12 @@ $ planx diff guard-clock-regression-a3f9
 ├─────────────────────────────────────────────────────────────────────┤
 │ ● a1  L42–43  "Wrong layer. Guard belongs in the R2 write path…"    │
 ├─────────────────────────────────────────────────────────────────────┤
-│ drag/V select · c comment · l lock · u unlock · S submit · A approve │
+│ v select · f feedback · l lock · s submit · a approve · x exit       │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-You press `S`. In the other tab, the agent's `planx await` unblocks with your
+You press `s`. It prints a command to paste back to your agent, which picks the
+plan up with your
 annotations attached to the lines they came from, and it revises.
 
 ## Why a lock is different from an instruction
@@ -80,7 +81,7 @@ refuses to write a version that mutates a locked block:
   + Deploy directly to 100%; the flag adds no value here.
 
   This block is locked. To change it:
-      planx unlock-request guard-clock-a3f9 L2 --reason "..."
+      planx unlock guard-clock-a3f9 L2 --reason "..."
   Then re-run capture. Nothing was written.
 ```
 
@@ -101,7 +102,7 @@ MCP, no lifecycle to manage:
 ~/.planx/plans/guard-clock-a3f9/
   meta.json  versions.json  locks.json
   v1.md  v2.md  v3.md
-  feedback/  inbox/
+  feedback/
 ```
 
 Which means any agent that can spawn a process is a first-class citizen. Claude
@@ -117,6 +118,6 @@ npm install -g @thisisnsh/planx
 Then type `/planx` in Claude Code or Codex.
 
 - [Install](/guide/install) — what the installer touches, channels, rollback
-- [The review loop](/guide/review-loop) — capture, await, revise, approve
+- [The review loop](/guide/review-loop) — capture, review, resume, approve
 - [Locking](/guide/locking) — how locks are enforced and lifted
 - [CLI reference](/reference/cli) — every command and flag

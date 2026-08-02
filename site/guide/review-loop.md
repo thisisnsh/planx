@@ -1,56 +1,59 @@
 # The review loop
 
 ```
-agent                                     human (other tab)
-  |                                              |
-  | planx capture --stdin --title "..."          |
-  |   → writes v2.md, prints id + version        |
-  |                                              |
-  | planx await <id> v2 --timeout 480            |
-  |   → writes inbox/req-01K9X4.json, blocks     |
-  |                                     planx diff <id>
-  |                                       → REVIEW mode on v2 (diff vs v1)
-  |                                       → select lines: comment / lock / unlock
-  |                                       → submit  (or approve)
-  |                                     writes feedback/ + inbox/resp-*.json
-  |   ← unblocks, prints feedback markdown       |
-  | revises → capture v3 → await v3              |
+agent                                     you
+  |                                        |
+  | planx capture --stdin --title "..."    |
+  |   → writes v2.md, prints id + version  |
+  |   → says "run planx to review", stops  |
+  |                                        |
+  |                                      planx
+  |                                        → pick the plan
+  |                                        → select lines: feedback / lock
+  |                                        → s to submit
+  |                                        → prints: planx resume <id>
+  |                                        |
+  |   ← you paste that back                |
+  | planx resume <id>                      |
+  |   → the plan, the feedback, the locks  |
+  | revises → capture v3 → stops again     |
 ```
 
-There is no daemon. `await` watches `inbox/` with `fs.watch` and a 500 ms poll
-behind it — the watcher makes the common case instant, the poll makes network
-filesystems and macOS FSEvents quirks merely slow instead of broken. Every write
-is a temp file plus `rename`, so a reader never sees half a file.
+**Nothing blocks and nothing polls.** There is no daemon, no background process
+and no waiting subprocess. The agent's turn ends when it captures; the next turn
+starts when you hand it the command the reviewer printed.
 
-## Feedback does not need anyone waiting
+That is a deliberate change from how planx used to work. The agent used to block
+on a queue while you reviewed, which held a session hostage, burned turns
+re-polling, and had to work around a 600-second ceiling on tool calls. The
+review was never the thing that needed to be synchronous — the *feedback* is on
+disk either way, and `planx resume` reads it.
 
-If no agent is blocked, `planx diff <id>` still opens. Your annotations are
-stored as detached feedback and delivered to the *next* `await`. Review an hour
-later and nudge the agent then.
+## Review whenever you like
 
-## When feedback stops being delivered
+`planx` opens whether or not anything is waiting, because nothing ever is. Leave
+notes an hour later. Leave them in three sittings. They accumulate on the
+version, and whenever you hand the agent `planx resume`, it sees all of them.
 
-Feedback is **open until a newer version exists**. That single rule gives three
-behaviours that would otherwise each need their own mechanism:
+## Which feedback is still live
 
-- Two `await` processes on the same version both receive the same feedback.
-- Feedback left before anyone was waiting still reaches the next `await`.
-- The loop terminates, because capturing v3 closes v2's feedback.
+Feedback is **outstanding until a newer version exists**. That is derived from
+the version list rather than stored as a flag, so it cannot drift out of step
+with reality: comments on v2 are what you address to produce v3, and once v3
+exists they are history.
 
-Nothing is marked "consumed" when it is printed. Acting on feedback means
-writing a new version, so that is what closes it.
-
-## The resumable timeout
-
-Claude Code caps a Bash call at 600 seconds. `await` therefore treats its
-timeout as a *slice*, not a deadline:
+Because capturing a new version retires the previous version's comments whether
+or not anything was done about them, `planx resume` checks. If the lines a
+comment quoted are still present word for word, it says so:
 
 ```
-PLANX: no feedback yet (waited 480s) — run the same command again to keep waiting
+### Still unaddressed from earlier versions
+- **a1** (v1) on `Extend the guard in poller.ts.`
+  — Wrong layer. Use the R2 write path.
 ```
 
-Exit code 0. The skill re-runs the identical command. Because all state is on
-disk, re-running costs nothing and nothing can slip through the gap.
+It is a heuristic and is reported as one — a comment can be satisfied by
+changing something else entirely.
 
 ## The feedback payload
 
@@ -96,8 +99,7 @@ planx submit <id> v2 \
 ## Selection is line-based, everywhere
 
 **You cannot select a sub-line span.** Every selection — feedback, lock, unlock
-— snaps to whole lines. Dragging from the middle of one line to the middle of
-another selects both lines entirely.
+— snaps to whole lines. `v` anchors a selection and the arrow keys extend it.
 
 This is a deliberate constraint. A word-level anchor gives the model an
 ambiguous target ("this word, in a sentence you are about to rewrite anyway"),
@@ -111,12 +113,24 @@ affects what you can select.
 
 ## What the agent sees
 
-`await` prints exactly this, designed to be maximally actionable in context:
+`planx resume <id>` prints exactly this — one read with everything needed to
+revise, including the plan itself, so it works in a session that has never seen
+the plan:
 
 ````markdown
-## planx feedback — guard-clock-regression-a3f9 v2 (verdict: revise)
+## planx — guard-clock-regression-a3f9 v2 (verdict: revise)
 
-### [a1] under "## Approach" (lines 42–47)
+### The plan as it stands
+```markdown
+# Guard the clock regression
+[[planx:keep L1]]   <!-- ## Context — 28 lines, locked -->
+## Approach
+…
+```
+
+### What was asked
+
+#### [a1] under "## Approach" (lines 42–47)
 > extend the existing snapshot-regression guard in poller.ts…
 
 **Feedback:** Wrong layer. Guard belongs in the R2 write path, not the poller.
@@ -126,14 +140,15 @@ affects what you can select.
 - **L2** "## Rollout" (lines 88–104) — do not modify
 
 ---
-Revise the plan addressing every annotation. Locked blocks must be reproduced
+Revise the plan addressing every comment. Locked blocks must be reproduced
 as `[[planx:keep L1]]` markers — do not re-emit their text. Then run:
   planx capture --plan-id guard-clock-regression-a3f9 --parent v2 --splice --stdin
 ````
 
-Every annotation carries its verbatim quote, the locks are stated as an
-instruction rather than a status, and the last line is the exact command to run
-next.
+Every comment carries its verbatim quote, the locks are stated as an instruction
+rather than a status, and the last line is the exact command to run next.
+
+It waits for nothing and is safe to run twice.
 
 ## Versions
 

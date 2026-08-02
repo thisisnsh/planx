@@ -73,9 +73,5 @@ recognise is far better than one that throws halfway through a backfill.
 }
 ```
 
-```bash
-planx execute <plan-id> --agent codex --model gpt-5.6
-```
-
-Edit `models` to match what your account actually has. planx never validates
-model names against a provider — it passes through what you configure.
+planx does not launch Codex for you. Approving a plan prints the command to
+paste into whichever session you want to build it in.

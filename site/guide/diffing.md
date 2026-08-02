@@ -28,7 +28,7 @@ planx config set render plain
 `NO_COLOR` is honoured, as is `--no-color`.
 
 Plain mode emits a genuine unified diff rather than a prettier bespoke format.
-`/planx-diff` pipes this straight into an agent's context, and an agent already
+`planx diff` pipes this straight into an agent's context, and an agent already
 knows how to read `@@ -42,6 +42,8 @@`.
 
 ## Highlighting never hides characters
@@ -67,24 +67,30 @@ Accepted anywhere a version is named:
 
 | Key | Action |
 | --- | --- |
-| `j` `k` `↑` `↓` | Move the cursor |
-| `ctrl-d` / `ctrl-u` | Half a page |
-| `g` / `G` | Top / bottom |
-| `V` | Start or end a line selection |
-| drag | Select with the mouse — always whole lines |
-| `m` | Toggle mouse capture |
+| `↑` `↓` | Move the cursor |
+| `v` | Start or end a selection, then `↑` `↓` to extend |
 | `space` | Expand the collapsed run under the cursor |
-| `c` | Comment on the selection |
-| `l` / `u` | Lock / unlock the selection |
-| `d` | Delete the annotation under the cursor |
-| `n` | General note about the whole plan |
-| `S` | Submit everything at once |
-| `A` / `R` | Approve (seals) / reject |
-| `q` | Leave without submitting |
+| `f` | Feedback on the selection, or edit the note under the cursor |
+| `l` | Lock or unlock the selection |
+| `d` | Delete the note under the cursor |
+| `h` | Hide or show the note bodies |
+| `n` | A note about the whole plan |
+| `s` | Submit everything at once |
+| `a` | Approve — seals the plan |
+| `x` | Leave without submitting |
 | `?` | Help |
 
-### Why `m` exists
+All lowercase, and there is no `c`: it sits next to `ctrl-c`, which is how you
+leave a terminal program.
 
-Mouse capture hijacks your terminal's own text selection, which is infuriating
-if you just wanted to copy a line out. `m` turns capture off — and keyboard
-visual mode (`V`) always works, which is why it is not optional.
+### Notes live in the document
+
+Pressing `f` opens a box directly under the lines it refers to, and you type
+into it there rather than into a dialog over the top. The annotated lines keep a
+dotted edge in the gutter whether or not the note body is showing, so `h`
+collapses the bodies without losing track of which passages you have been
+through.
+
+One note per passage: pressing `f` on lines that already carry one edits it
+rather than stacking a second note on the same text.
+

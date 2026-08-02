@@ -1,8 +1,29 @@
 # planx — plan capture, versioning, inline review, locking, and execution
 
-**Status:** proposal for review (rev 3)
+**Status:** the original proposal (rev 3), kept as the record of *why*
 **Date:** 2026-08-01
 **Package:** `@thisisnsh/planx` (npm — `latest` + `staging` channels)
+
+> [!IMPORTANT]
+> **Parts of this document describe a design that no longer ships.** It is kept
+> because the code cites it by section for its reasoning, and because the
+> rationale for the parts that survived is still the best account of them. It is
+> not a description of current behaviour — for that, see the
+> [documentation](https://thisisnsh.github.io/planx) and `planx --help`.
+>
+> What has changed since:
+>
+> | This document says | What happens now |
+> | --- | --- |
+> | The agent blocks on `planx await` while you review | Nothing blocks. The agent captures and ends its turn; the reviewer prints a command you paste back, and `planx resume` reads the feedback from the store |
+> | `unlock-request` blocks until you answer in the TUI | The agent explains the change in chat and, once you agree, runs `planx unlock` itself. Locks became advisory, with the reason recorded on the grant |
+> | An inbox of request/response records is the protocol | Deleted. Feedback files were always the transport; the inbox only ever carried notifications |
+> | Three skills: `/planx`, `/planx-diff`, `/planx-execute` | One `/planx` that dispatches on what follows it |
+> | `planx execute` spawns a fresh agent process | Deleted, along with the agent registry in `config.json`. Approval prints a command to paste |
+> | Review is drag-select in a second terminal tab | Keyboard selection, notes rendered inline in the document, and no mouse capture |
+>
+> §2 (files are the protocol), §5 (anchoring), §6 (locks and single-use grants),
+> §8 (line-based selection) and §20 (re-anchoring) still describe what ships.
 
 ---
 

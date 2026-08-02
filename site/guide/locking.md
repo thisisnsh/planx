@@ -21,7 +21,7 @@ exits non-zero and prints the offending diff:
   + Deploy directly to 100%; the flag adds no value here.
 
   This block is locked. To change it:
-      planx unlock-request guard-clock-regression-a3f9 L2 --reason "..."
+      planx unlock guard-clock-regression-a3f9 L2 --reason "..."
   Then re-run capture. Nothing was written.
 ```
 
@@ -53,26 +53,40 @@ The lock's stored text must appear, verbatim, in the new version.
 - Duplicating it so the text now appears twice — **rejected**, as ambiguous.
   planx will not guess which copy is the locked one.
 
-## The unlock handshake
+## Lifting a lock
+
+A rejected capture stops the agent. It has to come back and explain itself: what
+the block says now, what it wants it to say, and why. Only once you agree does
+it run:
 
 ```bash
-planx unlock-request <id> L2 --reason "the flag adds no value for a guard this cheap"
-```
-
-This blocks on the same machinery as `await`, including the same resumable
-timeout. Your TUI surfaces it as a banner with the agent's stated reason and the
-proposed replacement text side by side. Press `y` to grant or `n` to deny.
-
-```bash
-# or, without the TUI
-planx unlock-respond <id> L2 --grant --note "agreed, drop the flag"
-planx unlock-respond <id> L2 --deny  --note "no, that was the point"
+planx unlock <id> L2 --reason "the flag adds no value for a guard this cheap"
 ```
 
 **A grant is single-use and scoped to one lock.** It authorises exactly one
 capture that may modify `L2`, then the lock re-arms against the new content. No
-blanket unlocks, no drift. A second edit to the same block needs a fresh
-request.
+blanket unlocks, no drift. A second edit to the same block needs asking again.
+
+There is no matching `--deny`, because nothing is blocked waiting for one. If
+you say no, the command simply never runs.
+
+### This makes locks advisory, not enforced
+
+The agent issues that unlock itself. Nothing verifies that you agreed, or that
+it asked at all — an agent that decides its reason is good enough can open any
+lock in the store. Locks stop **accidental** rewriting, which is the failure
+that actually happens, not **determined** rewriting.
+
+What holds it accountable is the record. The stated reason is written onto the
+grant rather than printed and discarded, so every unlock is visible after the
+fact:
+
+```bash
+planx locks <id>
+```
+
+If an unlock appears there that you do not remember agreeing to, that is the
+signal. See [SECURITY.md](https://github.com/thisisnsh/planx/blob/main/SECURITY.md).
 
 ## Approval seals the entire plan
 
