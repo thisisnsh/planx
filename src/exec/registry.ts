@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { forwardSignals } from '../signals.js';
 import type { AgentConfig, Config } from '../store/types.js';
 
 export interface ExecContext {
@@ -121,15 +122,52 @@ export function formatCommand(built: BuiltCommand): string {
 
 export function runCommand(built: BuiltCommand, cwd: string): Promise<number> {
   return new Promise((resolve, reject) => {
+    // No `detached`: the agent is interactive and inherits this terminal, so it
+    // has to stay in our process group. That is what lets ctrl-c reach it, and
+    // it keeps a child that reads stdin from being stopped with SIGTTIN.
     const child = spawn(built.cmd, built.args, { cwd, stdio: 'inherit' });
+
+    // Same group covers ctrl-c, because the tty signals the whole foreground
+    // group. It does *not* cover a signal aimed at planx alone — `kill <pid>`,
+    // a harness cancelling the call, SIGHUP when the terminal goes away. There
+    // the child would survive us, reparent to init, and keep running with
+    // nobody left to stop it. Forward instead, and let its exit decide ours.
+    const stopForwarding = forwardSignals((signal) => {
+      if (child.exitCode === null && child.signalCode === null) child.kill(signal);
+    });
+
+    const done = (finish: () => void) => {
+      stopForwarding();
+      cleanupPromptFile(built);
+      finish();
+    };
+
     child.on('error', (err) => {
       const e = err as NodeJS.ErrnoException;
-      if (e.code === 'ENOENT') {
-        reject(new Error(`planx: "${built.cmd}" is not on your PATH. Is that agent installed?`));
-        return;
-      }
-      reject(err);
+      done(() => {
+        if (e.code === 'ENOENT') {
+          reject(new Error(`planx: "${built.cmd}" is not on your PATH. Is that agent installed?`));
+          return;
+        }
+        reject(err);
+      });
     });
-    child.on('close', (code) => resolve(code ?? 0));
+    child.on('close', (code, signal) => {
+      // A child killed by a signal exited non-zero even though `code` is null;
+      // reporting 0 there would tell the caller a cancelled run succeeded.
+      done(() => resolve(code ?? (signal ? 128 + (SIGNAL_NUMBERS[signal] ?? 0) : 0)));
+    });
   });
+}
+
+const SIGNAL_NUMBERS: Record<string, number> = { SIGINT: 2, SIGHUP: 1, SIGTERM: 15, SIGKILL: 9 };
+
+/** The prompt file is ours, and the agent has read it by the time it exits. */
+function cleanupPromptFile(built: BuiltCommand): void {
+  if (!built.promptFile) return;
+  try {
+    rmSync(dirname(built.promptFile), { recursive: true, force: true });
+  } catch {
+    /* a temp file left in tmpdir is not worth failing a run over */
+  }
 }
