@@ -16,7 +16,9 @@ const ENTRY = join(ROOT, 'dist', 'cli.js');
  */
 export function ensureBuilt(): void {
   if (existsSync(ENTRY) && newest(join(ROOT, 'src')) <= statSync(ENTRY).mtimeMs) return;
-  execFileSync('npx', ['tsc', '-p', 'tsconfig.build.json'], { cwd: ROOT, stdio: 'pipe' });
+  // Use the real build command so the executable-bit behavior of the shipped
+  // npm bin is part of integration testing too.
+  execFileSync('npm', ['run', 'build'], { cwd: ROOT, stdio: 'pipe' });
 }
 
 function newest(dir: string): number {
