@@ -100,12 +100,14 @@ export const COMMANDS: CommandSpec[] = [
   {
     name: 'diff',
     group: 'common',
-    usage: 'planx diff [id] [vA] [vB] [--print] [--plain|--rich] [--stat]',
+    usage: 'planx [diff] [id] [vA] [vB] [--print] [--plain|--rich] [--stat]',
     summary: 'Review a plan, or print a diff between two versions.',
     description:
-      'In a terminal this opens the review TUI: select lines and comment, lock or unlock them, ' +
-      'then submit or approve. Piped or with --print it writes the diff to stdout and exits. ' +
-      'With no arguments it opens a picker.',
+      'In a terminal this opens the review TUI on the plan as it stands: select lines and ' +
+      'comment, lock or unlock them, press d for the diff against the previous version, then ' +
+      'submit or approve. The command name is optional in front of a plan — `planx <id>` is ' +
+      'the same thing. Piped or with --print it writes the diff to stdout and exits. With no ' +
+      'arguments it opens a picker.',
     flags: [
       { name: '--print', summary: 'Non-interactive: write the diff to stdout and exit.' },
       { name: '--plain', summary: 'Raw unified diff, no rich rendering.' },
@@ -214,7 +216,9 @@ export const COMMANDS: CommandSpec[] = [
     group: 'maintenance',
     usage: 'planx config get|set <key> [value]',
     summary: 'Read or write configuration.',
-    description: 'Settable keys: enabled, render.',
+    description:
+      'Settable keys: enabled, render, mouse. `mouse on` turns on wheel scrolling in the ' +
+      'review, at the cost of the terminal’s own click-and-drag text selection.',
   },
   {
     name: 'install',

@@ -32,7 +32,7 @@ import { setColorEnabled } from './render/ansi.js';
 import { StoreCorruptionError } from './store/atomic.js';
 import { readConfig } from './store/config.js';
 import { setStoreRoot } from './store/paths.js';
-import { PlanNotFoundError, VersionNotFoundError } from './store/plans.js';
+import { PlanNotFoundError, resolvePlanRef, VersionNotFoundError } from './store/plans.js';
 
 function packageVersion(): string {
   try {
@@ -167,31 +167,62 @@ export async function main(argv: readonly string[]): Promise<number> {
   // thing a person is here to do, so it should not need a subcommand — and a
   // wall of help text is not a useful answer to someone who just typed the
   // name. `planx --help` is still there for the wall.
-  const command = name ?? 'diff';
+  let command = name ?? 'diff';
+  let commandArgv = rest;
 
-  const spec: CommandSpec | undefined = findCommand(command);
+  // A word planx does not recognise is a plan reference. The hand-off an agent
+  // prints is a plan id, and `planx <that id>` is what anyone would type; there
+  // is no reason for it to be an error while `planx diff <that id>` works.
+  // Anything starting with a dash is never a plan, so a mistyped flag keeps the
+  // error that names it as one.
+  let planRef: string | null = null;
+  let spec: CommandSpec | undefined = findCommand(command);
+  if (!spec && !command.startsWith('-')) {
+    planRef = command;
+    command = 'diff';
+    commandArgv = [planRef, ...rest];
+    spec = findCommand('diff');
+  }
   if (!spec) {
     process.stderr.write(red(`planx: unknown command "${command}". Run \`planx --help\`.\n`));
     return 2;
   }
 
-  const args = parseArgs(rest, spec, GLOBAL_FLAGS);
+  const args = parseArgs(commandArgv, spec, GLOBAL_FLAGS);
 
   if (has(args, '--help')) {
-    process.stdout.write(`${commandHelp(spec)}\n`);
+    process.stdout.write(`${commandHelp(spec, version)}\n`);
     return 0;
   }
   if (args.unknown.length) {
     process.stderr.write(
       red(`planx: unknown flag ${args.unknown.join(', ')} for \`planx ${command}\`.\n`),
     );
-    process.stderr.write(`${commandHelp(spec)}\n`);
+    process.stderr.write(`${commandHelp(spec, version)}\n`);
     return 2;
   }
 
   const dir = one(args, '--dir');
   if (dir) setStoreRoot(dir);
   if (has(args, '--no-color')) setColorEnabled(false);
+
+  // After `--dir`, or the lookup would run against the wrong store. An
+  // ambiguous reference keeps its own message — naming the candidates helps
+  // more than being told the word was not a command.
+  if (planRef !== null) {
+    try {
+      args.positionals[0] = resolvePlanRef(planRef);
+    } catch (err) {
+      if (!(err instanceof PlanNotFoundError)) throw err;
+      process.stderr.write(
+        red(
+          `planx: "${planRef}" is not a command or a stored plan. ` +
+            'Run `planx --help`, or `planx list` to see your plans.\n',
+        ),
+      );
+      return 2;
+    }
+  }
 
   // `planx off` should make the skills degrade quietly rather than fail loudly,
   // so the write path reports it and returns success.

@@ -42,6 +42,7 @@ import {
   restorePlan,
 } from '../store/plans.js';
 import { listFeedback } from '../store/feedback.js';
+import { brandTitle, frameBlock } from '../tui/frame.js';
 import { isInteractive, runPicker, runReview } from '../tui/run.js';
 import { all, has, one, parseDuration, type ParsedArgs } from './args.js';
 
@@ -69,7 +70,12 @@ function readPlanText(args: ParsedArgs): string {
 }
 
 /** Resolve a plan reference, falling back to a picker when one is not given. */
-async function resolvePlan(ref: string | undefined, prompt: string): Promise<string | null> {
+async function resolvePlan(
+  ctx: Ctx,
+  ref: string | undefined,
+  prompt: string,
+  subtitle: string,
+): Promise<string | null> {
   if (ref) return resolvePlanRef(ref);
   const plans = listPlans();
   if (!plans.length) throw new Error('planx: no plans stored yet.');
@@ -78,14 +84,32 @@ async function resolvePlan(ref: string | undefined, prompt: string): Promise<str
   }
   const [chosen] = await runPicker<string>({
     title: prompt,
+    subtitle,
+    version: ctx.version,
     items: plans.map((p) => ({
       value: p.id,
       label: p.title,
-      hint: `${p.id}  v${p.latest}${p.approved ? '  ✓' : ''}`,
+      hint: `${p.id}  v${p.latest}  ${ago(p.updated)}${p.approved ? '  ✓' : ''}`,
       searchable: p.id,
     })),
   });
   return chosen ?? null;
+}
+
+/**
+ * Print a block of lines inside the frame, when a person is going to read them.
+ *
+ * `--json` and a redirected stdout both mean the output is being consumed by
+ * something that has no use for box-drawing characters — and `show`, `capture`
+ * and `diff --print` never come through here at all, because those go straight
+ * into an agent's context.
+ */
+function framed(ctx: Ctx, lines: string[]): void {
+  if (ctx.json || !process.stdout.isTTY) {
+    for (const line of lines) ctx.out(line);
+    return;
+  }
+  ctx.out(frameBlock(lines, { title: brandTitle(ctx.version) }));
 }
 
 function requireVersionText(id: string, version: number): string {
@@ -360,7 +384,12 @@ export function cmdUnlock(ctx: Ctx): number {
 }
 
 export async function cmdDiff(ctx: Ctx): Promise<number> {
-  const id = await resolvePlan(ctx.args.positionals[0], 'Which plan?');
+  const id = await resolvePlan(
+    ctx,
+    ctx.args.positionals[0],
+    'Which plan?',
+    'Pick one to review, or type to filter.',
+  );
   if (!id) return 1;
 
   const latest = latestVersion(id);
@@ -406,7 +435,10 @@ export async function cmdDiff(ctx: Ctx): Promise<number> {
     return 0;
   }
 
-  return runInteractiveReview(ctx, id, versionA, versionB);
+  // The review opens on the plan as it stands. A diff is the interesting view
+  // sometimes; the plan is what you came to read, and `d` is right there. Two
+  // explicit versions are a request for that diff, so they are honoured.
+  return runInteractiveReview(ctx, id, refA && refB ? versionA : null, versionB);
 }
 
 async function runInteractiveReview(
@@ -421,9 +453,14 @@ async function runInteractiveReview(
     title: meta?.title ?? id,
     versionA,
     versionB,
+    // Only versions whose text survived `planx clean` can be opened.
+    versions: readVersions(id)
+      .versions.map((v) => v.n)
+      .filter((n) => readVersionText(id, n) !== null)
+      .sort((a, b) => a - b),
     mode: ctx.mode,
     version: ctx.version,
-    previous: listFeedback(id).filter((f) => f.version === versionB),
+    previous: listFeedback(id),
   });
 
   if (result.action === 'quit') {
@@ -432,26 +469,41 @@ async function runInteractiveReview(
   }
 
   const verdict = result.action === 'submit' ? 'revise' : result.action;
-  const submitted = submitFeedback({
-    planId: id,
-    version: versionB,
-    verdict,
-    annotations: result.annotations,
-    general: result.general,
-  });
 
-  const comments = result.annotations.filter((a) => a.kind === 'comment').length;
-  ctx.out(
-    `${green('✓')} submitted ${comments} comment(s) on ${bold(id)} v${versionB} (${verdict})`,
-  );
-  if (submitted.locksCreated.length) {
-    ctx.out(dim(`  locked: ${submitted.locksCreated.join(', ')}`));
-  }
-  if (submitted.locksRemoved.length) {
-    ctx.out(dim(`  unlocked: ${submitted.locksRemoved.join(', ')}`));
+  // A note belongs to the version it was written on, so a session that walked
+  // back through the history leaves one submission per version it wrote on.
+  const batches = [...result.batches];
+  if (!batches.some((b) => b.version === result.version)) {
+    batches.push({ version: result.version, annotations: [] });
   }
 
-  if (verdict === 'approve') afterApproval(ctx, id, versionB, submitted.sealedLocks.length);
+  let sealed = 0;
+  for (const batch of batches) {
+    const current = batch.version === result.version;
+    const submitted = submitFeedback({
+      planId: id,
+      version: batch.version,
+      verdict: current ? verdict : 'revise',
+      annotations: batch.annotations,
+      general: current ? result.general : '',
+    });
+
+    const comments = batch.annotations.filter((a) => a.kind === 'comment').length;
+    ctx.out(
+      `${green('✓')} submitted ${comments} comment(s) on ${bold(id)} v${batch.version} (${
+        current ? verdict : 'revise'
+      })`,
+    );
+    if (submitted.locksCreated.length) {
+      ctx.out(dim(`  locked: ${submitted.locksCreated.join(', ')}`));
+    }
+    if (submitted.locksRemoved.length) {
+      ctx.out(dim(`  unlocked: ${submitted.locksRemoved.join(', ')}`));
+    }
+    sealed += submitted.sealedLocks.length;
+  }
+
+  if (verdict === 'approve') afterApproval(ctx, id, result.version, sealed);
   return 0;
 }
 
@@ -515,12 +567,13 @@ export function cmdList(ctx: Ctx): number {
   }
 
   const idWidth = Math.min(38, Math.max(...plans.map((p) => p.id.length)));
-  for (const plan of plans) {
-    const badge = plan.sealed ? green(' 🔒') : plan.approved ? green(' ✓') : '  ';
-    ctx.out(
-      `${badge} ${cyan(plan.id.padEnd(idWidth))}  ${dim(`v${plan.latest}`.padEnd(5))} ${dim(ago(plan.updated).padEnd(8))} ${plan.title}`,
-    );
-  }
+  framed(
+    ctx,
+    plans.map((plan) => {
+      const badge = plan.sealed ? green(' 🔒') : plan.approved ? green(' ✓') : '  ';
+      return `${badge} ${cyan(plan.id.padEnd(idWidth))}  ${dim(`v${plan.latest}`.padEnd(5))} ${dim(ago(plan.updated).padEnd(8))} ${plan.title}`;
+    }),
+  );
   return 0;
 }
 
@@ -532,12 +585,13 @@ export function cmdVersions(ctx: Ctx): number {
     ctx.out(JSON.stringify(versions, null, 2));
     return 0;
   }
-  for (const v of versions) {
-    const stored = readVersionText(id, v.n) === null ? red(' (trimmed)') : '';
-    ctx.out(
-      `  ${cyan(`v${v.n}`.padEnd(5))} ${dim(v.sha256.slice(0, 8))} ${dim(ago(v.created).padEnd(8))} ${v.author}${v.agent ? `/${v.agent}` : ''}${v.note ? `  ${v.note}` : ''}${stored}`,
-    );
-  }
+  framed(
+    ctx,
+    versions.map((v) => {
+      const stored = readVersionText(id, v.n) === null ? red(' (trimmed)') : '';
+      return `  ${cyan(`v${v.n}`.padEnd(5))} ${dim(v.sha256.slice(0, 8))} ${dim(ago(v.created).padEnd(8))} ${v.author}${v.agent ? `/${v.agent}` : ''}${v.note ? `  ${v.note}` : ''}${stored}`;
+    }),
+  );
   return 0;
 }
 
@@ -549,24 +603,24 @@ export function cmdLocks(ctx: Ctx): number {
     ctx.out(JSON.stringify(locks, null, 2));
     return 0;
   }
+  const out: string[] = [];
   if (locks.sealed_at) {
-    ctx.out(green(`sealed at ${locks.sealed_at} (v${locks.sealed_version})`));
+    out.push(green(`sealed at ${locks.sealed_at} (v${locks.sealed_version})`));
   }
   const entries = Object.values(locks.locks);
   if (!entries.length) {
-    ctx.out(dim('no locks'));
-    return 0;
+    out.push(dim('no locks'));
   }
   for (const lock of entries) {
     const lines = lock.text.split('\n').length;
-    ctx.out(
+    out.push(
       `  🔒 ${cyan(lock.id.padEnd(5))} ${lock.section ?? dim('(preamble)')} ${dim(`— ${lines} lines, ${lock.origin}`)}`,
     );
   }
-  const open = Object.values(locks.grants).filter((g) => g.used_at === null);
-  for (const grant of open) {
-    ctx.out(yellow(`  ⚑ grant open for ${grant.lock_id} — one capture may modify it`));
+  for (const grant of Object.values(locks.grants).filter((g) => g.used_at === null)) {
+    out.push(yellow(`  ⚑ grant open for ${grant.lock_id} — one capture may modify it`));
   }
+  framed(ctx, out);
   return 0;
 }
 
@@ -633,6 +687,8 @@ export async function cmdClean(ctx: Ctx): Promise<number> {
     const plans = listPlans({ here: has(ctx.args, '--here') });
     const chosen = await runPicker<string>({
       title: 'Remove which plans?',
+      subtitle: 'Space marks a plan; they go to the trash, not away.',
+      version: ctx.version,
       multi: true,
       items: plans.map((p) => ({
         value: p.id,
@@ -666,6 +722,7 @@ export async function cmdClean(ctx: Ctx): Promise<number> {
       purge
         ? `Permanently destroy ${target.plans.length} plan(s)? This cannot be undone.`
         : `Move ${target.plans.length} plan(s) to the trash?`,
+      ctx.version,
     );
     if (!confirmed) {
       ctx.out(dim('cancelled'));
@@ -697,6 +754,7 @@ async function emptyTrash(ctx: Ctx): Promise<number> {
   if (!has(ctx.args, '--yes')) {
     const confirmed = await confirmDestructive(
       `Permanently destroy ${doomed.length} trashed plan(s)? This cannot be undone.`,
+      ctx.version,
     );
     if (!confirmed) {
       ctx.out(dim('cancelled'));
@@ -708,12 +766,13 @@ async function emptyTrash(ctx: Ctx): Promise<number> {
   return 0;
 }
 
-async function confirmDestructive(question: string): Promise<boolean> {
+async function confirmDestructive(question: string, version?: string): Promise<boolean> {
   if (!isInteractive()) {
     throw new Error('planx: not a terminal — pass --yes to confirm in a script.');
   }
   const [answer] = await runPicker<boolean>({
     title: question,
+    version,
     items: [
       { value: false, label: 'cancel' },
       { value: true, label: 'yes, go ahead' },
@@ -764,13 +823,16 @@ export function cmdStatus(ctx: Ctx): number {
     return 0;
   }
 
-  ctx.out(`${bold('planx')} ${config.enabled ? green('on') : red('off')}`);
-  ctx.out(`  store      ${paths.root()}`);
-  ctx.out(`  plans      ${plans.length} (${plans.filter((p) => p.approved).length} approved)`);
-  ctx.out(`  trash      ${listTrash().length}`);
-  ctx.out(`  render     ${config.render}`);
-  ctx.out(`  skills     ${skills.length ? '' : dim('none installed — run `planx install`')}`);
-  for (const skill of skills) ctx.out(`             ${dim(skill)}`);
+  framed(ctx, [
+    `${bold('planx')} ${config.enabled ? green('on') : red('off')}`,
+    `  store      ${paths.root()}`,
+    `  plans      ${plans.length} (${plans.filter((p) => p.approved).length} approved)`,
+    `  trash      ${listTrash().length}`,
+    `  render     ${config.render}`,
+    `  mouse      ${config.mouse}`,
+    `  skills     ${skills.length ? '' : dim('none installed — run `planx install`')}`,
+    ...skills.map((skill) => `             ${dim(skill)}`),
+  ]);
   return 0;
 }
 

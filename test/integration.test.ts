@@ -41,14 +41,47 @@ describe('the CLI as a real process', () => {
     expect(result.stdout.trim()).toMatch(/^\d+\.\d+\.\d+/);
   });
 
-  it('rejects an unknown command and an unknown flag with usage', async () => {
+  it('rejects an unknown word by naming both things it could have been', async () => {
+    // A word that is not a command is looked up as a plan first, so the error
+    // has to cover both possibilities rather than only the one it tried.
     const unknown = await cli.run(['frobnicate']);
     expect(unknown.code).toBe(2);
-    expect(unknown.stderr).toContain('unknown command');
+    expect(unknown.stderr).toContain('is not a command or a stored plan');
 
+    // Anything starting with a dash is never a plan reference.
     const badFlag = await cli.run(['list', '--nope']);
     expect(badFlag.code).toBe(2);
     expect(badFlag.stderr).toContain('unknown flag --nope');
+
+    const bareFlag = await cli.run(['--nope']);
+    expect(bareFlag.code).toBe(2);
+    expect(bareFlag.stderr).not.toContain('stored plan');
+  });
+
+  it('opens a plan named without the command in front of it', async () => {
+    const id = await seed();
+    await cli.run(['capture', '--plan-id', id, '--stdin'], PLAN_V2);
+
+    const shorthand = await cli.run([id, '--print', '--plain']);
+    const spelled = await cli.run(['diff', id, '--print', '--plain']);
+    expect(shorthand.code).toBe(0);
+    expect(shorthand.stdout).toBe(spelled.stdout);
+
+    // A prefix resolves the same way it does everywhere else, and a version
+    // positional lands where it would after `diff`.
+    const prefix = await cli.run([id.slice(0, 8), 'v1', '--print', '--plain']);
+    expect(prefix.code).toBe(0);
+    expect(prefix.stdout).toContain('v1');
+  });
+
+  it('keeps box-drawing characters out of piped output', async () => {
+    await seed();
+    for (const args of [['--help'], ['list'], ['status']]) {
+      const result = await cli.run(args);
+      expect(result.stdout, args.join(' ')).not.toMatch(/[╭╮╰╯│]/);
+    }
+    const json = await cli.run(['list', '--json']);
+    expect(() => JSON.parse(json.stdout)).not.toThrow();
   });
 
   it('accepts global flags before the command name', async () => {
