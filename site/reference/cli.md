@@ -46,24 +46,6 @@ planx capture --stdin --title "Guard the clock regression" < plan.md
 planx capture --plan-id guard-clock-a3f9 --parent v2 --splice --stdin
 ```
 
-## `planx await`
-
-Block until the reviewer submits feedback.
-
-```
-planx await <id> [version] [--timeout 480]
-```
-
-Writes a request the TUI can see, then waits. On timeout it prints a resumable message rather than failing — run the same command again to keep waiting. Feedback left before anyone was waiting is delivered immediately.
-
-| Flag | Meaning |
-| --- | --- |
-| `--timeout <SEC>` | Seconds to wait before returning to be resumed. |
-
-```bash
-planx await guard-clock-a3f9 v2
-```
-
 ## `planx resume`
 
 Pick a plan back up: the plan, the feedback on it, and its locks.
@@ -103,37 +85,23 @@ planx submit guard-clock-a3f9 v2 --comment "42-47:Wrong layer, use the R2 write 
 planx submit guard-clock-a3f9 --lock 88-104 --approve
 ```
 
-## `planx unlock-respond`
+## `planx unlock`
 
-Answer a pending unlock request without the TUI.
+Open one locked block for a single capture.
 
 ```
-planx unlock-respond <id> <lock-id> --grant|--deny [--note "..."]
+planx unlock <id> <lock-id> --reason "..."
 ```
 
-A grant is single-use and scoped to that one lock. --note on a grant doubles as the replacement text used to re-anchor the lock afterwards.
+Run by the agent after it has explained the change and the user has agreed. The grant authorises exactly one capture that may modify the block, then burns, and the lock re-arms on whatever was written. The reason is recorded on the grant, which is what makes a self-issued unlock reviewable afterwards — see `planx locks`.
 
 | Flag | Meaning |
 | --- | --- |
-| `--grant` | Allow exactly one capture to modify the block. |
-| `--deny` | Refuse; the block stays locked. |
-| `--note <TEXT>` | Reason, or the agreed replacement text. |
+| `--reason <R>` | Why the block has to change. Required. |
 
-## `planx unlock-request`
-
-Ask the reviewer to lift one lock, and block on the answer.
-
+```bash
+planx unlock guard-clock-a3f9 L2 --reason "the R2 path replaced this entirely"
 ```
-planx unlock-request <id> <lock-id> --reason "..."
-```
-
-Approval is single-use and scoped to that lock: it authorises exactly one capture that may modify the block, then the lock re-arms on whatever was written.
-
-| Flag | Meaning |
-| --- | --- |
-| `--reason <R>` | Why the block needs to change. Required. |
-| `--proposed <TEXT>` | The replacement text, shown beside the current one. |
-| `--timeout <SEC>` | Seconds to wait before returning to be resumed. |
 
 ## `planx diff`
 
@@ -305,7 +273,7 @@ Read or write configuration.
 planx config get|set <key> [value]
 ```
 
-Settable keys: enabled, defaultAgent, render, awaitTimeout. Agent definitions are edited in config.json directly — a flag syntax for nested argv arrays would be worse than an editor.
+Settable keys: enabled, defaultAgent, render. Agent definitions are edited in config.json directly — a flag syntax for nested argv arrays would be worse than an editor.
 
 ## `planx install`
 

@@ -4,7 +4,6 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ArgError, has, one, parseArgs, type CommandSpec } from './cli/args.js';
 import {
-  cmdAwait,
   cmdCapture,
   cmdClean,
   cmdConfig,
@@ -23,8 +22,7 @@ import {
   cmdSubmit,
   cmdToggle,
   cmdUninstall,
-  cmdUnlockRequest,
-  cmdUnlockRespond,
+  cmdUnlock,
   cmdVersions,
   type Ctx,
 } from './cli/commands.js';
@@ -72,16 +70,12 @@ async function dispatch(name: string, ctx: Ctx): Promise<number> {
   switch (name) {
     case 'capture':
       return cmdCapture(ctx);
-    case 'await':
-      return cmdAwait(ctx);
     case 'resume':
       return cmdResume(ctx);
     case 'submit':
       return cmdSubmit(ctx);
-    case 'unlock-request':
-      return cmdUnlockRequest(ctx);
-    case 'unlock-respond':
-      return cmdUnlockRespond(ctx);
+    case 'unlock':
+      return cmdUnlock(ctx);
     case 'diff':
       return cmdDiff(ctx);
     case 'show':

@@ -5,7 +5,7 @@ import { buildAnnotation, submitFeedback } from '../src/protocol/submit.js';
 import { normalizedLines } from '../src/locks/anchor.js';
 import { renderSkeleton } from '../src/locks/markers.js';
 import { readLocks, readVersionText } from '../src/store/plans.js';
-import { listFeedback } from '../src/store/queue.js';
+import { listFeedback } from '../src/store/feedback.js';
 import { tempStore } from './helpers.js';
 
 const PLAN = `# Guard the clock

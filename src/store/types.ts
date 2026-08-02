@@ -153,56 +153,12 @@ export const FeedbackSchema = z.object({
   general: z.string().default(''),
   created: z.string(),
   /**
-   * Feedback is open until a newer version exists — that is what "the agent
-   * acted on it" means. Two concurrent `await`s therefore both see the same
-   * open set, which is the documented concurrency guarantee.
+   * Feedback is outstanding until a newer version exists. That is derived from
+   * the version list rather than stored, so it cannot drift from the truth.
    */
   addressed_by: z.number().int().nullable().default(null),
-  /** Await request ids that have printed this feedback. Observability only. */
-  delivered_to: z.array(z.string()).default([]),
 });
 export type Feedback = z.infer<typeof FeedbackSchema>;
-
-/* ----------------------------------------------------------------- inbox */
-
-export const AwaitRequestSchema = z.object({
-  format_version: formatVersion,
-  id: z.string(),
-  kind: z.enum(['review', 'unlock']),
-  plan_id: z.string(),
-  version: z.number().int(),
-  lock_id: z.string().nullable().default(null),
-  reason: z.string().default(''),
-  /** Proposed replacement text for an unlock request, shown side by side. */
-  proposed: z.string().default(''),
-  created: z.string(),
-  pid: z.number().int().default(0),
-  cwd: z.string().default(''),
-  ttl_ms: z
-    .number()
-    .int()
-    .default(24 * 60 * 60 * 1000),
-});
-export type AwaitRequest = z.infer<typeof AwaitRequestSchema>;
-
-export const AwaitResponseSchema = z.object({
-  format_version: formatVersion,
-  id: z.string(),
-  request_id: z.string().nullable().default(null),
-  kind: z.enum(['review', 'unlock']),
-  plan_id: z.string(),
-  version: z.number().int(),
-  created: z.string(),
-  /** review: the feedback record this response points at. */
-  feedback_id: z.string().nullable().default(null),
-  /** unlock: the decision. */
-  lock_id: z.string().nullable().default(null),
-  granted: z.boolean().nullable().default(null),
-  grant_id: z.string().nullable().default(null),
-  note: z.string().default(''),
-  consumed: z.boolean().default(false),
-});
-export type AwaitResponse = z.infer<typeof AwaitResponseSchema>;
 
 /* ---------------------------------------------------------------- config */
 
@@ -224,7 +180,6 @@ export const ConfigSchema = z.object({
   defaultAgent: z.string().default('claude'),
   render: z.enum(['rich', 'plain']).default('rich'),
   /** Default `await` slice, kept under Claude Code's 600s Bash ceiling. */
-  awaitTimeout: z.number().int().default(480),
   agents: z.record(z.string(), AgentConfigSchema).default({}),
 });
 export type Config = z.infer<typeof ConfigSchema>;

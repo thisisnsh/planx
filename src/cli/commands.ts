@@ -12,20 +12,9 @@ import {
 import { normalizedLines } from '../locks/anchor.js';
 import { lockedLineMap } from '../locks/manage.js';
 import { renderSkeleton } from '../locks/markers.js';
-import {
-  awaitFeedback,
-  awaitUnlockDecision,
-  pendingRequests,
-  timeoutMessage,
-} from '../protocol/await.js';
 import { capture, LockViolationError } from '../protocol/capture.js';
-import {
-  carriedOver,
-  presentFeedback,
-  presentResume,
-  presentUnlockDecision,
-} from '../protocol/present.js';
-import { buildAnnotation, respondToUnlock, submitFeedback } from '../protocol/submit.js';
+import { carriedOver, presentResume } from '../protocol/present.js';
+import { buildAnnotation, grantUnlock, submitFeedback } from '../protocol/submit.js';
 import { bold, cyan, dim, green, red, yellow } from '../render/ansi.js';
 import { renderDocument, renderStatLine, renderUnified, type RenderMode } from '../render/diff.js';
 import { executeClean, planClean } from '../store/clean.js';
@@ -53,7 +42,7 @@ import {
   resolveVersionRef,
   restorePlan,
 } from '../store/plans.js';
-import { listFeedback } from '../store/queue.js';
+import { listFeedback } from '../store/feedback.js';
 import { isInteractive, runPicker, runReview } from '../tui/run.js';
 import { all, has, one, parseDuration, splitArgs, type ParsedArgs } from './args.js';
 
@@ -163,36 +152,6 @@ export function cmdCapture(ctx: Ctx): number {
   if (result.closedFeedback) {
     ctx.out(dim(`  closed ${result.closedFeedback} feedback record(s)`));
   }
-  return 0;
-}
-
-/* --------------------------------------------------------------- await */
-
-export async function cmdAwait(ctx: Ctx): Promise<number> {
-  const id = resolvePlanRef(requirePositional(ctx, 0, 'planx await <id> [version]'));
-  const version = resolveVersionRef(id, ctx.args.positionals[1]);
-  const timeout =
-    Number.parseInt(one(ctx.args, '--timeout') ?? '', 10) || readConfig().awaitTimeout;
-
-  const outcome = await awaitFeedback({ planId: id, version, timeoutSec: timeout });
-
-  if (outcome.kind === 'timeout') {
-    ctx.out(timeoutMessage(outcome.waitedSec));
-    return 0;
-  }
-  if (ctx.json) {
-    ctx.out(JSON.stringify(outcome.value, null, 2));
-    return 0;
-  }
-  ctx.out(
-    presentFeedback({
-      planId: id,
-      version,
-      feedback: outcome.value,
-      locks: readLocks(id),
-      docLines: normalizedLines(requireVersionText(id, version)),
-    }),
-  );
   return 0;
 }
 
@@ -357,7 +316,6 @@ function finishSubmit(
     verdict,
     annotations,
     general,
-    requestId: pendingRequests(id).find((r) => r.kind === 'review')?.id ?? null,
   });
 
   if (ctx.json) {
@@ -373,77 +331,33 @@ function finishSubmit(
   return 0;
 }
 
-export function cmdUnlockRespond(ctx: Ctx): number {
-  const id = resolvePlanRef(
-    requirePositional(ctx, 0, 'planx unlock-respond <id> <lock-id> --grant|--deny'),
-  );
-  const lockId = requirePositional(ctx, 1, 'planx unlock-respond <id> <lock-id> --grant|--deny');
+/**
+ * Open one locked block for a single capture.
+ *
+ * Run by the agent once it has explained the change and the user has agreed, so
+ * the reason it records is the only thing that makes the decision reviewable
+ * afterwards. There is no matching deny: nothing is blocked waiting, so a
+ * refusal is this command simply never being run.
+ */
+export function cmdUnlock(ctx: Ctx): number {
+  const usage = 'planx unlock <id> <lock-id> --reason "..."';
+  const id = resolvePlanRef(requirePositional(ctx, 0, usage));
+  const lockId = requirePositional(ctx, 1, usage);
+  const reason = one(ctx.args, '--reason');
+  if (!reason) {
+    throw new Error('planx: --reason is required. Say why the block has to change.');
+  }
 
-  const grant = has(ctx.args, '--grant');
-  const deny = has(ctx.args, '--deny');
-  if (grant === deny) throw new Error('planx: pass exactly one of --grant or --deny.');
-
-  const result = respondToUnlock({
-    planId: id,
-    version: latestVersion(id),
-    lockId,
-    granted: grant,
-    note: one(ctx.args, '--note') ?? '',
-    requestId: pendingRequests(id).find((r) => r.kind === 'unlock')?.id ?? null,
-  });
+  const { grantId } = grantUnlock({ planId: id, lockId, reason });
 
   if (ctx.json) {
-    ctx.out(JSON.stringify(result, null, 2));
+    ctx.out(JSON.stringify({ plan_id: id, lock_id: lockId, grant_id: grantId, reason }, null, 2));
     return 0;
   }
-  ctx.out(
-    grant
-      ? `${green('✓')} granted ${lockId} — one capture may modify it`
-      : `${red('✗')} denied ${lockId}`,
-  );
+  ctx.out(`${green('✓')} unlocked ${lockId} for one capture`);
+  ctx.out(dim(`  recorded: ${reason}`));
   return 0;
 }
-
-export async function cmdUnlockRequest(ctx: Ctx): Promise<number> {
-  const id = resolvePlanRef(
-    requirePositional(ctx, 0, 'planx unlock-request <id> <lock-id> --reason "..."'),
-  );
-  const lockId = requirePositional(ctx, 1, 'planx unlock-request <id> <lock-id> --reason "..."');
-  const reason = one(ctx.args, '--reason');
-  if (!reason) throw new Error('planx: --reason is required. Say why the block needs to change.');
-
-  const locks = readLocks(id);
-  if (!locks.locks[lockId]) {
-    const known = Object.keys(locks.locks).join(', ') || 'none';
-    throw new Error(`planx: ${id} has no lock ${lockId}. Locks: ${known}.`);
-  }
-
-  const version = latestVersion(id);
-  const timeout =
-    Number.parseInt(one(ctx.args, '--timeout') ?? '', 10) || readConfig().awaitTimeout;
-
-  const outcome = await awaitUnlockDecision({
-    planId: id,
-    version,
-    lockId,
-    reason,
-    proposed: one(ctx.args, '--proposed') ?? '',
-    timeoutSec: timeout,
-  });
-
-  if (outcome.kind === 'timeout') {
-    ctx.out(timeoutMessage(outcome.waitedSec));
-    return 0;
-  }
-  if (ctx.json) {
-    ctx.out(JSON.stringify(outcome.value, null, 2));
-    return 0;
-  }
-  ctx.out(presentUnlockDecision(id, lockId, outcome.value.granted, outcome.value.note));
-  return outcome.value.granted ? 0 : 4;
-}
-
-/* ---------------------------------------------------------------- diff */
 
 export async function cmdDiff(ctx: Ctx): Promise<number> {
   const id = await resolvePlan(ctx.args.positionals[0], 'Which plan?');
@@ -508,30 +422,11 @@ async function runInteractiveReview(
     versionA,
     versionB,
     mode: ctx.mode,
-    pending: pendingRequests(id),
     previous: listFeedback(id).filter((f) => f.version === versionB),
   });
 
   if (result.action === 'quit') {
     ctx.out(dim('nothing submitted'));
-    return 0;
-  }
-
-  if (result.action === 'unlock') {
-    if (!result.unlock) return 0;
-    respondToUnlock({
-      planId: id,
-      version: versionB,
-      lockId: result.unlock.lockId,
-      granted: result.unlock.granted,
-      note: result.unlock.note,
-      requestId: result.unlock.requestId,
-    });
-    ctx.out(
-      result.unlock.granted
-        ? `${green('✓')} granted ${result.unlock.lockId} — one capture may modify it`
-        : `${red('✗')} denied ${result.unlock.lockId}`,
-    );
     return 0;
   }
 
@@ -542,7 +437,6 @@ async function runInteractiveReview(
     verdict,
     annotations: result.annotations,
     general: result.general,
-    requestId: pendingRequests(id).find((r) => r.kind === 'review')?.id ?? null,
   });
 
   const comments = result.annotations.filter((a) => a.kind === 'comment').length;

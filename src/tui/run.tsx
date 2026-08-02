@@ -1,6 +1,6 @@
 import { render } from 'ink';
 import type { RenderMode } from '../render/diff.js';
-import type { AwaitRequest, Feedback } from '../store/types.js';
+import type { Feedback } from '../store/types.js';
 import { Picker, type PickerItem } from './Picker.js';
 import { ReviewApp, type ReviewResult } from './ReviewApp.js';
 
@@ -20,7 +20,6 @@ export interface RunReviewOptions {
   versionA: number | null;
   versionB: number;
   mode: RenderMode;
-  pending: AwaitRequest[];
   previous: Feedback[];
 }
 
@@ -41,7 +40,6 @@ export async function runReview(opts: RunReviewOptions): Promise<ReviewResult> {
         versionA={opts.versionA}
         versionB={opts.versionB}
         mode={opts.mode}
-        pending={opts.pending}
         previous={opts.previous}
         onDone={finish}
       />,

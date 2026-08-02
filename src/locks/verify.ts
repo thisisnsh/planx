@@ -138,9 +138,11 @@ export function formatViolations(planId: string, violations: Violation[]): strin
     for (const line of v.added.slice(0, MAX_SHOWN)) out.push(`  ${green(`+ ${line}`)}`);
     if (v.added.length > MAX_SHOWN) out.push(dim(`    … ${v.added.length - MAX_SHOWN} more added`));
     out.push('');
-    out.push('  This block is locked. To change it:');
-    out.push(yellow(`      planx unlock-request ${planId} ${v.lockId} --reason "..."`));
-    out.push('  Then re-run capture. Nothing was written.');
+    out.push('  This block is locked. Nothing was written.');
+    out.push('  If you did not mean to touch it, use a [[planx:keep …]] marker instead.');
+    out.push('  If you did, explain the change to the user first. Only once they agree:');
+    out.push(yellow(`      planx unlock ${planId} ${v.lockId} --reason "..."`));
+    out.push('  Then re-run capture.');
     out.push('');
   }
 

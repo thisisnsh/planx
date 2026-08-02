@@ -17,7 +17,7 @@ import {
   updateLocks,
   writeMeta,
 } from '../store/plans.js';
-import { markFeedbackAddressed } from '../store/queue.js';
+import { markFeedbackAddressed } from '../store/feedback.js';
 
 export class LockViolationError extends Error {
   constructor(

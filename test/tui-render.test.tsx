@@ -5,7 +5,6 @@ import { capture } from '../src/protocol/capture.js';
 import { submitFeedback } from '../src/protocol/submit.js';
 import { setColorEnabled, stripAnsi } from '../src/render/ansi.js';
 import { readLocks } from '../src/store/plans.js';
-import type { AwaitRequest } from '../src/store/types.js';
 import { ReviewApp, type ReviewResult } from '../src/tui/ReviewApp.js';
 import { SAMPLE_PLAN, tempStore } from './helpers.js';
 
@@ -119,12 +118,7 @@ interface Harness {
   frame: (text: string) => Promise<void>;
 }
 
-function mount(
-  planId: string,
-  versionA: number | null,
-  versionB: number,
-  pending: AwaitRequest[] = [],
-): Harness {
+function mount(planId: string, versionA: number | null, versionB: number): Harness {
   const stdout = new FakeStdout();
   const stdin = new FakeStdin();
   let resolve!: (value: ReviewResult) => void;
@@ -137,7 +131,6 @@ function mount(
       versionA={versionA}
       versionB={versionB}
       mode="rich"
-      pending={pending}
       previous={[]}
       onDone={resolve}
     />,
@@ -222,34 +215,6 @@ describe('the review app renders', () => {
     expect(frame).toContain('SEALED');
     app.unmount();
   });
-
-  it('surfaces a pending unlock request immediately, with the reason', async () => {
-    const id = seed();
-    const request: AwaitRequest = {
-      format_version: 1,
-      id: 'req1',
-      kind: 'unlock',
-      plan_id: id,
-      version: 1,
-      lock_id: 'L2',
-      reason: 'the flag adds no value here',
-      proposed: 'Deploy directly to 100%.',
-      created: new Date().toISOString(),
-      pid: 1,
-      cwd: '/tmp',
-      ttl_ms: 60_000,
-    };
-
-    const app = mount(id, null, 1, [request]);
-    await app.frame('y to grant');
-
-    const frame = app.stdout.lastFrame;
-    expect(frame).toContain('agent requests unlock of L2');
-    expect(frame).toContain('the flag adds no value here');
-    expect(frame).toContain('+ Deploy directly to 100%.');
-    expect(frame).toContain('y to grant');
-    app.unmount();
-  });
 });
 
 describe('the review app responds to keys', () => {
@@ -314,32 +279,6 @@ describe('the review app responds to keys', () => {
 
     await app.press('y');
     expect((await app.result).action).toBe('approve');
-    app.unmount();
-  });
-
-  it('answers an unlock request with a single keypress', async () => {
-    const id = seed();
-    const request: AwaitRequest = {
-      format_version: 1,
-      id: 'req1',
-      kind: 'unlock',
-      plan_id: id,
-      version: 1,
-      lock_id: 'L2',
-      reason: 'why not',
-      proposed: '',
-      created: new Date().toISOString(),
-      pid: 1,
-      cwd: '/tmp',
-      ttl_ms: 60_000,
-    };
-    const app = mount(id, null, 1, [request]);
-    await app.ready();
-
-    await app.press('y');
-    const result = await app.result;
-    expect(result.action).toBe('unlock');
-    expect(result.unlock).toMatchObject({ lockId: 'L2', granted: true, requestId: 'req1' });
     app.unmount();
   });
 

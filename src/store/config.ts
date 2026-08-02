@@ -54,7 +54,7 @@ export function ensureConfig(): Config {
   return seeded;
 }
 
-const SCALAR_KEYS = ['enabled', 'defaultAgent', 'render', 'awaitTimeout'] as const;
+const SCALAR_KEYS = ['enabled', 'defaultAgent', 'render'] as const;
 export type ScalarKey = (typeof SCALAR_KEYS)[number];
 
 export function isScalarKey(key: string): key is ScalarKey {
@@ -91,11 +91,6 @@ export function setConfigValue(config: Config, key: string, raw: string): Config
   const next: Record<string, unknown> = { ...config };
   if (key === 'enabled') {
     next[key] = raw === 'true' || raw === '1' || raw === 'yes';
-  } else if (key === 'awaitTimeout') {
-    const n = Number.parseInt(raw, 10);
-    if (!Number.isFinite(n) || n <= 0)
-      throw new Error(`planx: awaitTimeout must be a positive integer`);
-    next[key] = n;
   } else {
     next[key] = raw;
   }

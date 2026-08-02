@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, symlinkSync } from 'node:fs';
+import { mkdirSync, symlinkSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -20,14 +20,6 @@ async function seed(): Promise<string> {
 }
 
 /** Wait for a condition to hold, polling — for the async handshake. */
-async function until(check: () => Promise<boolean> | boolean, ms = 5000): Promise<void> {
-  const deadline = Date.now() + ms;
-  for (;;) {
-    if (await check()) return;
-    if (Date.now() > deadline) throw new Error('timed out waiting for condition');
-    await new Promise((r) => setTimeout(r, 50));
-  }
-}
 
 describe('the CLI as a real process', () => {
   it('reports its version and help without a store', async () => {
@@ -90,16 +82,9 @@ describe('the CLI as a real process', () => {
   });
 });
 
-describe('the review handshake across two processes', () => {
-  it('blocks in one process until another submits', async () => {
+describe('the review hand-off across two processes', () => {
+  it('hands feedback from the reviewing process to the resuming one', async () => {
     const id = await seed();
-
-    const waiting = cli.spawn(['await', id, 'v1', '--timeout', '20']);
-    const output = collect(waiting);
-
-    // The waiting process must announce itself on disk, or the TUI would have
-    // nothing to show its "agent is waiting" banner from.
-    await until(() => hasPendingRequest(id));
 
     const submitted = await cli.run([
       'submit',
@@ -112,45 +97,38 @@ describe('the review handshake across two processes', () => {
     ]);
     expect(submitted.code).toBe(0);
 
-    const result = await output;
+    const result = await cli.run(['resume', id, 'v1']);
     expect(result.code).toBe(0);
-    expect(result.stdout).toContain(`## planx feedback — ${id} v1 (verdict: revise)`);
+    expect(result.stdout).toContain(`## planx — ${id} v1 (verdict: revise)`);
     expect(result.stdout).toContain('Wrong layer. Guard belongs in the R2 write path.');
     expect(result.stdout).toContain('> Extend the snapshot-regression guard in poller.ts.');
     expect(result.stdout).toContain(`planx capture --plan-id ${id} --parent v1 --splice --stdin`);
   });
 
-  function hasPendingRequest(id: string): boolean {
-    try {
-      return readdirSync(join(cli.dir, 'plans', id, 'inbox')).some((f) => f.startsWith('req-'));
-    } catch {
-      return false;
-    }
-  }
-
-  it('delivers feedback left before anyone was waiting', async () => {
+  it('carries the plan text, so a session that never saw it can revise', async () => {
     const id = await seed();
     await cli.run(['submit', id, 'v1', '--comment', '3-3:Say more here.']);
 
-    const result = await cli.run(['await', id, 'v1', '--timeout', '20']);
+    const result = await cli.run(['resume', id, 'v1']);
+    expect(result.stdout).toContain('The plan as it stands');
     expect(result.stdout).toContain('Say more here.');
   });
 
-  it('returns a resumable message at the timeout instead of failing', async () => {
+  it('says there is nothing to revise towards before any review', async () => {
     const id = await seed();
-    const result = await cli.run(['await', id, 'v1', '--timeout', '1']);
+    const result = await cli.run(['resume', id, 'v1']);
     expect(result.code).toBe(0);
-    expect(result.stdout).toMatch(/^PLANX: no feedback yet \(waited \d+s\) — run the same command/);
+    expect(result.stdout).toContain('No review of v1 yet');
   });
 
   it('stops re-delivering feedback once the next version lands', async () => {
     const id = await seed();
     await cli.run(['submit', id, 'v1', '--comment', '7-7:Rework this.']);
-    expect((await cli.run(['await', id, 'v1', '--timeout', '5'])).stdout).toContain('Rework this.');
+    expect((await cli.run(['resume', id, 'v1'])).stdout).toContain('Rework this.');
 
     await cli.run(['capture', '--plan-id', id, '--parent', 'v1', '--stdin'], PLAN_V2);
-    const after = await cli.run(['await', id, 'v2', '--timeout', '1']);
-    expect(after.stdout).toContain('PLANX: no feedback yet');
+    const after = await cli.run(['resume', id, 'v2']);
+    expect(after.stdout).toContain('No review of v2 yet');
   });
 });
 
@@ -169,7 +147,7 @@ describe('lock enforcement through the binary', () => {
     expect(rejected.stderr).toContain('was modified — version rejected');
     expect(rejected.stderr).toContain('- Deploy behind the `ff_clock_guard` flag');
     expect(rejected.stderr).toContain('+ Deploy directly to 100%');
-    expect(rejected.stderr).toContain(`planx unlock-request ${id} L1 --reason`);
+    expect(rejected.stderr).toContain(`planx unlock ${id} L1 --reason`);
     expect(rejected.stderr).toContain('Nothing was written.');
 
     const versions = await cli.run(['versions', id, '--json']);
@@ -199,34 +177,14 @@ describe('lock enforcement through the binary', () => {
     expect(shown.stdout).toContain('Deploy behind the `ff_clock_guard` flag');
   });
 
-  it('runs the unlock handshake between two processes and burns the grant', async () => {
+  it('grants one capture through the binary, then burns', async () => {
     const id = await seed();
     await cli.run(['submit', id, 'v1', '--lock', '9-10']);
 
-    const asking = cli.spawn([
-      'unlock-request',
-      id,
-      'L1',
-      '--reason',
-      'the flag adds no value here',
-      '--timeout',
-      '20',
-    ]);
-    const output = collect(asking);
-    await new Promise((r) => setTimeout(r, 400));
-
-    const granted = await cli.run([
-      'unlock-respond',
-      id,
-      'L1',
-      '--grant',
-      '--note',
-      'agreed, drop it',
-    ]);
+    const granted = await cli.run(['unlock', id, 'L1', '--reason', 'the flag adds no value here']);
     expect(granted.code).toBe(0);
-
-    const decision = await output;
-    expect(decision.stdout).toContain('granted (single use)');
+    expect(granted.stdout).toContain('unlocked L1');
+    expect(granted.stdout).toContain('the flag adds no value here');
 
     const edited = PLAN_V1.replace(
       'Deploy behind the `ff_clock_guard` flag, 10% then 50% then 100%.',
@@ -242,18 +200,13 @@ describe('lock enforcement through the binary', () => {
     expect(second.code).toBe(3);
   });
 
-  it('reports a denial and keeps the lock', async () => {
+  it('refuses without a reason, so the audit trail cannot be empty', async () => {
     const id = await seed();
     await cli.run(['submit', id, 'v1', '--lock', '9-10']);
 
-    const asking = cli.spawn(['unlock-request', id, 'L1', '--reason', 'x', '--timeout', '20']);
-    const output = collect(asking);
-    await new Promise((r) => setTimeout(r, 400));
-    await cli.run(['unlock-respond', id, 'L1', '--deny', '--note', 'no, that was the point']);
-
-    const decision = await output;
-    expect(decision.code).toBe(4);
-    expect(decision.stdout).toContain('stays locked');
+    const result = await cli.run(['unlock', id, 'L1']);
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain('--reason is required');
   });
 });
 
@@ -333,7 +286,7 @@ describe('the generated reference', () => {
   it('documents every non-hidden command', async () => {
     const docs = await cli.run(['__gen-cli-docs']);
     expect(docs.code).toBe(0);
-    for (const command of ['capture', 'await', 'submit', 'diff', 'locks', 'clean', 'execute']) {
+    for (const command of ['capture', 'resume', 'submit', 'diff', 'locks', 'clean', 'execute']) {
       expect(docs.stdout).toContain(`## \`planx ${command}\``);
     }
     expect(docs.stdout).toContain('Do not edit by hand');

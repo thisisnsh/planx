@@ -45,19 +45,6 @@ export const COMMANDS: CommandSpec[] = [
     ],
   },
   {
-    name: 'await',
-    usage: 'planx await <id> [version] [--timeout 480]',
-    summary: 'Block until the reviewer submits feedback.',
-    description:
-      'Writes a request the TUI can see, then waits. On timeout it prints a resumable message ' +
-      'rather than failing — run the same command again to keep waiting. Feedback left before ' +
-      'anyone was waiting is delivered immediately.',
-    flags: [
-      { name: '--timeout', arg: 'SEC', summary: 'Seconds to wait before returning to be resumed.' },
-    ],
-    examples: ['planx await guard-clock-a3f9 v2'],
-  },
-  {
     name: 'resume',
     usage: 'planx resume <id> [version] [--json]',
     summary: 'Pick a plan back up: the plan, the feedback on it, and its locks.',
@@ -96,34 +83,16 @@ export const COMMANDS: CommandSpec[] = [
     ],
   },
   {
-    name: 'unlock-respond',
-    usage: 'planx unlock-respond <id> <lock-id> --grant|--deny [--note "..."]',
-    summary: 'Answer a pending unlock request without the TUI.',
+    name: 'unlock',
+    usage: 'planx unlock <id> <lock-id> --reason "..."',
+    summary: 'Open one locked block for a single capture.',
     description:
-      'A grant is single-use and scoped to that one lock. --note on a grant doubles as the ' +
-      'replacement text used to re-anchor the lock afterwards.',
-    flags: [
-      { name: '--grant', summary: 'Allow exactly one capture to modify the block.' },
-      { name: '--deny', summary: 'Refuse; the block stays locked.' },
-      { name: '--note', arg: 'TEXT', summary: 'Reason, or the agreed replacement text.' },
-    ],
-  },
-  {
-    name: 'unlock-request',
-    usage: 'planx unlock-request <id> <lock-id> --reason "..."',
-    summary: 'Ask the reviewer to lift one lock, and block on the answer.',
-    description:
-      'Approval is single-use and scoped to that lock: it authorises exactly one capture that ' +
-      'may modify the block, then the lock re-arms on whatever was written.',
-    flags: [
-      { name: '--reason', arg: 'R', summary: 'Why the block needs to change. Required.' },
-      {
-        name: '--proposed',
-        arg: 'TEXT',
-        summary: 'The replacement text, shown beside the current one.',
-      },
-      { name: '--timeout', arg: 'SEC', summary: 'Seconds to wait before returning to be resumed.' },
-    ],
+      'Run by the agent after it has explained the change and the user has agreed. The grant ' +
+      'authorises exactly one capture that may modify the block, then burns, and the lock ' +
+      're-arms on whatever was written. The reason is recorded on the grant, which is what ' +
+      'makes a self-issued unlock reviewable afterwards — see `planx locks`.',
+    flags: [{ name: '--reason', arg: 'R', summary: 'Why the block has to change. Required.' }],
+    examples: ['planx unlock guard-clock-a3f9 L2 --reason "the R2 path replaced this entirely"'],
   },
   {
     name: 'diff',
@@ -230,7 +199,7 @@ export const COMMANDS: CommandSpec[] = [
     usage: 'planx config get|set <key> [value]',
     summary: 'Read or write configuration.',
     description:
-      'Settable keys: enabled, defaultAgent, render, awaitTimeout. Agent definitions are edited ' +
+      'Settable keys: enabled, defaultAgent, render. Agent definitions are edited ' +
       'in config.json directly — a flag syntax for nested argv arrays would be worse than an editor.',
   },
   {

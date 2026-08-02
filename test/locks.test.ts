@@ -168,7 +168,7 @@ describe('lock enforcement — the adversarial cases', () => {
     const next = PLAN.replace('Hold at each step for a day.', 'Ship it all at once.');
     const { violations } = verifyLocks({ locks, previousText: PLAN, nextText: next });
     const message = formatViolations('guard-clock-a3f9', violations);
-    expect(message).toContain('planx unlock-request guard-clock-a3f9 L1 --reason');
+    expect(message).toContain('planx unlock guard-clock-a3f9 L1 --reason');
     expect(message).toContain('Nothing was written.');
     expect(message).toContain('- Hold at each step for a day.');
     expect(message).toContain('+ Ship it all at once.');

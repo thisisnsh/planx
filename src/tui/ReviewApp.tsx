@@ -4,7 +4,7 @@ import { contextSha } from '../locks/anchor.js';
 import { buildAnnotation } from '../protocol/submit.js';
 import { stripAnsi, truncate } from '../render/ansi.js';
 import type { RenderMode } from '../render/diff.js';
-import type { Annotation, AwaitRequest, Feedback } from '../store/types.js';
+import type { Annotation, Feedback } from '../store/types.js';
 import { hasMouseSequence, MOUSE_OFF, MOUSE_ON, parseMouse } from './mouse.js';
 import { buildModel } from './model.js';
 import {
@@ -18,11 +18,9 @@ import {
 import { TextPrompt } from './TextPrompt.js';
 
 export interface ReviewResult {
-  action: 'submit' | 'approve' | 'reject' | 'quit' | 'unlock';
+  action: 'submit' | 'approve' | 'reject' | 'quit';
   annotations: Annotation[];
   general: string;
-  /** For an unlock decision. */
-  unlock?: { lockId: string; granted: boolean; note: string; requestId: string };
 }
 
 export interface ReviewAppProps {
@@ -31,7 +29,6 @@ export interface ReviewAppProps {
   versionA: number | null;
   versionB: number;
   mode: RenderMode;
-  pending: AwaitRequest[];
   /** Feedback already left on this version, shown so you do not repeat yourself. */
   previous: Feedback[];
   onDone: (result: ReviewResult) => void;
@@ -42,7 +39,6 @@ type Overlay =
   | { kind: 'comment'; start: number; end: number; quote: string[] }
   | { kind: 'general' }
   | { kind: 'confirm'; verdict: 'approve' | 'reject' }
-  | { kind: 'unlock'; request: AwaitRequest }
   | { kind: 'help' };
 
 const HEADER_HEIGHT = 1;
@@ -59,10 +55,7 @@ export function ReviewApp(props: ReviewAppProps) {
   const [offset, setOffset] = useState(0);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [expandedGaps, setExpandedGaps] = useState<ReadonlySet<number>>(() => new Set());
-  const [overlay, setOverlay] = useState<Overlay>(() => {
-    const unlock = props.pending.find((r) => r.kind === 'unlock');
-    return unlock ? { kind: 'unlock', request: unlock } : { kind: 'none' };
-  });
+  const [overlay, setOverlay] = useState<Overlay>({ kind: 'none' });
   const [general, setGeneral] = useState('');
   const [mouseOn, setMouseOn] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
@@ -80,16 +73,12 @@ export function ReviewApp(props: ReviewAppProps) {
     [props.planId, props.versionA, props.versionB, props.mode, expandedGaps, annotations],
   );
 
-  const banner = describeBanner(props.pending);
-  // Notes you left earlier that the agent has not answered yet — worth knowing
-  // before you write the same thing twice.
-  const openPrevious = props.previous.filter((f) => f.addressed_by === null).length;
+  // Notes you left earlier on this same version, worth knowing before you write
+  // the same thing twice.
+  const openPrevious = props.previous.length;
   const footerHeight = Math.min(annotations.length, 4) + 2;
-  const bodyHeight = Math.max(
-    MIN_BODY,
-    (stdout?.rows ?? 24) - HEADER_HEIGHT - (banner ? 1 : 0) - footerHeight - 1,
-  );
-  const bodyTop = HEADER_HEIGHT + (banner ? 1 : 0);
+  const bodyHeight = Math.max(MIN_BODY, (stdout?.rows ?? 24) - HEADER_HEIGHT - footerHeight - 1);
+  const bodyTop = HEADER_HEIGHT;
 
   // Keep the offset in a ref so the mouse handler, which is attached once, can
   // translate a screen row without being torn down on every scroll.
@@ -208,25 +197,9 @@ export function ReviewApp(props: ReviewAppProps) {
         if (key.escape || input === 'n') setOverlay({ kind: 'none' });
         return;
       }
-      if (overlay.kind === 'unlock') {
-        if (input === 'y' || input === 'n') {
-          return props.onDone({
-            action: 'unlock',
-            annotations: [],
-            general: '',
-            unlock: {
-              lockId: overlay.request.lock_id ?? '',
-              granted: input === 'y',
-              note: '',
-              requestId: overlay.request.id,
-            },
-          });
-        }
-        if (key.escape) setOverlay({ kind: 'none' });
-      }
     },
     {
-      isActive: overlay.kind === 'help' || overlay.kind === 'confirm' || overlay.kind === 'unlock',
+      isActive: overlay.kind === 'help' || overlay.kind === 'confirm',
     },
   );
 
@@ -308,12 +281,6 @@ export function ReviewApp(props: ReviewAppProps) {
         {model.locks.sealed_at ? <Text color="green">{' · SEALED'}</Text> : null}
       </Text>
 
-      {banner ? (
-        <Text backgroundColor="yellow" color="black">
-          {` ${banner} `}
-        </Text>
-      ) : null}
-
       <Box flexDirection="column">
         {visible.map((row, i) => {
           const index = offset + i;
@@ -339,7 +306,7 @@ export function ReviewApp(props: ReviewAppProps) {
         {general.trim() ? <Text dimColor>{`note: ${truncate(general, 70)}`}</Text> : null}
         {openPrevious > 0 ? (
           <Text dimColor>
-            {`${openPrevious} earlier note${openPrevious === 1 ? '' : 's'} on this version is still waiting for the agent`}
+            {`${openPrevious} earlier note${openPrevious === 1 ? '' : 's'} already left on this version`}
           </Text>
         ) : null}
         {status ? <Text color="yellow">{status}</Text> : null}
@@ -391,29 +358,6 @@ export function ReviewApp(props: ReviewAppProps) {
         </Box>
       ) : null}
 
-      {overlay.kind === 'unlock' ? (
-        <Box borderStyle="round" borderColor="yellow" paddingX={1} flexDirection="column">
-          <Text bold color="yellow">
-            {`The agent asks to unlock ${overlay.request.lock_id}`}
-          </Text>
-          <Text>{`Reason: ${overlay.request.reason || '(none given)'}`}</Text>
-          {overlay.request.proposed ? (
-            <Box flexDirection="column" marginTop={1}>
-              <Text dimColor>Proposed replacement:</Text>
-              {overlay.request.proposed
-                .split('\n')
-                .slice(0, 8)
-                .map((line, i) => (
-                  <Text key={i} color="green">
-                    {`+ ${line}`}
-                  </Text>
-                ))}
-            </Box>
-          ) : null}
-          <Text dimColor>y to grant (single use) · n to deny · esc to decide later</Text>
-        </Box>
-      ) : null}
-
       {overlay.kind === 'help' ? <HelpOverlay /> : null}
     </Box>
   );
@@ -450,11 +394,4 @@ function HelpOverlay() {
       <Text dimColor>any key to close</Text>
     </Box>
   );
-}
-
-function describeBanner(pending: AwaitRequest[]): string | null {
-  const unlock = pending.find((r) => r.kind === 'unlock');
-  if (unlock) return `agent requests unlock of ${unlock.lock_id}`;
-  if (pending.length) return 'agent is waiting — submit to unblock it';
-  return null;
 }

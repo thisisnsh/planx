@@ -2,18 +2,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { normalizedLines } from '../src/locks/anchor.js';
 import { addLock } from '../src/locks/manage.js';
 import { renderSkeleton } from '../src/locks/markers.js';
-import {
-  awaitFeedback,
-  awaitUnlockDecision,
-  pendingRequests,
-  timeoutMessage,
-} from '../src/protocol/await.js';
 import { capture, deriveTitle, LockViolationError } from '../src/protocol/capture.js';
-import { presentFeedback, presentUnlockDecision } from '../src/protocol/present.js';
-import { buildAnnotation, respondToUnlock, submitFeedback } from '../src/protocol/submit.js';
+import { carriedOver, presentResume } from '../src/protocol/present.js';
+import { buildAnnotation, grantUnlock, submitFeedback } from '../src/protocol/submit.js';
 import { setColorEnabled } from '../src/render/ansi.js';
 import { readLocks, readMeta, readVersionText, updateLocks } from '../src/store/plans.js';
-import { listFeedback, openFeedback } from '../src/store/queue.js';
+import { listFeedback } from '../src/store/feedback.js';
 import { SAMPLE_PLAN, tempStore } from './helpers.js';
 
 let store: ReturnType<typeof tempStore>;
@@ -96,72 +90,7 @@ describe('capture', () => {
 });
 
 describe('the review loop', () => {
-  it('delivers feedback left before anyone was waiting', async () => {
-    const { planId } = seed();
-    submitFeedback({
-      planId,
-      version: 1,
-      verdict: 'revise',
-      annotations: [comment(planId, 1, 6, 7, 'Wrong layer.')],
-      general: 'Direction is fine.',
-    });
-
-    const outcome = await awaitFeedback({ planId, version: 1, timeoutSec: 5 });
-    expect(outcome.kind).toBe('ready');
-    expect(outcome.kind === 'ready' && outcome.value[0]!.annotations[0]!.comment).toBe(
-      'Wrong layer.',
-    );
-  });
-
-  it('unblocks a waiting await when the reviewer submits', async () => {
-    const { planId } = seed();
-    const waiting = awaitFeedback({ planId, version: 1, timeoutSec: 10 });
-
-    // Give the await a moment to register, then answer it out of band.
-    await new Promise((r) => setTimeout(r, 150));
-    expect(pendingRequests(planId)).toHaveLength(1);
-    submitFeedback({
-      planId,
-      version: 1,
-      verdict: 'revise',
-      annotations: [comment(planId, 1, 6, 6, 'Move it.')],
-    });
-
-    const outcome = await waiting;
-    expect(outcome.kind).toBe('ready');
-    expect(pendingRequests(planId)).toHaveLength(0);
-  });
-
-  it('returns a resumable message instead of dying at the timeout ceiling', async () => {
-    const { planId } = seed();
-    const outcome = await awaitFeedback({ planId, version: 1, timeoutSec: 1 });
-    expect(outcome.kind).toBe('timeout');
-    expect(timeoutMessage(480)).toBe(
-      'PLANX: no feedback yet (waited 480s) — run the same command again to keep waiting',
-    );
-    expect(pendingRequests(planId)).toHaveLength(0);
-  });
-
-  it('gives two concurrent awaits the same feedback', async () => {
-    const { planId } = seed();
-    const a = awaitFeedback({ planId, version: 1, timeoutSec: 10 });
-    const b = awaitFeedback({ planId, version: 1, timeoutSec: 10 });
-    await new Promise((r) => setTimeout(r, 150));
-    submitFeedback({
-      planId,
-      version: 1,
-      verdict: 'revise',
-      annotations: [comment(planId, 1, 6, 6, 'Same note for both.')],
-    });
-
-    const [first, second] = await Promise.all([a, b]);
-    expect(first.kind).toBe('ready');
-    expect(second.kind).toBe('ready');
-    const idOf = (o: typeof first) => (o.kind === 'ready' ? o.value.map((f) => f.id) : []);
-    expect(idOf(first)).toEqual(idOf(second));
-  });
-
-  it('closes feedback when the next version lands, so the loop terminates', async () => {
+  it('retires feedback when the next version lands, so the loop terminates', () => {
     const { planId } = seed();
     submitFeedback({
       planId,
@@ -169,15 +98,12 @@ describe('the review loop', () => {
       verdict: 'revise',
       annotations: [comment(planId, 1, 6, 6, 'Rework this.')],
     });
-    expect(openFeedback(planId)).toHaveLength(1);
 
     const revised = capture({ planId, text: `${SAMPLE_PLAN}\n## Risks\nNone.\n`, parent: 'v1' });
     expect(revised.closedFeedback).toBe(1);
-    expect(openFeedback(planId)).toHaveLength(0);
     expect(listFeedback(planId)[0]!.addressed_by).toBe(2);
-
-    const outcome = await awaitFeedback({ planId, version: 2, timeoutSec: 1 });
-    expect(outcome.kind).toBe('timeout');
+    // Nothing is outstanding against the new version until someone reviews it.
+    expect(listFeedback(planId).filter((f) => f.version === 2)).toHaveLength(0);
   });
 });
 
@@ -221,28 +147,15 @@ describe('approval', () => {
   });
 });
 
-describe('the unlock handshake', () => {
-  it('blocks the agent until the reviewer decides, then grants one capture', async () => {
+describe('unlocking a block', () => {
+  it('grants exactly one capture, then re-arms', () => {
     const { planId } = seed();
     submitFeedback({ planId, version: 1, verdict: 'approve', annotations: [] });
     const lockId = Object.values(readLocks(planId).locks).find(
       (l) => l.section === '## Rollout',
     )!.id;
 
-    const waiting = awaitUnlockDecision({
-      planId,
-      version: 1,
-      lockId,
-      reason: 'the flag adds no value here',
-      timeoutSec: 10,
-    });
-
-    await new Promise((r) => setTimeout(r, 150));
-    expect(pendingRequests(planId)[0]).toMatchObject({ kind: 'unlock', lock_id: lockId });
-    respondToUnlock({ planId, version: 1, lockId, granted: true, note: 'agreed' });
-
-    const outcome = await waiting;
-    expect(outcome).toMatchObject({ kind: 'ready', value: { granted: true, note: 'agreed' } });
+    grantUnlock({ planId, lockId, reason: 'the flag adds no value here' });
 
     const edited = SAMPLE_PLAN.replace('Deploy behind', 'Deploy straight');
     expect(capture({ planId, text: edited }).version).toBe(2);
@@ -253,28 +166,40 @@ describe('the unlock handshake', () => {
     ).toThrow(LockViolationError);
   });
 
-  it('reports a denial without issuing a grant', async () => {
+  it('records the stated reason, which is the whole audit trail', () => {
     const { planId } = seed();
     submitFeedback({ planId, version: 1, verdict: 'approve', annotations: [] });
     const lockId = Object.values(readLocks(planId).locks)[0]!.id;
 
-    const waiting = awaitUnlockDecision({
-      planId,
-      version: 1,
-      lockId,
-      reason: 'x',
-      timeoutSec: 10,
-    });
-    await new Promise((r) => setTimeout(r, 150));
-    respondToUnlock({ planId, version: 1, lockId, granted: false, note: 'no, that was the point' });
+    grantUnlock({ planId, lockId, reason: 'superseded by the R2 path' });
 
-    const outcome = await waiting;
-    expect(outcome).toMatchObject({ kind: 'ready', value: { granted: false } });
+    const [grant] = Object.values(readLocks(planId).grants);
+    expect(grant!.reason).toBe('superseded by the R2 path');
+    expect(grant!.lock_id).toBe(lockId);
+  });
+
+  it('refuses to grant against a lock that does not exist', () => {
+    const { planId } = seed();
+    expect(() => grantUnlock({ planId, lockId: 'L99', reason: 'x' })).toThrow(/no lock L99/);
     expect(Object.keys(readLocks(planId).grants)).toHaveLength(0);
   });
 });
 
 describe('what the agent sees', () => {
+  function resumeOf(planId: string, version: number) {
+    const text = readVersionText(planId, version)!;
+    const history = listFeedback(planId);
+    return presentResume({
+      planId,
+      version,
+      feedback: history.filter((f) => f.version === version),
+      carried: carriedOver(history, version, text),
+      skeleton: renderSkeleton(text, readLocks(planId)),
+      locks: readLocks(planId),
+      docLines: normalizedLines(text),
+    });
+  }
+
   it('quotes each annotation and ends with the exact next command', () => {
     const { planId } = seed();
     submitFeedback({
@@ -285,19 +210,12 @@ describe('what the agent sees', () => {
       general: 'Direction is fine, but see the comment.',
     });
 
-    const text = presentFeedback({
-      planId,
-      version: 1,
-      feedback: openFeedback(planId),
-      locks: readLocks(planId),
-      docLines: normalizedLines(readVersionText(planId, 1)!),
-    });
-
-    expect(text).toContain(`## planx feedback — ${planId} v1 (verdict: revise)`);
+    const text = resumeOf(planId, 1);
+    expect(text).toContain(`## planx — ${planId} v1 (verdict: revise)`);
     expect(text).toContain('under "## Approach"');
     expect(text).toContain('> ## Approach');
     expect(text).toContain('**Feedback:** Wrong layer.');
-    expect(text).toContain('### General');
+    expect(text).toContain('#### General');
     expect(text).toContain(`planx capture --plan-id ${planId} --parent v1 --splice --stdin`);
   });
 
@@ -311,14 +229,7 @@ describe('what the agent sees', () => {
       annotations: [comment(planId, 1, 8, 8, 'One more thing.')],
     });
 
-    const text = presentFeedback({
-      planId,
-      version: 1,
-      feedback: openFeedback(planId),
-      locks: readLocks(planId),
-      docLines: normalizedLines(readVersionText(planId, 1)!),
-    });
-
+    const text = resumeOf(planId, 1);
     expect(text).toContain('### 🔒 Locked');
     expect(text).toContain('— do not modify');
     expect(text).toContain('[[planx:keep L1]]` markers — do not re-emit their text');
@@ -327,20 +238,10 @@ describe('what the agent sees', () => {
   it('tells the agent to stop when the verdict is approve', () => {
     const { planId } = seed();
     submitFeedback({ planId, version: 1, verdict: 'approve', annotations: [] });
-    const text = presentFeedback({
-      planId,
-      version: 1,
-      feedback: openFeedback(planId),
-      locks: readLocks(planId),
-      docLines: normalizedLines(readVersionText(planId, 1)!),
-    });
-    expect(text).toContain('(verdict: approve)');
-    expect(text).toContain('The plan is sealed — every section is now locked.');
-    expect(text).not.toContain('planx capture --plan-id');
-  });
 
-  it('explains a granted and a denied unlock differently', () => {
-    expect(presentUnlockDecision('p', 'L2', true, 'agreed')).toContain('granted (single use)');
-    expect(presentUnlockDecision('p', 'L2', false, 'no')).toContain('stays locked');
+    const text = resumeOf(planId, 1);
+    expect(text).toContain('(verdict: approve)');
+    expect(text).toContain('Approved and sealed');
+    expect(text).not.toContain('planx capture --plan-id');
   });
 });

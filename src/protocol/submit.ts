@@ -3,13 +3,8 @@ import { addLock, issueGrant, sealPlan, unlockRange } from '../locks/manage.js';
 import { sectionOf } from '../render/markdown.js';
 import { ulid } from '../store/ids.js';
 import { readMeta, readVersionText, reindex, updateLocks, writeMeta } from '../store/plans.js';
-import { writeFeedback, writeResponse } from '../store/queue.js';
-import {
-  AwaitResponseSchema,
-  FeedbackSchema,
-  type Annotation,
-  type Feedback,
-} from '../store/types.js';
+import { writeFeedback } from '../store/feedback.js';
+import { FeedbackSchema, type Annotation, type Feedback } from '../store/types.js';
 
 export interface SubmitInput {
   planId: string;
@@ -17,8 +12,6 @@ export interface SubmitInput {
   verdict: Feedback['verdict'];
   annotations: Annotation[];
   general?: string;
-  /** The await request this answers, when the TUI knows one is blocking. */
-  requestId?: string | null;
 }
 
 export interface SubmitResult {
@@ -95,18 +88,6 @@ export function submitFeedback(input: SubmitInput): SubmitResult {
   });
   writeFeedback(feedback);
 
-  writeResponse(
-    AwaitResponseSchema.parse({
-      id: ulid(),
-      request_id: input.requestId ?? null,
-      kind: 'review',
-      plan_id: input.planId,
-      version: input.version,
-      created: new Date().toISOString(),
-      feedback_id: feedback.id,
-    }),
-  );
-
   return { feedback, locksCreated, locksRemoved, sealedLocks };
 }
 
@@ -117,44 +98,32 @@ function toRange(annotation: Annotation): { start: number; end: number } {
   };
 }
 
-export interface UnlockResponseInput {
+export interface GrantUnlockInput {
   planId: string;
-  version: number;
   lockId: string;
-  granted: boolean;
-  /** The reviewer's note, and for a grant the text they agreed the block becomes. */
-  note?: string;
-  requestId?: string | null;
+  /** Why the block has to change. Kept on the record as the audit trail. */
+  reason: string;
 }
 
-/** Answer an outstanding `unlock-request`, issuing a single-use grant if allowed. */
-export function respondToUnlock(input: UnlockResponseInput): { grantId: string | null } {
-  let grantId: string | null = null;
-
-  if (input.granted) {
-    grantId = updateLocks(input.planId, (locks) => {
-      if (!locks.locks[input.lockId]) {
-        throw new Error(`planx: ${input.planId} has no lock ${input.lockId}.`);
-      }
-      return issueGrant(locks, input.lockId, '', input.note ?? '').id;
-    });
-  }
-
-  writeResponse(
-    AwaitResponseSchema.parse({
-      id: ulid(),
-      request_id: input.requestId ?? null,
-      kind: 'unlock',
-      plan_id: input.planId,
-      version: input.version,
-      created: new Date().toISOString(),
-      lock_id: input.lockId,
-      granted: input.granted,
-      grant_id: grantId,
-      note: input.note ?? '',
-    }),
-  );
-
+/**
+ * Issue a single-use permission to modify one locked block.
+ *
+ * There is no matching "deny": nothing blocks on the answer any more, so a
+ * refusal is simply this command never being run. The grant authorises exactly
+ * one capture and then burns, and the lock re-arms on whatever that capture
+ * wrote — unchanged from when a blocked `unlock-request` waited for it.
+ *
+ * The reason is recorded rather than merely printed. An agent issues this
+ * itself after agreeing the change with the user, so the only thing making that
+ * reviewable afterwards is the record it leaves behind.
+ */
+export function grantUnlock(input: GrantUnlockInput): { grantId: string } {
+  const grantId = updateLocks(input.planId, (locks) => {
+    if (!locks.locks[input.lockId]) {
+      throw new Error(`planx: ${input.planId} has no lock ${input.lockId}.`);
+    }
+    return issueGrant(locks, input.lockId, input.reason).id;
+  });
   return { grantId };
 }
 
