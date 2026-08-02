@@ -1,0 +1,25 @@
+name: Feature request
+description: Suggest something planx should do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that planx makes hard or impossible?
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you have in mind
+      description: A sketch is fine. If you have a CLI shape in mind, write it out.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead
+      description: Including "nothing, I gave up" — that is useful signal.

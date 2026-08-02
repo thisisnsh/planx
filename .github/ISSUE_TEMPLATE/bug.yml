@@ -1,0 +1,60 @@
+name: Bug report
+description: Something in planx does not work.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. The version and channel matter more than anything
+        else here — `staging` and `latest` can be several commits apart.
+
+  - type: input
+    id: version
+    attributes:
+      label: planx --version
+      description: Paste the output. The `-staging.N` suffix tells us the channel.
+      placeholder: 1.2.0-staging.47
+    validations:
+      required: true
+
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent
+      options:
+        - Claude Code
+        - Codex
+        - Other / none (CLI only)
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: OS and terminal
+      description: Terminal emulator matters for anything involving the TUI or the mouse.
+      placeholder: macOS 15.3, iTerm2 3.5
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Include the exact commands you ran and their output.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: planx doctor
+      description: Optional, but it catches most store-level problems.
+      render: text

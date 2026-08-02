@@ -1,0 +1,54 @@
+name: release-staging
+
+# Every merge to main publishes a prerelease under the `staging` tag, so
+# dogfooding never waits on a release.
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # npm provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci
+        env:
+          PLANX_NO_POSTINSTALL: '1'
+
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      # The version is synthesised here and package.json is never rewritten in
+      # a commit. A bot commit on the default branch causes push loops, forces
+      # everyone to pull after every merge, and needs [skip ci] guards — all
+      # avoidable by treating the committed version as the next release target.
+      - name: Set the staging version
+        run: |
+          BASE=$(node -p "require('./package.json').version")
+          if [[ "$BASE" == *-* ]]; then
+            echo "::error::package.json version ($BASE) is already a prerelease. Set it to the next release target."
+            exit 1
+          fi
+          npm version --no-git-tag-version --allow-same-version "${BASE}-staging.${GITHUB_RUN_NUMBER}"
+          echo "Publishing ${BASE}-staging.${GITHUB_RUN_NUMBER}"
+
+      # Scoped packages are private by default; --access public is not optional.
+      - run: npm publish --tag staging --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

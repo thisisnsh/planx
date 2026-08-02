@@ -1,0 +1,59 @@
+name: release-latest
+
+# Publishing a GitHub Release promotes that tag to `latest`.
+on:
+  release:
+    types: [published]
+
+concurrency:
+  group: release-latest
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # npm provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      # Fail loudly and early: publishing 1.2.0 from a tag called v1.3.0 would
+      # be almost impossible to notice afterwards and impossible to undo.
+      - name: Assert the tag matches package.json
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          PKG=$(node -p "require('./package.json').version")
+          if [ "${TAG#v}" != "$PKG" ]; then
+            echo "::error::release tag $TAG does not match package.json version $PKG"
+            exit 1
+          fi
+          if [[ "$PKG" == *-* ]]; then
+            echo "::error::refusing to publish prerelease version $PKG to latest"
+            exit 1
+          fi
+
+      - run: npm ci
+        env:
+          PLANX_NO_POSTINSTALL: '1'
+
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      # A clean rebuild from the tag rather than `npm dist-tag add` on the
+      # staging artifact. Promoting would reuse the exact tested bytes, but it
+      # would leave `latest` pointing at a version literally named
+      # 1.2.0-staging.47 — in every --version, bug report and changelog entry.
+      - run: npm publish --tag latest --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

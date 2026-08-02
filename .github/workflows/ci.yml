@@ -1,0 +1,47 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # The postinstall writes skills into ~/.claude and ~/.codex. It already
+      # no-ops in a planx checkout, but being explicit here means a change to
+      # that guard can never quietly start mutating a CI runner's home.
+      - run: npm ci
+        env:
+          PLANX_NO_POSTINSTALL: '1'
+
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+
+      # The CLI reference is generated and committed. If the spec changed
+      # without regenerating, the docs are already stale — fail now rather than
+      # shipping a reference that describes flags that no longer exist.
+      - name: Check the generated CLI reference is current
+        run: |
+          npm run docs:cli
+          git diff --exit-code -- site/reference/cli.md || {
+            echo "::error::site/reference/cli.md is out of date. Run 'npm run docs:cli' and commit."
+            exit 1
+          }
