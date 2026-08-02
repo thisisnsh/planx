@@ -85,12 +85,32 @@ afterEach(() => {
   setColorEnabled(null);
 });
 
+/**
+ * Poll until `predicate` holds, rather than sleeping a fixed span.
+ *
+ * Ink renders asynchronously, so "has it drawn yet" is a question about the
+ * runner's load, not about elapsed time. A fixed sleep that covers a quiet
+ * laptop is not a bound on a contended CI runner, and overrunning it reads as
+ * an empty frame — an assertion failure indistinguishable from a real break.
+ */
+async function waitFor(predicate: () => boolean, timeoutMs = 5_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= deadline) return;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}
+
 interface Harness {
   stdout: FakeStdout;
   stdin: FakeStdin;
   unmount: () => void;
   result: Promise<ReviewResult>;
   press: (keys: string) => Promise<void>;
+  /** Resolve once the app has drawn anything at all. */
+  ready: () => Promise<void>;
+  /** Wait for `text` to appear, then assert it — so a timeout shows the frame. */
+  frame: (text: string) => Promise<void>;
 }
 
 function mount(
@@ -129,9 +149,18 @@ function mount(
     unmount: () => instance.unmount(),
     result,
     press: async (keys: string) => {
+      const before = stdout.frames.length;
       stdin.send(keys);
       // Ink debounces a pending escape before dispatching, so give it room.
       await new Promise((r) => setTimeout(r, 60));
+      // Not every key redraws (an unknown key is dropped), so this is a best
+      // effort nudge past a slow render, not a requirement.
+      await waitFor(() => stdout.frames.length > before, 1_000);
+    },
+    ready: () => waitFor(() => stdout.lastFrame.trim().length > 0),
+    frame: async (text: string) => {
+      await waitFor(() => stdout.lastFrame.includes(text));
+      expect(stdout.lastFrame).toContain(text);
     },
   };
 }
@@ -144,7 +173,7 @@ describe('the review app renders', () => {
   it('mounts and draws the header, the plan and the key bar', async () => {
     const id = seed();
     const app = mount(id, null, 1);
-    await new Promise((r) => setTimeout(r, 50));
+    await app.frame('S submit');
 
     const frame = app.stdout.lastFrame;
     expect(frame).toContain('planx');
@@ -162,9 +191,9 @@ describe('the review app renders', () => {
     const id = seed();
     capture({ planId: id, text: SAMPLE_PLAN.replace('poller.ts', 'r2.ts') });
     const app = mount(id, 1, 2);
-    await new Promise((r) => setTimeout(r, 50));
+    await app.ready();
 
-    expect(app.stdout.lastFrame).toContain('v2 ← v1');
+    await app.frame('v2 ← v1');
     app.unmount();
   });
 
@@ -174,7 +203,7 @@ describe('the review app renders', () => {
     expect(Object.keys(readLocks(id).locks).length).toBeGreaterThan(0);
 
     const app = mount(id, null, 1);
-    await new Promise((r) => setTimeout(r, 50));
+    await app.frame('SEALED');
 
     const frame = app.stdout.lastFrame;
     expect(frame).toContain('🔒');
@@ -200,7 +229,7 @@ describe('the review app renders', () => {
     };
 
     const app = mount(id, null, 1, [request]);
-    await new Promise((r) => setTimeout(r, 50));
+    await app.frame('y to grant');
 
     const frame = app.stdout.lastFrame;
     expect(frame).toContain('agent requests unlock of L2');
@@ -215,15 +244,15 @@ describe('the review app responds to keys', () => {
   it('opens the comment editor on the selected lines and records the annotation', async () => {
     const id = seed();
     const app = mount(id, null, 1);
-    await new Promise((r) => setTimeout(r, 50));
+    await app.ready();
 
     await app.press('j'); // move off line 1
     await app.press('c');
-    expect(app.stdout.lastFrame).toContain('Comment on lines');
+    await app.frame('Comment on lines');
 
     await app.press('Wrong layer.');
     await app.press('\r');
-    expect(app.stdout.lastFrame).toContain('Wrong layer.');
+    await app.frame('Wrong layer.');
 
     await app.press('S');
     const result = await app.result;
@@ -236,13 +265,13 @@ describe('the review app responds to keys', () => {
   it('records a lock over a keyboard visual selection', async () => {
     const id = seed();
     const app = mount(id, null, 1);
-    await new Promise((r) => setTimeout(r, 50));
+    await app.ready();
 
     await app.press('V');
     await app.press('j');
     await app.press('j');
     await app.press('l');
-    expect(app.stdout.lastFrame).toContain('locked lines 1–3');
+    await app.frame('locked lines 1–3');
 
     await app.press('S');
     const result = await app.result;
@@ -256,20 +285,20 @@ describe('the review app responds to keys', () => {
   it('refuses to submit nothing rather than sending an empty verdict', async () => {
     const id = seed();
     const app = mount(id, null, 1);
-    await new Promise((r) => setTimeout(r, 50));
+    await app.ready();
 
     await app.press('S');
-    expect(app.stdout.lastFrame).toContain('nothing to submit');
+    await app.frame('nothing to submit');
     app.unmount();
   });
 
   it('confirms before approving, because approving seals the plan', async () => {
     const id = seed();
     const app = mount(id, null, 1);
-    await new Promise((r) => setTimeout(r, 50));
+    await app.ready();
 
     await app.press('A');
-    expect(app.stdout.lastFrame).toContain('This seals the plan');
+    await app.frame('This seals the plan');
 
     await app.press('y');
     expect((await app.result).action).toBe('approve');
@@ -293,7 +322,7 @@ describe('the review app responds to keys', () => {
       ttl_ms: 60_000,
     };
     const app = mount(id, null, 1, [request]);
-    await new Promise((r) => setTimeout(r, 50));
+    await app.ready();
 
     await app.press('y');
     const result = await app.result;
@@ -305,10 +334,10 @@ describe('the review app responds to keys', () => {
   it('shows help and quits without submitting', async () => {
     const id = seed();
     const app = mount(id, null, 1);
-    await new Promise((r) => setTimeout(r, 50));
+    await app.ready();
 
     await app.press('?');
-    expect(app.stdout.lastFrame).toContain('toggle mouse capture');
+    await app.frame('toggle mouse capture');
     await app.press('\x1b');
 
     await app.press('q');
@@ -321,14 +350,14 @@ describe('the review app responds to keys', () => {
   it('ignores mouse bytes instead of treating them as commands', async () => {
     const id = seed();
     const app = mount(id, null, 1);
-    await new Promise((r) => setTimeout(r, 50));
+    await app.ready();
 
     // This contains a 'q' and an 'S'; parsed as keys it would quit or submit.
     await app.press('\x1b[<0;12;5M');
     await app.press('\x1b[<0;12;5m');
 
     await app.press('S');
-    expect(app.stdout.lastFrame).toContain('nothing to submit');
+    await app.frame('nothing to submit');
     app.unmount();
   });
 });

@@ -9,7 +9,11 @@ Nothing is ever published by hand.
 | Merge to `main` | `1.2.0-staging.47` | `staging` | `@staging` installers, dogfooding |
 | GitHub Release published | `1.2.0` | `latest` | everyone |
 
-`release-staging.yml` synthesises the prerelease version at build time as
+Both channels are one workflow, `release.yml`, because npm trusted publishing
+pins a single repository *and workflow filename* — two files would mean two
+trusted publishers for one package. The trigger picks the channel.
+
+It synthesises the prerelease version at build time as
 `<version-in-package.json>-staging.<run_number>`. **`package.json` is never
 rewritten in a commit and CI never pushes to `main`.** Bot commits on the
 default branch cause push loops, force everyone to pull after every merge, and
@@ -37,7 +41,7 @@ need `[skip ci]` guards — all avoidable by treating the committed version as
    planx --dir /tmp/planx-smoke submit <id> --comment "3:no" --approve
    ```
 5. Create a GitHub Release on tag `v1.2.0`, with the changelog section as the
-   body. `release-latest.yml` does the rest.
+   body. `release.yml` does the rest.
 
 The tag must match `package.json` exactly — the workflow asserts this and fails
 loudly if not, because publishing `1.2.0` from a tag called `v1.3.0` is nearly
@@ -72,11 +76,16 @@ Then fix forward and cut a new release. Never re-publish a version number.
 
 ## 5. Prerequisites
 
-- **`NPM_TOKEN`** repo secret: an npm **granular automation token** scoped to
-  `@thisisnsh/planx` only. Not a classic token, and not account-wide.
-- **`id-token: write`** on the publishing jobs, which the workflows already set.
-  This is what `--provenance` needs, and provenance is free supply-chain
-  attestation.
+- **A trusted publisher** on npmjs.com for `@thisisnsh/planx`, pointed at this
+  repository and the workflow file `release.yml`. There is no `NPM_TOKEN` and
+  no long-lived credential to leak or rotate: the job exchanges its OIDC token
+  for a short-lived one at publish time. Renaming `release.yml`, or moving a
+  publish into a second workflow file, breaks auth until the publisher is
+  updated to match.
+- **`id-token: write`** on the publishing job, which the workflow already sets.
+  This is what the OIDC exchange needs, and it is also what mints provenance —
+  free supply-chain attestation, generated automatically under trusted
+  publishing rather than via an explicit `--provenance` flag.
 - **`--access public`** on publish. Scoped packages are private by default, so
   this flag is not optional; omitting it fails the publish on a free account.
 - Release creation is restricted to maintainers (`@thisisnsh`).
