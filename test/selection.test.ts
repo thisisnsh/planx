@@ -62,6 +62,14 @@ describe('mouse parsing', () => {
     expect(hasMouseSequence('\x1b[<0;1;1M')).toBe(true);
   });
 
+  it('decodes the form Ink delivers, with the ESC already consumed', () => {
+    // Ink's input parser strips the leading ESC before calling useInput, so the
+    // app sees `[<0;12;5M`. Failing to match this is a silently dead mouse.
+    const { events } = parseMouse('[<0;12;5M');
+    expect(events).toEqual([{ type: 'down', button: 0, col: 12, row: 5, direction: 0 }]);
+    expect(hasMouseSequence('[<0;12;5M')).toBe(true);
+  });
+
   it('handles a sequence split across reads without inventing events', () => {
     expect(parseMouse('\x1b[<0;12').events).toHaveLength(0);
   });

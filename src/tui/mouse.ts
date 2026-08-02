@@ -28,7 +28,13 @@ export interface ParsedInput {
   rest: string;
 }
 
-const SGR = /\x1b\[<(\d+);(\d+);(\d+)([Mm])/g;
+/**
+ * The leading ESC is optional because Ink's input parser consumes it before
+ * handing the rest to `useInput` — a click arrives as `[<0;12;5M`. The pattern
+ * is specific enough (bracket, angle, three numbers, M or m) that matching it
+ * without the ESC costs nothing in false positives.
+ */
+const SGR = /\x1b?\[<(\d+);(\d+);(\d+)([Mm])/g;
 
 /**
  * Split raw stdin into mouse events and everything else.
@@ -75,5 +81,5 @@ export function parseMouse(input: string): ParsedInput {
 }
 
 export function hasMouseSequence(input: string): boolean {
-  return /\x1b\[<\d+;\d+;\d+[Mm]/.test(input);
+  return /\x1b?\[<\d+;\d+;\d+[Mm]/.test(input);
 }

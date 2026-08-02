@@ -1,5 +1,6 @@
 import { Box, Text, useInput } from 'ink';
 import { useState } from 'react';
+import { hasMouseSequence } from './mouse.js';
 
 export interface TextPromptProps {
   label: string;
@@ -28,6 +29,9 @@ export function TextPrompt({
   const [value, setValue] = useState(initialValue);
 
   useInput((input, key) => {
+    // A click while the editor is open would otherwise type `[<0;12;5M` into
+    // the comment, since Ink hands mouse reports through as ordinary input.
+    if (hasMouseSequence(input)) return;
     if (key.escape) {
       onCancel();
       return;

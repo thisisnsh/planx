@@ -5,7 +5,7 @@ import { buildAnnotation } from '../protocol/submit.js';
 import { stripAnsi, truncate } from '../render/ansi.js';
 import type { RenderMode } from '../render/diff.js';
 import type { Annotation, AwaitRequest, Feedback } from '../store/types.js';
-import { MOUSE_OFF, MOUSE_ON, parseMouse } from './mouse.js';
+import { hasMouseSequence, MOUSE_OFF, MOUSE_ON, parseMouse } from './mouse.js';
 import { buildModel } from './model.js';
 import {
   initialSelection,
@@ -113,14 +113,23 @@ export function ReviewApp(props: ReviewAppProps) {
 
   /* ------------------------------------------------------------- mouse */
 
+  // Only the terminal mode is managed here. The events themselves arrive
+  // through `useInput` below — Ink reads stdin with a 'readable' listener, and
+  // attaching a 'data' listener alongside it would switch the stream to flowing
+  // mode and starve one of the two handlers.
   useEffect(() => {
     if (!isRawModeSupported || !mouseOn || !stdout) return;
-    setRawMode?.(true);
     stdout.write(MOUSE_ON);
+    return () => {
+      stdout.write(MOUSE_OFF);
+    };
+  }, [isRawModeSupported, mouseOn, stdout]);
 
-    const onData = (chunk: Buffer | string) => {
-      if (overlayRef.current) return;
-      const { events } = parseMouse(chunk.toString('utf8'));
+  const handleMouse = useCallback(
+    (input: string): boolean => {
+      const { events } = parseMouse(input);
+      if (!events.length) return false;
+
       for (const event of events) {
         if (event.type === 'scroll') {
           setOffset((o) => Math.max(0, Math.min(rowCountRef.current - 1, o + event.direction * 3)));
@@ -132,22 +141,19 @@ export function ReviewApp(props: ReviewAppProps) {
           event.type === 'down' ? 'mouseDown' : event.type === 'drag' ? 'mouseDrag' : 'mouseUp';
         setSelection((s) => reduceSelection(s, { type, index }, rowCountRef.current));
       }
-    };
-
-    stdin?.on('data', onData);
-    return () => {
-      stdin?.off('data', onData);
-      stdout.write(MOUSE_OFF);
-    };
-  }, [isRawModeSupported, mouseOn, stdin, stdout, setRawMode, bodyTop]);
+      return true;
+    },
+    [bodyTop],
+  );
 
   /* ---------------------------------------------------------- keyboard */
 
   useInput(
     (input, key) => {
-      // Mouse bytes reach this handler too; parsing them as keys would fire a
-      // burst of random commands mid-drag.
-      if (looksLikeMouse(input)) return;
+      // Mouse sequences arrive here as ordinary input; handling them first is
+      // what keeps a drag from being parsed as a burst of random commands.
+      if (mouseOn && handleMouse(input)) return;
+      if (hasMouseSequence(input)) return;
       setStatus(null);
 
       if (key.downArrow || input === 'j') return move(1);
@@ -451,8 +457,4 @@ function describeBanner(pending: AwaitRequest[]): string | null {
   if (unlock) return `agent requests unlock of ${unlock.lock_id}`;
   if (pending.length) return 'agent is waiting — submit to unblock it';
   return null;
-}
-
-function looksLikeMouse(input: string): boolean {
-  return input.includes('\x1b[<') || /^\[?<\d+;\d+;\d+[Mm]/.test(input);
 }
