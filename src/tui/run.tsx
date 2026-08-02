@@ -8,7 +8,7 @@ import { ReviewApp, type ReviewResult } from './ReviewApp.js';
  * Is there a terminal to draw on?
  *
  * Piping implies `--print`, so this is what makes `planx diff <id> | less` do
- * the sensible thing without the user asking (PLAN §8).
+ * the sensible thing without the user asking.
  */
 export function isInteractive(): boolean {
   return Boolean(process.stdout.isTTY && process.stdin.isTTY);

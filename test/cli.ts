@@ -12,7 +12,7 @@ const ENTRY = join(ROOT, 'dist', 'cli.js');
  *
  * The protocol tests drive the real binary as real subprocesses, which is the
  * point — the handshake is the thing most likely to break, and mocking the
- * process boundary would mock away the only part under test (PLAN §17).
+ * process boundary would mock away the only part under test.
  */
 export function ensureBuilt(): void {
   if (existsSync(ENTRY) && newest(join(ROOT, 'src')) <= statSync(ENTRY).mtimeMs) return;

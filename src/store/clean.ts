@@ -44,9 +44,8 @@ export function planClean(filters: CleanFilters, versionsBeyond?: number): Clean
  * Versions a trim would remove, honouring the constraint that a version a lock
  * still points at must survive.
  *
- * PLAN §20 lists this as an open question and then answers it: splice reads its
- * source text out of stored versions, so trimming one a lock references would
- * break the marker path. Treated here as a constraint, not a question.
+ * Splice reads its source text out of stored versions, so trimming one that a
+ * lock still references would break the marker path. Hence the constraint.
  */
 export function doomedVersions(id: string, keep: number): number[] {
   const all = readVersions(id)
@@ -80,7 +79,7 @@ export interface CleanOutcome {
  * Deletion is soft by default: plans move to `.trash/` and `planx restore`
  * brings them back. Losing a plan you spent an hour reviewing to an off-by-one
  * in a date filter is the one unrecoverable failure in this system, so it takes
- * two deliberate steps (PLAN §11).
+ * two deliberate steps.
  */
 export function executeClean(target: CleanPlan, purge: boolean): CleanOutcome {
   const outcome: CleanOutcome = { trashed: [], purged: [], trimmed: [] };

@@ -27,7 +27,7 @@ export interface SubmitResult {
  *
  * One submit rather than a call per annotation is the point of the TUI — you
  * select three ranges, lock two sections, and it all arrives in the agent's
- * context together (PLAN §1).
+ * context together.
  */
 export function submitFeedback(input: SubmitInput): SubmitResult {
   const text = readVersionText(input.planId, input.version);

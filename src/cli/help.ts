@@ -73,7 +73,7 @@ function flagLabel(name: string, arg?: string): string {
  * Generate `site/reference/cli.md` from the same specs `--help` reads.
  *
  * Hand-maintained CLI docs go stale within two releases, without exception, so
- * this runs in CI and the result is committed (PLAN §15).
+ * this runs in CI and the result is committed.
  */
 export function generateReference(version: string): string {
   const out: string[] = [

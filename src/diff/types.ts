@@ -15,7 +15,7 @@ export interface DiffRow {
   newLine: number | null;
   /**
    * Word-level breakdown, present only on rows paired with their counterpart.
-   * A reading aid: it never affects what can be selected (PLAN §8).
+   * A reading aid: it never affects what can be selected.
    */
   segments?: Segment[];
 }

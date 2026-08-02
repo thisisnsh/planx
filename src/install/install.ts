@@ -61,8 +61,7 @@ export interface InstallReport {
  * It writes skills and `~/.planx`, and touches **no agent settings files at
  * all**. With the ExitPlanMode hook dropped there is nothing planx needs from
  * `~/.claude/settings.json`, which removes the merge logic, the backup, and the
- * conflict handling that would otherwise be the riskiest thing in the package
- * (PLAN §3, §13).
+ * conflict handling that would otherwise be the riskiest thing in the package.
  *
  * Idempotent by construction: it copies the same files to the same paths and
  * leaves a marker so `uninstall` removes only what it wrote.

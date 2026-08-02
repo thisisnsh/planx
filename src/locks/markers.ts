@@ -32,7 +32,7 @@ export interface SkeletonOptions {
  *
  * Locked blocks are by definition text that is not changing, and after approval
  * they are the whole document — making the agent read them every round is pure
- * waste (PLAN §7).
+ * waste.
  */
 export function renderSkeleton(text: string, locks: LocksFile): string {
   const lines = splitLines(text);
@@ -81,7 +81,7 @@ export interface SpliceResult {
  * Splice runs *before* lock verification so the marker path is the frictionless
  * one and hand-retyping a locked block is what trips the guard. Unknown or
  * malformed markers are a hard error, never silently dropped — a dropped marker
- * means silently deleting a section of the plan (PLAN §7).
+ * means silently deleting a section of the plan.
  *
  * Markers inside a fenced code block are left verbatim. A plan that documents
  * this syntax — including this project's own — must be able to show a marker

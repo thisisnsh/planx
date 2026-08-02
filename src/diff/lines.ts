@@ -19,7 +19,7 @@ export function splitLines(text: string): string[] {
  *
  * Line-based throughout, which is the same coordinate system feedback anchors,
  * lock anchors and diff hunks all share — so a lock and a comment on
- * overlapping text compose without character-offset merging (PLAN §5).
+ * overlapping text compose without character-offset merging.
  */
 export function diffVersions(oldText: string, newText: string): DiffRow[] {
   const a = splitLines(oldText);

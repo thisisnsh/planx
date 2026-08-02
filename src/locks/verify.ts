@@ -35,7 +35,7 @@ export interface VerifyResult {
  * Enforcement lives here — inside the write path — rather than in the prompt.
  * The requirement is that locks hold even in bypass-permissions mode, and a
  * prompt is advice: an unattended agent will eventually ignore it. `capture`
- * refusing to write is the only mechanism that survives that (PLAN §6).
+ * refusing to write is the only mechanism that survives that.
  */
 export function verifyLocks(input: VerifyInput): VerifyResult {
   const result: VerifyResult = { violations: [], grantsToConsume: [], proposedByLock: new Map() };
@@ -107,8 +107,8 @@ const MAX_SHOWN = 6;
  * The rejection message.
  *
  * This text is part of the product, not an error string. An agent *will* hit
- * this mid-revision — that is the design — so it has to end with the exact
- * command that unblocks it (PLAN §19.4).
+ * this mid-revision — that is the design — so it has to say exactly what to do
+ * next, including the one path that is not "work around the lock".
  */
 export function formatViolations(planId: string, violations: Violation[]): string {
   const out: string[] = [];

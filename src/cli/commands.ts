@@ -217,8 +217,7 @@ function parseRange(spec: string, flag: string): { start: number; end: number } 
  *
  * This exists because the wire format is the product's real interface: the TUI
  * writes exactly this payload, so anything that can spawn a process can review
- * a plan too, and the protocol can be tested end to end as real subprocesses
- * (PLAN §2, §17).
+ * a plan too, and the protocol can be tested end to end as real subprocesses.
  */
 export function cmdSubmit(ctx: Ctx): number {
   const id = resolvePlanRef(requirePositional(ctx, 0, 'planx submit <id> [version]'));
@@ -462,7 +461,7 @@ async function runInteractiveReview(
  * One line, no questions. planx cannot switch a running session's model and no
  * agent CLI exposes a way to, so the old picker only ever printed a suggestion
  * to paste — two prompts to arrive at a string. The string is the whole value,
- * so print it (PLAN §9).
+ * so print it.
  */
 function afterApproval(ctx: Ctx, id: string, version: number, sections: number): number {
   ctx.out('');

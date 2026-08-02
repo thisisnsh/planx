@@ -16,7 +16,7 @@ function sessionsDir(opts: AdapterOptions): string {
  * Codex has no plan files. It emits `update_plan` function calls carrying a
  * structured step list, so the adapter takes the last one per session — the
  * final state of the checklist — plus the prose the agent wrote around it, and
- * normalizes that to a markdown checklist (PLAN §16).
+ * normalizes that to a markdown checklist.
  */
 export const codexAdapter: Adapter = {
   name: 'codex',

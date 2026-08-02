@@ -5,7 +5,7 @@
  * word, in a sentence you are about to rewrite anyway" — while a line range
  * gives it a self-contained unit it can reason about and replace. It also means
  * feedback anchors, lock anchors and diff hunks share one coordinate system, so
- * a lock and a comment on overlapping text compose predictably (PLAN §5).
+ * a lock and a comment on overlapping text compose predictably.
  *
  * Everything here is a pure function of (rows, events). None of it touches a
  * terminal, which is what makes the interaction testable.
@@ -54,7 +54,7 @@ export function reduceSelection(
       // `v` anchors here and the arrows extend from it, which is the only way
       // to select. Mouse capture used to be the other way in, but it hijacked
       // the terminal's own text selection, so copying a line out of a plan
-      // stopped working — a bad trade for a drag (PLAN §8).
+      // stopped working — a bad trade for a drag.
       if (state.active) return { ...state, active: false, anchor: null };
       return { ...state, active: true, anchor: state.cursor };
     }

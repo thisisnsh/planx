@@ -28,7 +28,7 @@ export interface ImportResult {
  * Ingest plans from an agent's own history.
  *
  * Imports are explicit and user-run. Nothing watches your agent directories in
- * the background (PLAN §16) — a tool that quietly indexes everything an agent
+ * the background — a tool that quietly indexes everything an agent
  * writes is a surprise nobody asked for.
  *
  * Re-importing is safe: capture is content-addressed, so a plan that is already

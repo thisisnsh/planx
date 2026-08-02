@@ -88,7 +88,7 @@ export function deriveTitle(text: string): string {
  *
  * Order matters and is fixed: splice, then verify, then write. Splicing first
  * makes the marker path the frictionless one, so hand-retyping a locked block
- * is what trips the guard rather than the other way round (PLAN §7). Verifying
+ * is what trips the guard rather than the other way round. Verifying
  * before writing is what makes the rejection safe to hit — nothing lands, so
  * the agent can fix and re-run.
  */

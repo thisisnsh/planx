@@ -10,7 +10,7 @@ export interface FuzzyMatch<T> {
  *
  * Hand-rolled rather than pulled in: the whole behaviour is "typing `gcr` finds
  * guard-clock-regression", and a dependency for that would be more code to
- * audit than the function itself (PLAN §17).
+ * audit than the function itself.
  */
 export function fuzzyMatch<T>(needle: string, haystack: string, item: T): FuzzyMatch<T> | null {
   if (!needle) return { item, score: 0, positions: [] };

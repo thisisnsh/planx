@@ -256,7 +256,7 @@ export interface AddVersionResult {
 /**
  * Append a version. Versions are content-addressed: capturing content that is
  * byte-identical to the current latest is a no-op that returns that version, so
- * skills can call `capture` defensively without polluting history (PLAN §4).
+ * skills can call `capture` defensively without polluting history.
  *
  * Only the latest is compared. Matching some older version would mean rewinding
  * `latest`, which loses the versions in between — a revision that happens to
@@ -306,7 +306,7 @@ export function addVersion(
 
 /**
  * Accepts `v2`, `2`, `latest`, `prev`, `~1`, or a sha256 prefix — the same
- * grammar everywhere a version can be named (PLAN §4).
+ * grammar everywhere a version can be named.
  */
 export function resolveVersionRef(id: string, ref: string | undefined | null): number {
   const versions = readVersions(id);

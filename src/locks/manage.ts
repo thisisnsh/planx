@@ -54,7 +54,7 @@ export function addLock(locks: LocksFile, input: CreateLockInput): LockRecord {
  * Per-section rather than one document-wide lock because it reuses machinery
  * that already exists: the unlock handshake names a lock, the gutter shows
  * locks individually, and `--skeleton` collapses them one at a time. A single
- * monolithic lock would need a special case in all three (PLAN §6).
+ * monolithic lock would need a special case in all three.
  */
 export function sealPlan(locks: LocksFile, docLines: string[], version: number): LockRecord[] {
   const created: LockRecord[] = [];
@@ -96,7 +96,7 @@ export interface UnlockResult {
  * Lift a lock over `range`, splitting any lock that is only partly covered.
  *
  * Refusing partial unlocks would force you to unfreeze a whole section to
- * change one line, so splitting is the supported behaviour (PLAN §6). The
+ * change one line, so splitting is the supported behaviour. The
  * leading fragment keeps the original id so an outstanding grant against it
  * still means something; the trailing fragment gets a fresh one.
  */
@@ -188,7 +188,7 @@ export function issueGrant(
  *
  * Approval is single-use and scoped to one lock: it authorises exactly one
  * capture that may modify that lock, then the lock re-arms against whatever
- * that capture wrote. No blanket unlocks, no drift (PLAN §6).
+ * that capture wrote. No blanket unlocks, no drift.
  */
 export function activeGrant(locks: LocksFile, lockId: string): GrantRecord | null {
   return (

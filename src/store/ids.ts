@@ -58,7 +58,7 @@ export function sha256(input: string): string {
  *
  * Normalization trims trailing whitespace per line and normalizes line endings —
  * and nothing else. Locked means locked; the escape hatch is the unlock
- * handshake, not a fuzzy comparison (PLAN §6).
+ * handshake, not a fuzzy comparison.
  */
 export function normalize(text: string): string {
   return text

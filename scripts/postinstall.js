@@ -3,7 +3,7 @@
 //
 // It is deliberately timid: it writes skills into ~/.claude and ~/.codex and
 // seeds ~/.planx, and it touches NO agent settings files. There is no hook to
-// register (see PLAN §3), so there is nothing it needs from settings.json.
+// register so there is nothing it needs from settings.json.
 //
 // Skip entirely with PLANX_NO_POSTINSTALL=1. Reverse with `planx uninstall`.
 import { existsSync } from 'node:fs';
