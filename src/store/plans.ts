@@ -518,21 +518,34 @@ const DeletedMarkerSchema = z.object({
   deleted_at: z.string(),
 });
 
-/** Delete every version below `keep` most recent, preserving `protectedVersions`. */
+/**
+ * Delete specific versions of a plan.
+ *
+ * The latest version is never removed whatever the caller asks: a plan with no
+ * current text is not a plan, and every read path assumes one exists.
+ */
+export function removeVersions(id: string, versions: number[]): number[] {
+  const file = readVersions(id);
+  const latest = latestVersionNumber(file);
+  const doomed = new Set(versions.filter((n) => n !== latest));
+  if (doomed.size === 0) return [];
+
+  for (const n of doomed) {
+    rmSync(paths.versionFile(id, n), { force: true });
+  }
+  file.versions = file.versions.filter((v) => !doomed.has(v.n));
+  writeVersions(id, file);
+  reindex(id);
+  return [...doomed].sort((a, b) => a - b);
+}
+
+/** Keep the `keep` most recent versions, preserving `protectedVersions`. */
 export function trimVersions(id: string, keep: number, protectedVersions: Set<number>): number[] {
-  const versions = readVersions(id);
-  const ordered = [...versions.versions].sort((a, b) => a.n - b.n);
+  const ordered = readVersions(id)
+    .versions.map((v) => v.n)
+    .sort((a, b) => a - b);
   const doomed = ordered
     .slice(0, Math.max(0, ordered.length - keep))
-    .filter((v) => !protectedVersions.has(v.n));
-  if (!doomed.length) return [];
-
-  for (const v of doomed) {
-    rmSync(paths.versionFile(id, v.n), { force: true });
-  }
-  const doomedSet = new Set(doomed.map((v) => v.n));
-  versions.versions = versions.versions.filter((v) => !doomedSet.has(v.n));
-  writeVersions(id, versions);
-  reindex(id);
-  return [...doomedSet].sort((a, b) => a - b);
+    .filter((n) => !protectedVersions.has(n));
+  return removeVersions(id, doomed);
 }
