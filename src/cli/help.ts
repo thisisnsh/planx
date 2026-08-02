@@ -2,21 +2,42 @@ import { bold, cyan, dim, yellow } from '../render/ansi.js';
 import type { CommandSpec } from './args.js';
 import { COMMANDS, GLOBAL_FLAGS } from './spec.js';
 
+/**
+ * Sections, in the order someone reading this needs them.
+ *
+ * Most of these commands exist for an agent to call. Listing all twenty flat
+ * made the handful a person actually types impossible to pick out, so the ones
+ * you run by hand come first and the rest are labelled for what they are.
+ */
+const GROUPS: Array<{ key: 'common' | 'agent' | 'maintenance'; title: string }> = [
+  { key: 'common', title: 'Everyday' },
+  { key: 'agent', title: 'Run by your agent' },
+  { key: 'maintenance', title: 'Housekeeping' },
+];
+
 export function topLevelHelp(version: string): string {
   const out: string[] = [
-    `${bold('planx')} ${dim(version)} — plan capture, review, locking and execution`,
+    `${bold('planx')} ${dim(version)} — plan capture, review and locking`,
     '',
+    `  ${dim('planx')}                    review a plan`,
     `  ${dim('planx <command> [args]')}`,
     '',
   ];
 
-  const width = Math.max(...COMMANDS.filter((c) => !c.hidden).map((c) => c.name.length));
-  for (const command of COMMANDS) {
-    if (command.hidden) continue;
-    out.push(`  ${cyan(command.name.padEnd(width))}  ${command.summary}`);
+  const visible = COMMANDS.filter((c) => !c.hidden);
+  const width = Math.max(...visible.map((c) => c.name.length));
+
+  for (const group of GROUPS) {
+    const members = visible.filter((c) => (c.group ?? 'maintenance') === group.key);
+    if (!members.length) continue;
+    out.push(dim(`  ${group.title}:`));
+    for (const command of members) {
+      out.push(`  ${cyan(command.name.padEnd(width))}  ${command.summary}`);
+    }
+    out.push('');
   }
 
-  out.push('', dim('  Global flags:'));
+  out.push(dim('  Global flags:'));
   for (const flag of GLOBAL_FLAGS) {
     out.push(`  ${yellow(flagLabel(flag.name, flag.arg).padEnd(width + 2))}  ${dim(flag.summary)}`);
   }

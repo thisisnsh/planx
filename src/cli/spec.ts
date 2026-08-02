@@ -16,6 +16,7 @@ export const GLOBAL_FLAGS: FlagSpec[] = [
 export const COMMANDS: CommandSpec[] = [
   {
     name: 'capture',
+    group: 'agent',
     usage: 'planx capture [--plan-id ID] [--title T] [--stdin|--file F] [--parent VER] [--splice]',
     summary: 'Store a version of a plan.',
     description:
@@ -46,6 +47,7 @@ export const COMMANDS: CommandSpec[] = [
   },
   {
     name: 'resume',
+    group: 'agent',
     usage: 'planx resume <id> [version] [--json]',
     summary: 'Pick a plan back up: the plan, the feedback on it, and its locks.',
     description:
@@ -57,6 +59,7 @@ export const COMMANDS: CommandSpec[] = [
   },
   {
     name: 'submit',
+    group: 'agent',
     usage: 'planx submit <id> [version] [--comment "42-47:text"] [--approve] [--stdin]',
     summary: 'Submit review feedback without the TUI.',
     description:
@@ -84,6 +87,7 @@ export const COMMANDS: CommandSpec[] = [
   },
   {
     name: 'unlock',
+    group: 'agent',
     usage: 'planx unlock <id> <lock-id> --reason "..."',
     summary: 'Open one locked block for a single capture.',
     description:
@@ -96,6 +100,7 @@ export const COMMANDS: CommandSpec[] = [
   },
   {
     name: 'diff',
+    group: 'common',
     usage: 'planx diff [id] [vA] [vB] [--print] [--plain|--rich] [--stat]',
     summary: 'Review a plan, or print a diff between two versions.',
     description:
@@ -112,6 +117,7 @@ export const COMMANDS: CommandSpec[] = [
   },
   {
     name: 'show',
+    group: 'common',
     usage: 'planx show <id> [version] [--plain|--rich] [--skeleton]',
     summary: 'Print a stored version of a plan.',
     flags: [
@@ -122,6 +128,7 @@ export const COMMANDS: CommandSpec[] = [
   },
   {
     name: 'list',
+    group: 'common',
     usage: 'planx list [--here] [--approved] [--json]',
     summary: 'List stored plans, newest first.',
     flags: [
@@ -130,14 +137,21 @@ export const COMMANDS: CommandSpec[] = [
       { name: '--unapproved', summary: 'Only plans that never reached approve.' },
     ],
   },
-  { name: 'versions', usage: 'planx versions <id>', summary: 'List a plan’s version history.' },
+  {
+    name: 'versions',
+    usage: 'planx versions <id>',
+    summary: 'List a plan’s version history.',
+    group: 'maintenance',
+  },
   {
     name: 'locks',
+    group: 'maintenance',
     usage: 'planx locks <id> [--json]',
     summary: 'Show a plan’s locks and any outstanding unlock grants.',
   },
   {
     name: 'import',
+    group: 'maintenance',
     usage: 'planx import --from claude|codex [--latest|--all] [--since 7d]',
     summary: 'Backfill plans from an agent’s own history.',
     description:
@@ -153,6 +167,7 @@ export const COMMANDS: CommandSpec[] = [
   },
   {
     name: 'clean',
+    group: 'maintenance',
     usage: 'planx clean [filters] [--purge] [--yes]',
     summary: 'Remove plans, soft-deleting to the trash.',
     description:
@@ -170,23 +185,41 @@ export const COMMANDS: CommandSpec[] = [
       { name: '--yes', summary: 'Skip the confirmation, for scripts.' },
     ],
   },
-  { name: 'restore', usage: 'planx restore <id>', summary: 'Bring a plan back from the trash.' },
-  { name: 'rename', usage: 'planx rename <id> <new>', summary: 'Rename a plan and its id.' },
-  { name: 'on', usage: 'planx on', summary: 'Enable planx.' },
-  { name: 'off', usage: 'planx off', summary: 'Disable planx, so the skills degrade quietly.' },
+  {
+    name: 'restore',
+    usage: 'planx restore <id>',
+    summary: 'Bring a plan back from the trash.',
+    group: 'maintenance',
+  },
+  {
+    name: 'rename',
+    usage: 'planx rename <id> <new>',
+    summary: 'Rename a plan and its id.',
+    group: 'maintenance',
+  },
+  { name: 'on', usage: 'planx on', summary: 'Enable planx.', group: 'common' },
+  {
+    name: 'off',
+    usage: 'planx off',
+    summary: 'Disable planx, so the skills degrade quietly.',
+    group: 'common',
+  },
   {
     name: 'status',
+    group: 'common',
     usage: 'planx status',
     summary: 'Show the store, config and installed skills.',
   },
   {
     name: 'config',
+    group: 'maintenance',
     usage: 'planx config get|set <key> [value]',
     summary: 'Read or write configuration.',
     description: 'Settable keys: enabled, render.',
   },
   {
     name: 'install',
+    group: 'maintenance',
     usage: 'planx install [--skills] [--local]',
     summary: 'Write the skills and seed the store.',
     description:
@@ -198,9 +231,15 @@ export const COMMANDS: CommandSpec[] = [
       { name: '--agent', arg: 'NAME', summary: 'Only this agent. Repeatable.' },
     ],
   },
-  { name: 'uninstall', usage: 'planx uninstall', summary: 'Remove what install wrote.' },
+  {
+    name: 'uninstall',
+    usage: 'planx uninstall',
+    summary: 'Remove what install wrote.',
+    group: 'maintenance',
+  },
   {
     name: 'doctor',
+    group: 'maintenance',
     usage: 'planx doctor',
     summary: 'Check the store for problems and rebuild the index.',
   },

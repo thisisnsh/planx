@@ -150,7 +150,11 @@ export async function main(argv: readonly string[]): Promise<number> {
   const version = packageVersion();
   const { command: name, rest } = hoistGlobalFlags(argv);
 
-  if (!name || name === '--help' || name === '-h' || name === 'help') {
+  // `--help` is a global flag, so it hoists and leaves no command name behind.
+  // Without this, `planx --help` would fall through to the bare-`planx` default
+  // and print the help for `diff`.
+  const bareHelp = name === null && rest.some((a) => a === '--help' || a === '-h');
+  if (bareHelp || name === '--help' || name === '-h' || name === 'help') {
     process.stdout.write(`${topLevelHelp(version)}\n`);
     return 0;
   }
@@ -159,9 +163,15 @@ export async function main(argv: readonly string[]): Promise<number> {
     return 0;
   }
 
-  const spec: CommandSpec | undefined = findCommand(name);
+  // Bare `planx` is the review: pick a plan, open it. Reviewing is the one
+  // thing a person is here to do, so it should not need a subcommand — and a
+  // wall of help text is not a useful answer to someone who just typed the
+  // name. `planx --help` is still there for the wall.
+  const command = name ?? 'diff';
+
+  const spec: CommandSpec | undefined = findCommand(command);
   if (!spec) {
-    process.stderr.write(red(`planx: unknown command "${name}". Run \`planx --help\`.\n`));
+    process.stderr.write(red(`planx: unknown command "${command}". Run \`planx --help\`.\n`));
     return 2;
   }
 
@@ -173,7 +183,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   }
   if (args.unknown.length) {
     process.stderr.write(
-      red(`planx: unknown flag ${args.unknown.join(', ')} for \`planx ${name}\`.\n`),
+      red(`planx: unknown flag ${args.unknown.join(', ')} for \`planx ${command}\`.\n`),
     );
     process.stderr.write(`${commandHelp(spec)}\n`);
     return 2;
@@ -185,7 +195,7 @@ export async function main(argv: readonly string[]): Promise<number> {
 
   // `planx off` should make the skills degrade quietly rather than fail loudly,
   // so the write path reports it and returns success.
-  if (!ALWAYS_ON.has(name) && !readConfig().enabled) {
+  if (!ALWAYS_ON.has(command) && !readConfig().enabled) {
     process.stdout.write('PLANX: disabled (`planx on` to re-enable) — skipping\n');
     return 0;
   }
@@ -200,7 +210,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     err: (text) => process.stderr.write(`${text}\n`),
   };
 
-  return dispatch(name, ctx);
+  return dispatch(command, ctx);
 }
 
 function report(err: unknown): number {

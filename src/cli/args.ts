@@ -13,6 +13,12 @@ export interface CommandSpec {
   description?: string;
   flags?: FlagSpec[];
   examples?: string[];
+  /**
+   * Which section of `--help` this appears under. Most of these commands exist
+   * for an agent to call, not for anyone to type, and one flat list of twenty
+   * made the handful a human actually runs impossible to find.
+   */
+  group?: 'common' | 'agent' | 'maintenance';
   /** Kept out of `--help` and the generated reference. */
   hidden?: boolean;
 }
