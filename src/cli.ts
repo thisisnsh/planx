@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ArgError, has, one, parseArgs, type CommandSpec } from './cli/args.js';
@@ -228,7 +228,18 @@ function report(err: unknown): number {
   return 1;
 }
 
-const isEntry = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+// npm exposes package binaries through a symlink in node_modules/.bin. Node
+// resolves import.meta.url to the real file while leaving argv[1] as that
+// symlink, so comparing the two paths literally makes an installed CLI exit
+// successfully without ever running main().
+let isEntry = false;
+if (process.argv[1]) {
+  try {
+    isEntry = realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+  } catch {
+    // A missing argv path cannot be this module's executable entry point.
+  }
+}
 if (isEntry) {
   main(process.argv.slice(2))
     .then((code) => {

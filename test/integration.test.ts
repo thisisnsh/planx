@@ -1,4 +1,5 @@
-import { readdirSync } from 'node:fs';
+import { mkdirSync, readdirSync, symlinkSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Cli, collect, ensureBuilt, PLAN_V1, PLAN_V2 } from './cli.js';
@@ -34,6 +35,18 @@ describe('the CLI as a real process', () => {
     const help = await cli.run(['--help']);
     expect(help.stdout).toContain('planx <command> [args]');
     expect(help.stdout).toContain('capture');
+  });
+
+  it('runs when invoked through an npm-style bin symlink', async () => {
+    const binDir = join(cli.dir, 'node_modules', '.bin');
+    const bin = join(binDir, 'planx');
+    mkdirSync(binDir, { recursive: true });
+    symlinkSync(join(process.cwd(), 'dist', 'cli.js'), bin);
+
+    const result = await collect(spawn(bin, ['--version'], { stdio: ['ignore', 'pipe', 'pipe'] }));
+
+    expect(result.code).toBe(0);
+    expect(result.stdout.trim()).toMatch(/^\d+\.\d+\.\d+/);
   });
 
   it('rejects an unknown command and an unknown flag with usage', async () => {
