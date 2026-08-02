@@ -49,6 +49,8 @@ export interface Ctx {
   args: ParsedArgs;
   json: boolean;
   mode: RenderMode;
+  /** planx's own version, shown in the review frame. */
+  version: string;
   out: (text: string) => void;
   err: (text: string) => void;
 }
@@ -421,6 +423,7 @@ async function runInteractiveReview(
     versionA,
     versionB,
     mode: ctx.mode,
+    version: ctx.version,
     previous: listFeedback(id).filter((f) => f.version === versionB),
   });
 

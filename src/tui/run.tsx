@@ -14,16 +14,28 @@ export function isInteractive(): boolean {
   return Boolean(process.stdout.isTTY && process.stdin.isTTY);
 }
 
+/** Wipe the screen and the scrollback above it. */
+export function clearScreen(): void {
+  if (process.stdout.isTTY) process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
+}
+
 export interface RunReviewOptions {
   planId: string;
   title: string;
   versionA: number | null;
   versionB: number;
   mode: RenderMode;
+  /** planx's own version, for the frame. */
+  version: string;
   previous: Feedback[];
 }
 
 export async function runReview(opts: RunReviewOptions): Promise<ReviewResult> {
+  // The picker that chose this plan is still on screen. Clear it, so the review
+  // is the whole screen rather than something scrolled underneath a list of
+  // options that no longer applies.
+  clearScreen();
+
   return new Promise((resolve) => {
     let settled = false;
     const finish = (result: ReviewResult) => {
@@ -40,12 +52,13 @@ export async function runReview(opts: RunReviewOptions): Promise<ReviewResult> {
         versionA={opts.versionA}
         versionB={opts.versionB}
         mode={opts.mode}
+        version={opts.version}
         previous={opts.previous}
         onDone={finish}
       />,
-      // Ink's own exit-on-ctrl-c would skip our mouse-mode teardown and leave
-      // the terminal reporting clicks into the user's shell.
-      { exitOnCtrlC: false },
+      // ctrl-c should leave, the same as x. With mouse capture gone there is
+      // nothing to tear down first.
+      { exitOnCtrlC: true },
     );
 
     instance.waitUntilExit().then(() => finish({ action: 'quit', annotations: [], general: '' }));

@@ -7,8 +7,34 @@ import { renderRichLines, type RenderedLine, type RenderMode } from '../render/d
 import { readLocks, readVersionText } from '../store/plans.js';
 import type { Annotation, LocksFile } from '../store/types.js';
 
-export interface ViewRow extends RenderedLine {
+/**
+ * One drawn line, which is either part of the document or part of a feedback
+ * block sitting underneath it.
+ *
+ * Feedback is rendered inline rather than in an overlay, so it has to be in the
+ * same list the cursor walks — that is what lets you arrow down into a note and
+ * delete it. Every row is exactly one terminal line, which keeps scrolling a
+ * matter of slicing an array rather than measuring heights.
+ */
+export type ViewRow = DocRow | FeedbackRow;
+
+export interface DocRow extends RenderedLine {
+  kind: 'doc';
   /** Index of the block this row came from, for expanding gaps. */
+  blockIndex: number;
+}
+
+export interface FeedbackRow {
+  kind: 'feedback';
+  /** Which annotation this belongs to, so `d` knows what to remove. */
+  annotationId: string;
+  /** Box edges carry no text; only `body` is editable. */
+  part: 'top' | 'body' | 'bottom';
+  text: string;
+  /** Feedback rows annotate lines but do not occupy one, so they never
+   *  contribute to a selection span. */
+  newLine: null;
+  gapIndex: null;
   blockIndex: number;
 }
 
@@ -19,6 +45,8 @@ export interface ReviewModel {
   /** The version under review, split into lines — the annotation coordinate space. */
   docLines: string[];
   locks: LocksFile;
+  /** new-version line → the lock covering it, for the gutter and the l toggle. */
+  lockedLines: ReadonlyMap<number, string>;
   blocks: Block[];
   rows: ViewRow[];
 }
@@ -30,6 +58,8 @@ export interface BuildModelOptions {
   mode: RenderMode;
   expandedGaps: ReadonlySet<number>;
   annotations: readonly Annotation[];
+  /** Collapse the note bodies, keeping the dotted edge on the lines. */
+  hiddenFeedback?: boolean;
 }
 
 /**
@@ -58,9 +88,10 @@ export function buildModel(opts: BuildModelOptions): ReviewModel {
       : block,
   );
 
+  const lockedLines = lockedLineMap(docLines, locks);
   const rendered = renderRichLines(shown, {
     mode: opts.mode,
-    lockedLines: lockedLineMap(docLines, locks),
+    lockedLines,
     annotated: annotationMap(opts.annotations),
   });
 
@@ -74,8 +105,16 @@ export function buildModel(opts: BuildModelOptions): ReviewModel {
       blockIndex++;
       withinBlock = 0;
     }
-    rows.push({ ...line, blockIndex: line.gapIndex ?? blockIndex });
+    rows.push({ ...line, kind: 'doc', blockIndex: line.gapIndex ?? blockIndex });
     withinBlock++;
+
+    // A note belongs directly under the last line it refers to, so it reads as
+    // a margin comment on that passage rather than a footnote.
+    if (line.newLine !== null && !opts.hiddenFeedback) {
+      for (const annotation of endingAt(opts.annotations, line.newLine)) {
+        rows.push(...feedbackRows(annotation, blockIndex));
+      }
+    }
   }
 
   return {
@@ -84,6 +123,7 @@ export function buildModel(opts: BuildModelOptions): ReviewModel {
     versionB: opts.versionB,
     docLines,
     locks,
+    lockedLines,
     blocks,
     rows,
   };
@@ -93,7 +133,44 @@ function visibleHeight(block: Block): number {
   return block.kind === 'gap' ? 1 : block.rows.length;
 }
 
-/** new-version line → the annotation ids sitting on it. */
+/** Comment annotations whose last line is `line`. */
+function endingAt(annotations: readonly Annotation[], line: number): Annotation[] {
+  return annotations.filter((a) => a.kind === 'comment' && a.anchor.end_line === line);
+}
+
+const BOX_WIDTH = 58;
+
+function feedbackRows(annotation: Annotation, blockIndex: number): FeedbackRow[] {
+  const base = { annotationId: annotation.id, newLine: null, gapIndex: null, blockIndex } as const;
+  const body = annotation.comment.length ? wrapComment(annotation.comment) : [''];
+  // Dashed, and deliberately not the glyphs the screen frame uses: a note has
+  // to read as pinned to the passage above it, not as another panel.
+  return [
+    { ...base, kind: 'feedback', part: 'top', text: `╭${'╌'.repeat(BOX_WIDTH)}` },
+    ...body.map((text) => ({ ...base, kind: 'feedback' as const, part: 'body' as const, text })),
+    { ...base, kind: 'feedback', part: 'bottom', text: `╰${'╌'.repeat(BOX_WIDTH)}` },
+  ];
+}
+
+/** Wrap on words so a long note does not run off the right edge. */
+function wrapComment(comment: string): string[] {
+  const out: string[] = [];
+  for (const paragraph of comment.split('\n')) {
+    let current = '';
+    for (const word of paragraph.split(/\s+/).filter(Boolean)) {
+      if (current && `${current} ${word}`.length > BOX_WIDTH - 2) {
+        out.push(current);
+        current = word;
+      } else {
+        current = current ? `${current} ${word}` : word;
+      }
+    }
+    out.push(current);
+  }
+  return out.length ? out : [''];
+}
+
+/** new-version line → the annotation ids sitting on it, for the dotted edge. */
 export function annotationMap(annotations: readonly Annotation[]): Map<number, string[]> {
   const map = new Map<number, string[]>();
   for (const annotation of annotations) {

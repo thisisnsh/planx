@@ -2,9 +2,7 @@ import { EventEmitter } from 'node:events';
 import { render } from 'ink';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { capture } from '../src/protocol/capture.js';
-import { submitFeedback } from '../src/protocol/submit.js';
 import { setColorEnabled, stripAnsi } from '../src/render/ansi.js';
-import { readLocks } from '../src/store/plans.js';
 import { ReviewApp, type ReviewResult } from '../src/tui/ReviewApp.js';
 import { SAMPLE_PLAN, tempStore } from './helpers.js';
 
@@ -32,9 +30,8 @@ class FakeStdout extends EventEmitter {
   /**
    * The last frame with actual content.
    *
-   * Ink's render and the app's mouse-mode toggles go to the same stream, so the
-   * final write is often just `\x1b[?1002h` — skip anything that carries no
-   * visible text.
+   * Ink writes control sequences to the same stream, so the final write is
+   * sometimes just a cursor move — skip anything carrying no visible text.
    */
   get lastFrame(): string {
     for (let i = this.frames.length - 1; i >= 0; i--) {
@@ -131,6 +128,7 @@ function mount(planId: string, versionA: number | null, versionB: number): Harne
       versionA={versionA}
       versionB={versionB}
       mode="rich"
+      version="9.9.9"
       previous={[]}
       onDone={resolve}
     />,
@@ -174,141 +172,174 @@ function seed(): string {
   return capture({ text: SAMPLE_PLAN, source: 'test' }).planId;
 }
 
-describe('the review app renders', () => {
-  it('mounts and draws the header, the plan and the key bar', async () => {
+const ESC = '\x1b';
+const ENTER = '\r';
+const DOWN = '\x1b[B';
+const ARROW = '▸';
+/** Dashed, so it cannot be confused with the screen frame's own border. */
+const BOX_EDGE = '╌';
+
+describe('the review frame', () => {
+  it('names itself and its version, and points at the repo', async () => {
     const id = seed();
     const app = mount(id, null, 1);
-    await app.frame('S submit');
+    await app.ready();
 
     const frame = app.stdout.lastFrame;
     expect(frame).toContain('planx');
+    expect(frame).toContain('9.9.9');
     expect(frame).toContain(id);
-    expect(frame).toContain('REVIEW');
-    expect(frame).toContain('## Approach');
-    expect(frame).toContain('c comment');
-    expect(frame).toContain('l lock');
-    expect(frame).toContain('S submit');
-
+    expect(frame).toContain('github.com/thisisnsh/planx');
     app.unmount();
   });
 
-  it('shows a diff header when reviewing a revision', async () => {
-    const id = seed();
-    capture({ planId: id, text: SAMPLE_PLAN.replace('poller.ts', 'r2.ts') });
-    const app = mount(id, 1, 2);
+  it('marks the current line with an arrow in the left gutter', async () => {
+    const app = mount(seed(), null, 1);
+    await app.frame(ARROW);
+    app.unmount();
+  });
+
+  it('offers lowercase shortcuts, with x for exit and no c to collide with ctrl-c', async () => {
+    const app = mount(seed(), null, 1);
     await app.ready();
 
-    await app.frame('v2 ← v1');
-    app.unmount();
-  });
-
-  it('marks locked lines with the gutter icon and the lock id', async () => {
-    const id = seed();
-    submitFeedback({ planId: id, version: 1, verdict: 'approve', annotations: [] });
-    expect(Object.keys(readLocks(id).locks).length).toBeGreaterThan(0);
-
-    const app = mount(id, null, 1);
-    await app.frame('SEALED');
-
     const frame = app.stdout.lastFrame;
-    expect(frame).toContain('🔒');
-    expect(frame).toContain('SEALED');
+    expect(frame).toContain('f feedback');
+    expect(frame).toContain('x exit');
+    expect(frame).not.toContain('c comment');
     app.unmount();
   });
 });
 
-describe('the review app responds to keys', () => {
-  it('opens the comment editor on the selected lines and records the annotation', async () => {
-    const id = seed();
-    const app = mount(id, null, 1);
+describe('feedback lives in the document', () => {
+  it('opens an editable box on f, and typed keys stop being commands', async () => {
+    const app = mount(seed(), null, 1);
     await app.ready();
 
-    await app.press('j'); // move off line 1
-    await app.press('c');
-    await app.frame('Comment on lines');
-
-    await app.press('Wrong layer.');
-    await app.press('\r');
-    await app.frame('Wrong layer.');
-
-    await app.press('S');
-    const result = await app.result;
-    expect(result.action).toBe('submit');
-    expect(result.annotations).toHaveLength(1);
-    expect(result.annotations[0]).toMatchObject({ kind: 'comment', comment: 'Wrong layer.' });
+    await app.press('f');
+    // `s` submits in browse mode; here it has to be a letter.
+    await app.press('slow start');
+    await app.frame('slow start');
     app.unmount();
   });
 
-  it('records a lock over a keyboard visual selection', async () => {
-    const id = seed();
-    const app = mount(id, null, 1);
+  it('keeps the note after enter, below the line it annotates', async () => {
+    const app = mount(seed(), null, 1);
     await app.ready();
 
-    await app.press('V');
-    await app.press('j');
-    await app.press('j');
-    await app.press('l');
-    await app.frame('locked lines 1–3');
-
-    await app.press('S');
-    const result = await app.result;
-    expect(result.annotations[0]).toMatchObject({
-      kind: 'lock',
-      anchor: { start_line: 1, end_line: 3 },
-    });
+    await app.press('f');
+    await app.press('wrong layer');
+    await app.press(ENTER);
+    await app.frame('wrong layer');
+    expect(app.stdout.lastFrame).toContain(BOX_EDGE);
     app.unmount();
   });
 
-  it('refuses to submit nothing rather than sending an empty verdict', async () => {
-    const id = seed();
-    const app = mount(id, null, 1);
+  it('discards a new note left empty rather than leaving an empty box', async () => {
+    const app = mount(seed(), null, 1);
     await app.ready();
 
-    await app.press('S');
+    await app.press('f');
+    await app.press(ESC);
+    await new Promise((r) => setTimeout(r, 120));
+
+    expect(app.stdout.lastFrame).not.toContain(BOX_EDGE);
+    app.unmount();
+  });
+
+  it('h hides the note body, keeping the plan readable', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('f');
+    await app.press('hidden please');
+    await app.press(ENTER);
+    await app.frame('hidden please');
+
+    await app.press('h');
+    await new Promise((r) => setTimeout(r, 120));
+    expect(app.stdout.lastFrame).not.toContain('hidden please');
+    app.unmount();
+  });
+
+  it('d removes the note the cursor is standing on', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('f');
+    await app.press('delete me');
+    await app.press(ENTER);
+    await app.frame('delete me');
+
+    await app.press(DOWN);
+    await app.press('d');
+    await new Promise((r) => setTimeout(r, 120));
+
+    expect(app.stdout.lastFrame).not.toContain('delete me');
+    app.unmount();
+  });
+});
+
+describe('submitting and approving', () => {
+  it('refuses an empty submit and says how to leave instead', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('s');
     await app.frame('nothing to submit');
     app.unmount();
   });
 
-  it('confirms before approving, because approving seals the plan', async () => {
-    const id = seed();
-    const app = mount(id, null, 1);
+  it('submits the note with s', async () => {
+    const app = mount(seed(), null, 1);
     await app.ready();
 
-    await app.press('A');
-    await app.frame('This seals the plan');
+    await app.press('f');
+    await app.press('needs work');
+    await app.press(ENTER);
+    await app.frame('needs work');
+    await app.press('s');
 
-    await app.press('y');
+    const result = await app.result;
+    expect(result.action).toBe('submit');
+    expect(result.annotations[0]?.comment).toBe('needs work');
+    app.unmount();
+  });
+
+  it('asks before approving, and esc backs out', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('a');
+    await app.frame('Approve');
+    await app.press(ESC);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(app.stdout.lastFrame).not.toContain('Approve v');
+
+    await app.press('a');
+    await app.press(ENTER);
+
     expect((await app.result).action).toBe('approve');
     app.unmount();
   });
 
-  it('shows help and quits without submitting', async () => {
-    const id = seed();
-    const app = mount(id, null, 1);
+  it('x leaves without submitting', async () => {
+    const app = mount(seed(), null, 1);
     await app.ready();
 
-    await app.press('?');
-    await app.frame('toggle mouse capture');
-    await app.press('\x1b');
-
-    await app.press('q');
-    const result = await app.result;
-    expect(result.action).toBe('quit');
-    expect(result.annotations).toHaveLength(0);
+    await app.press('x');
+    expect((await app.result).action).toBe('quit');
     app.unmount();
   });
+});
 
-  it('ignores mouse bytes instead of treating them as commands', async () => {
-    const id = seed();
-    const app = mount(id, null, 1);
+describe('the whole-plan note', () => {
+  it('points at f for line feedback while it is open', async () => {
+    const app = mount(seed(), null, 1);
     await app.ready();
 
-    // This contains a 'q' and an 'S'; parsed as keys it would quit or submit.
-    await app.press('\x1b[<0;12;5M');
-    await app.press('\x1b[<0;12;5m');
-
-    await app.press('S');
-    await app.frame('nothing to submit');
+    await app.press('n');
+    await app.frame('press f instead');
     app.unmount();
   });
 });

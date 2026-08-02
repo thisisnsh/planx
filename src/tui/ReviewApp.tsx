@@ -1,12 +1,11 @@
-import { Box, Text, useApp, useInput, useStdin, useStdout } from 'ink';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Box, Text, useApp, useInput, useStdout } from 'ink';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { contextSha } from '../locks/anchor.js';
 import { buildAnnotation } from '../protocol/submit.js';
 import { stripAnsi, truncate } from '../render/ansi.js';
 import type { RenderMode } from '../render/diff.js';
 import type { Annotation, Feedback } from '../store/types.js';
-import { hasMouseSequence, MOUSE_OFF, MOUSE_ON, parseMouse } from './mouse.js';
-import { buildModel } from './model.js';
+import { buildModel, type ViewRow } from './model.js';
 import {
   initialSelection,
   isRowSelected,
@@ -15,7 +14,6 @@ import {
   spanAtCursor,
   type SelectionState,
 } from './selection.js';
-import { TextPrompt } from './TextPrompt.js';
 
 export interface ReviewResult {
   action: 'submit' | 'approve' | 'reject' | 'quit';
@@ -29,35 +27,45 @@ export interface ReviewAppProps {
   versionA: number | null;
   versionB: number;
   mode: RenderMode;
+  /** planx's own version, for the frame. */
+  version: string;
   /** Feedback already left on this version, shown so you do not repeat yourself. */
   previous: Feedback[];
   onDone: (result: ReviewResult) => void;
 }
 
-type Overlay =
-  | { kind: 'none' }
-  | { kind: 'comment'; start: number; end: number; quote: string[] }
-  | { kind: 'general' }
-  | { kind: 'confirm'; verdict: 'approve' | 'reject' }
+/**
+ * What the keyboard is doing right now.
+ *
+ * Writing a note and driving the document want the same keys — `s` is submit in
+ * one and the letter s in the other — so the mode is explicit rather than
+ * inferred from whether some overlay happens to be open. Editing happens in the
+ * document, not in a dialog on top of it, which is the whole point of putting
+ * notes inline.
+ */
+type Mode =
+  | { kind: 'browse' }
+  | { kind: 'editing'; annotationId: string; draft: string; isNew: boolean }
+  | { kind: 'note'; draft: string }
+  | { kind: 'confirm' }
   | { kind: 'help' };
 
-const HEADER_HEIGHT = 1;
+/** Frame, header, footer and the repo line. */
+const CHROME_HEIGHT = 9;
 const MIN_BODY = 5;
+const REPO = 'github.com/thisisnsh/planx';
 
 export function ReviewApp(props: ReviewAppProps) {
   const { exit } = useApp();
   const { stdout } = useStdout();
-  // Ink owns stdin: useInput turns raw mode on for us, and the mouse handler
-  // reads from that same stream rather than opening a second one.
-  const { isRawModeSupported } = useStdin();
 
   const [selection, setSelection] = useState<SelectionState>(initialSelection);
   const [offset, setOffset] = useState(0);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [expandedGaps, setExpandedGaps] = useState<ReadonlySet<number>>(() => new Set());
-  const [overlay, setOverlay] = useState<Overlay>({ kind: 'none' });
+  const [hiddenFeedback, setHiddenFeedback] = useState(false);
+  const [mode, setMode] = useState<Mode>({ kind: 'browse' });
   const [general, setGeneral] = useState('');
-  const [mouseOn, setMouseOn] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
 
   const model = useMemo(
@@ -69,316 +77,367 @@ export function ReviewApp(props: ReviewAppProps) {
         mode: props.mode,
         expandedGaps,
         annotations,
+        hiddenFeedback,
       }),
-    [props.planId, props.versionA, props.versionB, props.mode, expandedGaps, annotations],
+    [
+      props.planId,
+      props.versionA,
+      props.versionB,
+      props.mode,
+      expandedGaps,
+      annotations,
+      hiddenFeedback,
+    ],
   );
 
-  // Notes you left earlier on this same version, worth knowing before you write
-  // the same thing twice.
-  const openPrevious = props.previous.length;
-  const footerHeight = Math.min(annotations.length, 4) + 2;
-  const bodyHeight = Math.max(MIN_BODY, (stdout?.rows ?? 24) - HEADER_HEIGHT - footerHeight - 1);
-  const bodyTop = HEADER_HEIGHT;
-
-  // Keep the offset in a ref so the mouse handler, which is attached once, can
-  // translate a screen row without being torn down on every scroll.
-  const offsetRef = useRef(offset);
-  offsetRef.current = offset;
-  const rowCountRef = useRef(model.rows.length);
-  rowCountRef.current = model.rows.length;
-
-  const overlayOpen = overlay.kind !== 'none';
+  const rows = model.rows;
+  const width = stdout?.columns ?? 100;
+  const bodyHeight = Math.max(MIN_BODY, (stdout?.rows ?? 24) - CHROME_HEIGHT);
 
   const move = useCallback(
     (delta: number) => {
       setSelection((s) => {
-        const next = reduceSelection(s, { type: 'move', delta }, rowCountRef.current);
-        setOffset((o) => scrollFor(next.cursor, o, bodyHeight, rowCountRef.current));
+        const next = reduceSelection(s, { type: 'move', delta }, rows.length);
+        setOffset((o) => scrollFor(next.cursor, o, bodyHeight, rows.length));
         return next;
       });
     },
-    [bodyHeight],
+    [bodyHeight, rows.length],
   );
 
-  /* ------------------------------------------------------------- mouse */
+  /* ------------------------------------------------------------- actions */
 
-  // Only the terminal mode is managed here. The events themselves arrive
-  // through `useInput` below — Ink reads stdin with a 'readable' listener, and
-  // attaching a 'data' listener alongside it would switch the stream to flowing
-  // mode and starve one of the two handlers.
-  useEffect(() => {
-    if (!isRawModeSupported || !mouseOn || !stdout) return;
-    stdout.write(MOUSE_ON);
-    return () => {
-      stdout.write(MOUSE_OFF);
-    };
-  }, [isRawModeSupported, mouseOn, stdout]);
+  /** The comment covering wherever the cursor is, whether that is a document
+   *  line or the note itself. */
+  function annotationAtCursor(): Annotation | null {
+    const row = rows[selection.cursor];
+    if (row?.kind === 'feedback') {
+      return annotations.find((a) => a.id === row.annotationId) ?? null;
+    }
+    const span = spanAtCursor(rows, selection);
+    if (!span) return null;
+    return (
+      annotations.find(
+        (a) =>
+          a.kind === 'comment' &&
+          a.anchor.start_line <= span.end &&
+          a.anchor.end_line >= span.start,
+      ) ?? null
+    );
+  }
 
-  const handleMouse = useCallback(
-    (input: string): boolean => {
-      const { events } = parseMouse(input);
-      if (!events.length) return false;
+  function startFeedback() {
+    // One note per passage. Landing on lines that already carry one edits it,
+    // rather than stacking a second note on the same text.
+    const existing = annotationAtCursor();
+    if (existing) {
+      setHiddenFeedback(false);
+      return setMode({
+        kind: 'editing',
+        annotationId: existing.id,
+        draft: existing.comment,
+        isNew: false,
+      });
+    }
 
-      for (const event of events) {
-        if (event.type === 'scroll') {
-          setOffset((o) => Math.max(0, Math.min(rowCountRef.current - 1, o + event.direction * 3)));
-          continue;
-        }
-        const index = event.row - 1 - bodyTop + offsetRef.current;
-        if (index < 0 || index >= rowCountRef.current) continue;
-        const type =
-          event.type === 'down' ? 'mouseDown' : event.type === 'drag' ? 'mouseDrag' : 'mouseUp';
-        setSelection((s) => reduceSelection(s, { type, index }, rowCountRef.current));
-      }
-      return true;
-    },
-    [bodyTop],
-  );
-
-  /* ---------------------------------------------------------- keyboard */
-
-  useInput(
-    (input, key) => {
-      // Mouse sequences arrive here as ordinary input; handling them first is
-      // what keeps a drag from being parsed as a burst of random commands.
-      if (mouseOn && handleMouse(input)) return;
-      if (hasMouseSequence(input)) return;
-      setStatus(null);
-
-      if (key.downArrow || input === 'j') return move(1);
-      if (key.upArrow || input === 'k') return move(-1);
-      if (key.pageDown || (key.ctrl && input === 'd')) return move(Math.floor(bodyHeight / 2));
-      if (key.pageUp || (key.ctrl && input === 'u')) return move(-Math.floor(bodyHeight / 2));
-      if (input === 'g') return move(-rowCountRef.current);
-      if (input === 'G') return move(rowCountRef.current);
-
-      if (input === 'V' || input === 'v') {
-        return setSelection((s) => reduceSelection(s, { type: 'toggleVisual' }, model.rows.length));
-      }
-      if (key.escape) {
-        return setSelection((s) => reduceSelection(s, { type: 'clear' }, model.rows.length));
-      }
-
-      if (input === ' ') {
-        const gap = model.rows[selection.cursor]?.gapIndex;
-        if (gap === null || gap === undefined) return;
-        return setExpandedGaps((set) => new Set(set).add(gap));
-      }
-
-      if (input === 'm') {
-        setMouseOn((on) => !on);
-        return setStatus(
-          mouseOn
-            ? 'mouse capture off — your terminal can select text again; use V to select here'
-            : 'mouse capture on',
-        );
-      }
-
-      if (input === 'c' || input === 'l' || input === 'u') return startAnnotation(input);
-      if (input === 'd') return deleteAnnotation();
-      if (input === 'n') return setOverlay({ kind: 'general' });
-      if (input === 'S') return finish('submit');
-      if (input === 'A') return setOverlay({ kind: 'confirm', verdict: 'approve' });
-      if (input === 'R') return setOverlay({ kind: 'confirm', verdict: 'reject' });
-      if (input === '?') return setOverlay({ kind: 'help' });
-      if (input === 'q') return finish('quit');
-    },
-    { isActive: !overlayOpen },
-  );
-
-  useInput(
-    (input, key) => {
-      if (overlay.kind === 'help') {
-        if (key.escape || input === '?' || input === 'q') setOverlay({ kind: 'none' });
-        return;
-      }
-      if (overlay.kind === 'confirm') {
-        if (input === 'y') return finish(overlay.verdict);
-        if (key.escape || input === 'n') setOverlay({ kind: 'none' });
-        return;
-      }
-    },
-    {
-      isActive: overlay.kind === 'help' || overlay.kind === 'confirm',
-    },
-  );
-
-  function startAnnotation(kind: 'c' | 'l' | 'u') {
-    const span = spanAtCursor(model.rows, selection);
+    const span = spanAtCursor(rows, selection);
     if (!span) {
       return setStatus('nothing to annotate there — that row is a deletion or a collapsed gap');
     }
-    const quote = model.docLines.slice(span.start - 1, span.end);
 
-    if (kind === 'c') {
-      return setOverlay({ kind: 'comment', start: span.start, end: span.end, quote });
-    }
-    addAnnotation(kind === 'l' ? 'lock' : 'unlock', span.start, span.end, '');
-    setStatus(
-      kind === 'l'
-        ? `locked lines ${span.start}–${span.end} (applies on submit)`
-        : `unlocked lines ${span.start}–${span.end} (applies on submit)`,
-    );
-    setSelection((s) => reduceSelection(s, { type: 'clear' }, model.rows.length));
+    const id = `a${annotations.filter((a) => a.kind === 'comment').length + 1}`;
+    setAnnotations((current) => [
+      ...current,
+      buildAnnotation(
+        model.docLines,
+        'comment',
+        span.start,
+        span.end,
+        '',
+        id,
+        contextSha(model.docLines, { start: span.start - 1, end: span.end - 1 }),
+      ),
+    ]);
+    setHiddenFeedback(false);
+    setSelection((s) => reduceSelection(s, { type: 'clear' }, rows.length));
+    setMode({ kind: 'editing', annotationId: id, draft: '', isNew: true });
   }
 
-  function addAnnotation(kind: Annotation['kind'], start: number, end: number, comment: string) {
-    setAnnotations((current) => {
-      const id = `${kind === 'comment' ? 'a' : kind === 'lock' ? 'L' : 'u'}${current.filter((a) => a.kind === kind).length + 1}`;
-      const annotation = buildAnnotation(
+  function commitFeedback(annotationId: string, draft: string) {
+    const text = draft.trim();
+    if (!text) {
+      // An empty note is nothing. Drop it rather than leaving an empty box
+      // bordered onto the document.
+      setAnnotations((current) => current.filter((a) => a.id !== annotationId));
+    } else {
+      setAnnotations((current) =>
+        current.map((a) => (a.id === annotationId ? { ...a, comment: text } : a)),
+      );
+    }
+    setMode({ kind: 'browse' });
+  }
+
+  /**
+   * `l` is a toggle, so a selection that is already locked comes back off.
+   * A partly locked selection locks the rest: the intent of pressing lock on
+   * something half locked is to end up with it locked.
+   */
+  function toggleLock() {
+    const span = spanAtCursor(rows, selection);
+    if (!span) return setStatus('nothing to lock there');
+
+    let allLocked = true;
+    for (let line = span.start; line <= span.end; line++) {
+      if (!model.lockedLines.has(line)) allLocked = false;
+    }
+    const kind = allLocked ? 'unlock' : 'lock';
+    const id = `${kind === 'lock' ? 'L' : 'u'}${annotations.filter((a) => a.kind === kind).length + 1}`;
+
+    setAnnotations((current) => [
+      ...current,
+      buildAnnotation(
         model.docLines,
         kind,
-        start,
-        end,
-        comment,
+        span.start,
+        span.end,
+        '',
         id,
-        contextSha(model.docLines, { start: start - 1, end: end - 1 }),
-      );
-      return [...current, annotation];
-    });
+        contextSha(model.docLines, { start: span.start - 1, end: span.end - 1 }),
+      ),
+    ]);
+    setStatus(`${kind}ed lines ${span.start}–${span.end} (applies on submit)`);
+    setSelection((s) => reduceSelection(s, { type: 'clear' }, rows.length));
   }
 
-  function deleteAnnotation() {
-    const line = model.rows[selection.cursor]?.newLine;
-    if (line === null || line === undefined) return;
-    const hit = [...annotations]
-      .reverse()
-      .find((a) => a.anchor.start_line <= line && a.anchor.end_line >= line);
-    if (!hit) return setStatus('no annotation on this line');
+  function deleteAtCursor() {
+    const hit = annotationAtCursor();
+    if (!hit) return setStatus('nothing to delete here');
     setAnnotations((current) => current.filter((a) => a.id !== hit.id));
     setStatus(`removed ${hit.id}`);
   }
 
   function finish(action: ReviewResult['action']) {
     if (action === 'submit' && annotations.length === 0 && !general.trim()) {
-      return setStatus('nothing to submit — add a comment with c, or press q to leave');
+      return setStatus('nothing to submit — press f to leave feedback, or x to leave');
     }
     props.onDone({ action, annotations, general });
   }
+
+  /* ---------------------------------------------------------- keyboard */
+
+  useInput(
+    (input, key) => {
+      setStatus(null);
+
+      if (key.downArrow) return move(1);
+      if (key.upArrow) return move(-1);
+      if (key.pageDown) return move(Math.floor(bodyHeight / 2));
+      if (key.pageUp) return move(-Math.floor(bodyHeight / 2));
+
+      if (key.escape) {
+        return setSelection((s) => reduceSelection(s, { type: 'clear' }, rows.length));
+      }
+      if (input === 'v') {
+        return setSelection((s) => reduceSelection(s, { type: 'toggleVisual' }, rows.length));
+      }
+      if (input === ' ') {
+        const gap = rows[selection.cursor]?.gapIndex;
+        if (gap === null || gap === undefined) return;
+        return setExpandedGaps((set) => new Set(set).add(gap));
+      }
+
+      if (input === 'f') return startFeedback();
+      if (input === 'l') return toggleLock();
+      if (input === 'd') return deleteAtCursor();
+      if (input === 'h') return setHiddenFeedback((on) => !on);
+      if (input === 'n') return setMode({ kind: 'note', draft: general });
+      if (input === 's') return finish('submit');
+      if (input === 'a') return setMode({ kind: 'confirm' });
+      if (input === '?') return setMode({ kind: 'help' });
+      if (input === 'x' || input === 'q') return finish('quit');
+    },
+    { isActive: mode.kind === 'browse' },
+  );
+
+  // Editing swallows everything printable, which is the point: `s` has to be
+  // the letter s while a note is being written.
+  useInput(
+    (input, key) => {
+      if (mode.kind !== 'editing' && mode.kind !== 'note') return;
+
+      if (key.escape) {
+        if (mode.kind === 'note') setMode({ kind: 'browse' });
+        // Discarding a brand new note removes it; discarding an edit to an
+        // existing one leaves the original text alone.
+        else if (mode.isNew) commitFeedback(mode.annotationId, '');
+        else setMode({ kind: 'browse' });
+        return;
+      }
+      if (key.return) {
+        if (mode.kind === 'editing') commitFeedback(mode.annotationId, mode.draft);
+        else {
+          setGeneral(mode.draft.trim());
+          setMode({ kind: 'browse' });
+        }
+        return;
+      }
+      if (key.backspace || key.delete) {
+        return setMode({ ...mode, draft: mode.draft.slice(0, -1) });
+      }
+      // Ignore the control keys Ink reports as empty input. A pasted chunk
+      // arrives whole rather than one keystroke at a time.
+      if (input && !key.ctrl && !key.meta) {
+        return setMode({ ...mode, draft: mode.draft + input.replace(/[\r\n]+/g, ' ') });
+      }
+    },
+    { isActive: mode.kind === 'editing' || mode.kind === 'note' },
+  );
+
+  useInput(
+    (input, key) => {
+      if (mode.kind === 'help') return setMode({ kind: 'browse' });
+      if (mode.kind === 'confirm') {
+        if (key.return) return finish('approve');
+        if (key.escape || input === 'n') setMode({ kind: 'browse' });
+      }
+    },
+    { isActive: mode.kind === 'help' || mode.kind === 'confirm' },
+  );
 
   useEffect(() => () => exit(), [exit]);
 
   /* ------------------------------------------------------------ render */
 
-  const width = stdout?.columns ?? 100;
-  const visible = model.rows.slice(offset, offset + bodyHeight);
+  const visible = rows.slice(offset, offset + bodyHeight);
+  const editingId = mode.kind === 'editing' ? mode.annotationId : null;
 
   return (
-    <Box flexDirection="column">
-      <Text>
-        <Text color="cyan" bold>
+    <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+      <Box>
+        <Text bold color="cyan">
           planx
         </Text>
-        <Text dimColor>{' · '}</Text>
+        <Text dimColor>{` v${props.version}   `}</Text>
         <Text>{props.planId}</Text>
-        <Text dimColor>{' · '}</Text>
+        <Text dimColor>{'   '}</Text>
         <Text>
           v{props.versionB}
           {props.versionA === null ? '' : ` ← v${props.versionA}`}
         </Text>
-        <Text dimColor>{' · '}</Text>
-        <Text color="yellow">REVIEW</Text>
-        {model.locks.sealed_at ? <Text color="green">{' · SEALED'}</Text> : null}
-      </Text>
-
-      <Box flexDirection="column">
-        {visible.map((row, i) => {
-          const index = offset + i;
-          const selected = isRowSelected(selection, index);
-          const cursor = index === selection.cursor;
-          const text = truncate(selected ? stripAnsi(row.text) : row.text, width - 1);
-          return (
-            <Text key={index} inverse={selected} bold={cursor && !selected}>
-              {text}
-            </Text>
-          );
-        })}
+        {model.locks.sealed_at ? <Text color="green">{'   sealed'}</Text> : null}
       </Box>
 
       <Box flexDirection="column" marginTop={1}>
-        {annotations.slice(-4).map((a) => (
-          <Text key={a.id} dimColor>
-            {a.kind === 'comment' ? '●' : a.kind === 'lock' ? '🔒' : '🔓'} {a.id}{' '}
-            {`L${a.anchor.start_line}–${a.anchor.end_line}`}{' '}
-            {a.comment ? `"${truncate(a.comment, 60)}"` : `(${a.kind})`}
-          </Text>
+        {visible.map((row, i) => (
+          <RowLine
+            key={offset + i}
+            row={row}
+            width={width}
+            cursor={offset + i === selection.cursor}
+            selected={isRowSelected(selection, offset + i)}
+            editing={row.kind === 'feedback' && row.annotationId === editingId}
+            draft={mode.kind === 'editing' ? mode.draft : ''}
+          />
         ))}
-        {general.trim() ? <Text dimColor>{`note: ${truncate(general, 70)}`}</Text> : null}
-        {openPrevious > 0 ? (
-          <Text dimColor>
-            {`${openPrevious} earlier note${openPrevious === 1 ? '' : 's'} already left on this version`}
-          </Text>
-        ) : null}
-        {status ? <Text color="yellow">{status}</Text> : null}
-        <Text dimColor>
-          {
-            'drag/V select · c comment · l lock · u unlock · d del · n note · S submit · A approve · ? help'
-          }
-        </Text>
       </Box>
 
-      {overlay.kind === 'comment' ? (
-        <TextPrompt
-          label={`Comment on lines ${overlay.start}–${overlay.end}`}
-          quote={overlay.quote}
-          onSubmit={(value) => {
-            if (value.trim()) addAnnotation('comment', overlay.start, overlay.end, value.trim());
-            setOverlay({ kind: 'none' });
-            setSelection((s) => reduceSelection(s, { type: 'clear' }, model.rows.length));
-          }}
-          onCancel={() => setOverlay({ kind: 'none' })}
-        />
-      ) : null}
-
-      {overlay.kind === 'general' ? (
-        <TextPrompt
-          label="General note (applies to the whole plan)"
-          initialValue={general}
-          onSubmit={(value) => {
-            setGeneral(value);
-            setOverlay({ kind: 'none' });
-          }}
-          onCancel={() => setOverlay({ kind: 'none' })}
-        />
-      ) : null}
-
-      {overlay.kind === 'confirm' ? (
-        <Box
-          borderStyle="round"
-          borderColor={overlay.verdict === 'approve' ? 'green' : 'red'}
-          paddingX={1}
-          flexDirection="column"
-        >
-          <Text bold>
-            {overlay.verdict === 'approve'
-              ? `Approve v${props.versionB}? This seals the plan — every section becomes locked.`
-              : `Reject v${props.versionB}? The agent will stop and ask.`}
+      {mode.kind === 'confirm' ? (
+        <Box borderStyle="round" borderColor="green" paddingX={1} flexDirection="column">
+          <Text bold>{`Approve v${props.versionB}?`}</Text>
+          <Text dimColor>
+            {'This seals the plan — every section becomes locked. enter to approve · esc to cancel'}
           </Text>
-          <Text dimColor>y to confirm · n or esc to cancel</Text>
         </Box>
       ) : null}
 
-      {overlay.kind === 'help' ? <HelpOverlay /> : null}
+      {mode.kind === 'help' ? <HelpOverlay /> : null}
+
+      <Box flexDirection="column" marginTop={1}>
+        {status ? <Text color="yellow">{status}</Text> : null}
+        {general.trim() ? <Text dimColor>{`note: ${truncate(general, 70)}`}</Text> : null}
+        {props.previous.length ? (
+          <Text dimColor>
+            {`${props.previous.length} earlier note${props.previous.length === 1 ? '' : 's'} already left on this version`}
+          </Text>
+        ) : null}
+        <Text dimColor>{footerFor(mode)}</Text>
+      </Box>
+
+      <Box justifyContent="flex-end">
+        <Text dimColor>{`★ ${REPO} · bugs and ideas welcome in issues`}</Text>
+      </Box>
     </Box>
+  );
+}
+
+function footerFor(mode: Mode): string {
+  if (mode.kind === 'editing') return 'type your note · enter to save · esc to discard';
+  if (mode.kind === 'note') {
+    return 'a note about the whole plan · enter to save · esc to cancel · press f instead to comment on selected lines';
+  }
+  // Short enough not to wrap on a narrow terminal; `?` has the full list.
+  return 'v select · f feedback · l lock · s submit · a approve · x exit · ? help';
+}
+
+interface RowLineProps {
+  row: ViewRow;
+  width: number;
+  cursor: boolean;
+  selected: boolean;
+  editing: boolean;
+  draft: string;
+}
+
+/**
+ * One drawn line, with the cursor arrow in a gutter of its own.
+ *
+ * The arrow lives here rather than in the row text so moving it costs a
+ * re-render of the visible slice, not a rebuild of the whole document.
+ */
+function RowLine({ row, width, cursor, selected, editing, draft }: RowLineProps) {
+  const arrow = cursor ? '▸' : ' ';
+
+  if (row.kind === 'feedback') {
+    if (row.part !== 'body') {
+      return (
+        <Text>
+          <Text color="cyan">{`${arrow} `}</Text>
+          <Text color="blue">{row.text}</Text>
+        </Text>
+      );
+    }
+    return (
+      <Text>
+        <Text color="cyan">{`${arrow} `}</Text>
+        <Text color="blue">{'┆ '}</Text>
+        <Text>{truncate(editing ? draft : row.text, width - 8)}</Text>
+        {editing ? <Text inverse> </Text> : null}
+      </Text>
+    );
+  }
+
+  const text = truncate(selected ? stripAnsi(row.text) : row.text, width - 6);
+  return (
+    <Text>
+      <Text color="cyan">{`${arrow} `}</Text>
+      <Text inverse={selected}>{text}</Text>
+    </Text>
   );
 }
 
 function HelpOverlay() {
   const rows: Array<[string, string]> = [
-    ['j k ↑ ↓', 'move the cursor'],
-    ['ctrl-d / ctrl-u', 'half a page'],
-    ['g / G', 'top / bottom'],
-    ['V', 'start or end a line selection'],
-    ['drag', 'select with the mouse (always whole lines)'],
-    ['m', 'toggle mouse capture, so the terminal can select text again'],
+    ['↑ ↓', 'move'],
+    ['v', 'start or end a selection, then ↑ ↓ to extend'],
+    ['f', 'feedback on the selection, or edit the note under the cursor'],
+    ['l', 'lock or unlock the selection'],
+    ['d', 'delete the note under the cursor'],
+    ['h', 'hide or show the note bodies'],
     ['space', 'expand the collapsed run under the cursor'],
-    ['c', 'comment on the selection'],
-    ['l / u', 'lock / unlock the selection'],
-    ['d', 'delete the annotation under the cursor'],
-    ['n', 'general note about the whole plan'],
-    ['S', 'submit everything at once'],
-    ['A / R', 'approve (seals the plan) / reject'],
-    ['q', 'leave without submitting'],
+    ['n', 'a note about the whole plan'],
+    ['s', 'submit everything at once'],
+    ['a', 'approve — seals the plan'],
+    ['x', 'leave without submitting'],
   ];
   return (
     <Box borderStyle="round" borderColor="cyan" paddingX={1} flexDirection="column">
@@ -387,7 +446,7 @@ function HelpOverlay() {
       </Text>
       {rows.map(([keys, what]) => (
         <Text key={keys}>
-          <Text color="yellow">{keys.padEnd(18)}</Text>
+          <Text color="yellow">{keys.padEnd(8)}</Text>
           <Text dimColor>{what}</Text>
         </Text>
       ))}

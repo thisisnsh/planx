@@ -140,14 +140,17 @@ describe('rich rendering', () => {
     expect(locked.text).toContain('[L2]');
   });
 
-  it('tags annotated lines with their annotation ids', () => {
+  it('marks annotated lines with a dotted left edge', () => {
     setColorEnabled(false);
     const rows = diffVersions('a\nb\n', 'a\nB\n');
     const lines = renderRichLines(collapse(rows), {
       mode: 'rich',
       annotated: new Map([[2, ['a1', 'a2']]]),
     });
-    expect(lines.find((l) => l.newLine === 2)!.text).toContain('●a1 ●a2');
+    // The note itself is rendered below the line, so the line only carries the
+    // edge that brackets it.
+    expect(lines.find((l) => l.newLine === 2)!.text).toContain('╎');
+    expect(lines.find((l) => l.newLine === 1)!.text).not.toContain('╎');
   });
 
   it('keeps deletions addressable but outside the new-version numbering', () => {

@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { fuzzyFilter, fuzzyMatch } from '../src/tui/fuzzy.js';
-import { hasMouseSequence, parseMouse } from '../src/tui/mouse.js';
 import {
   initialSelection,
-  isRowSelected,
   reduceSelection,
   scrollFor,
   selectedRows,
@@ -31,49 +29,6 @@ function run(events: SelectionEvent[], rows = ROWS): SelectionState {
     initialSelection(),
   );
 }
-
-describe('mouse parsing', () => {
-  it('decodes press, drag and release', () => {
-    const { events } = parseMouse('\x1b[<0;12;5M\x1b[<32;20;9M\x1b[<0;20;9m');
-    expect(events.map((e) => [e.type, e.col, e.row])).toEqual([
-      ['down', 12, 5],
-      ['drag', 20, 9],
-      ['up', 20, 9],
-    ]);
-  });
-
-  it('decodes wheel events with a direction', () => {
-    const { events } = parseMouse('\x1b[<64;1;1M\x1b[<65;1;1M');
-    expect(events.map((e) => [e.type, e.direction])).toEqual([
-      ['scroll', -1],
-      ['scroll', 1],
-    ]);
-  });
-
-  it('strips sequences so they never reach the keyboard handler', () => {
-    const { events, rest } = parseMouse('a\x1b[<0;1;1Mb\x1b[<0;1;1mc');
-    expect(rest).toBe('abc');
-    expect(events).toHaveLength(2);
-  });
-
-  it('leaves plain keystrokes untouched', () => {
-    expect(parseMouse('cScq')).toEqual({ events: [], rest: 'cScq' });
-    expect(hasMouseSequence('cScq')).toBe(false);
-    expect(hasMouseSequence('\x1b[<0;1;1M')).toBe(true);
-  });
-
-  it('decodes the form Ink delivers, with the ESC already consumed', () => {
-    // Ink's input parser strips the leading ESC before calling useInput, so the
-    // app sees `[<0;12;5M`. Failing to match this is a silently dead mouse.
-    const { events } = parseMouse('[<0;12;5M');
-    expect(events).toEqual([{ type: 'down', button: 0, col: 12, row: 5, direction: 0 }]);
-    expect(hasMouseSequence('[<0;12;5M')).toBe(true);
-  });
-
-  it('handles a sequence split across reads without inventing events', () => {
-    expect(parseMouse('\x1b[<0;12').events).toHaveLength(0);
-  });
-});
 
 describe('keyboard selection', () => {
   it('starts a visual selection at the cursor and extends it', () => {
@@ -110,45 +65,19 @@ describe('keyboard selection', () => {
   });
 });
 
-describe('mouse selection', () => {
-  it('snaps a drag to whole lines regardless of column', () => {
-    const state = run([
-      { type: 'mouseDown', index: 1 },
-      { type: 'mouseDrag', index: 2 },
-      { type: 'mouseUp', index: 2 },
-    ]);
-    expect(spanOf(ROWS, state)).toEqual({ start: 2, end: 3 });
-  });
-
-  it('keeps the selection after the button is released', () => {
-    const state = run([
-      { type: 'mouseDown', index: 0 },
-      { type: 'mouseUp', index: 2 },
-    ]);
-    expect(isRowSelected(state, 1)).toBe(true);
-  });
-
-  it('ignores drag and release with no press behind them', () => {
-    expect(selectedRows(run([{ type: 'mouseDrag', index: 3 }]))).toBeNull();
-    expect(selectedRows(run([{ type: 'mouseUp', index: 3 }]))).toBeNull();
-  });
-});
-
 describe('mapping a selection to lines', () => {
   it('skips deletions and gaps inside the range', () => {
     const state = run([
-      { type: 'mouseDown', index: 2 },
-      { type: 'mouseDrag', index: 6 },
+      { type: 'moveTo', index: 2 },
+      { type: 'toggleVisual' },
+      { type: 'moveTo', index: 6 },
     ]);
     // Rows 3 and 5 have no new-version line; the span spreads from 3 to 5.
     expect(spanOf(ROWS, state)).toEqual({ start: 3, end: 5 });
   });
 
   it('returns null for a selection of only deletions and gaps', () => {
-    const state = run([
-      { type: 'mouseDown', index: 5 },
-      { type: 'mouseDrag', index: 5 },
-    ]);
+    const state = run([{ type: 'moveTo', index: 5 }, { type: 'toggleVisual' }]);
     expect(spanOf(ROWS, state)).toBeNull();
   });
 

@@ -206,6 +206,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     args,
     json: has(args, '--json'),
     mode,
+    version,
     out: (text) => process.stdout.write(`${text}\n`),
     err: (text) => process.stderr.write(`${text}\n`),
   };

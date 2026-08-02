@@ -4,6 +4,7 @@ import type { Block, DiffRow, Segment } from '../diff/types.js';
 import {
   bgGreen,
   bgRed,
+  blue,
   bold,
   cyan,
   dim,
@@ -30,6 +31,9 @@ export interface DiffRenderOptions {
 
 const LOCK_ICON = '🔒';
 const GAP_MARKER = '⋯';
+/** Left edge drawn beside lines carrying feedback. Dotted, so it reads as a
+ *  margin note rather than another kind of diff marker. */
+const ANNOTATED_EDGE = '╎';
 
 /* ------------------------------------------------------------------ rich */
 
@@ -39,21 +43,23 @@ export function lineNumberWidth(rows: DiffRow[]): number {
 }
 
 /**
- * The fixed-width prefix: lock marker, change sign, line number.
+ * The fixed-width prefix: lock marker, annotation edge, change sign, number.
  *
- * Fixed width matters more than it looks — it is what makes a mouse column
- * usable for hit-testing the gutter, and what keeps the text column aligned so
- * a dragged selection reads as a block.
+ * Fixed width is what keeps the text column aligned, so a multi-line selection
+ * reads as a block rather than a ragged stack. The cursor is deliberately *not*
+ * here: it moves on every keypress, and baking it into this string would mean
+ * re-rendering every line in the document to move an arrow one row.
  */
 export function renderGutter(
   row: DiffRow,
-  opts: { numberWidth: number; lockId?: string | undefined },
+  opts: { numberWidth: number; lockId?: string | undefined; annotated?: boolean },
 ): string {
   const lock = opts.lockId ? LOCK_ICON : '  ';
+  const edge = opts.annotated ? blue(ANNOTATED_EDGE) : ' ';
   const sign = row.kind === 'add' ? green('+') : row.kind === 'del' ? red('-') : ' ';
   const number = row.newLine ?? row.oldLine;
   const num = padStart(number === null ? '' : String(number), opts.numberWidth);
-  return `${lock} ${sign} ${dim(num)}  `;
+  return `${lock}${edge} ${sign} ${dim(num)}  `;
 }
 
 /**
@@ -103,7 +109,7 @@ export function renderRichLines(blocks: Block[], opts: DiffRenderOptions): Rende
       // Deleted lines never existed in the new document, so they must not
       // advance the fence tracker; hidden context lines must.
       for (const row of block.rows) if (row.kind !== 'del') highlightLine(row.text, state);
-      const pad = ' '.repeat(numberWidth + 5);
+      const pad = ' '.repeat(numberWidth + 6);
       out.push({
         text: `${pad}${dim(`${GAP_MARKER} ${block.count} unchanged lines (space to expand)`)}`,
         newLine: null,
@@ -114,10 +120,9 @@ export function renderRichLines(blocks: Block[], opts: DiffRenderOptions): Rende
 
     for (const row of block.rows) {
       const lockId = row.newLine === null ? undefined : opts.lockedLines?.get(row.newLine);
-      const gutter = renderGutter(row, { numberWidth, lockId });
-      let text = renderRowText(row, state);
       const marks = row.newLine === null ? undefined : opts.annotated?.get(row.newLine);
-      if (marks?.length) text += dim(`   ●${marks.join(' ●')}`);
+      const gutter = renderGutter(row, { numberWidth, lockId, annotated: Boolean(marks?.length) });
+      let text = renderRowText(row, state);
       if (lockId) text += dim(`   [${lockId}]`);
       out.push({ text: `${gutter}${text}`, newLine: row.newLine, gapIndex: null });
     }

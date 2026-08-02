@@ -1,9 +1,7 @@
 /**
  * Selection is line-based, everywhere.
  *
- * You cannot select a sub-line span: dragging from the middle of one line to
- * the middle of another selects both lines entirely. This is a constraint, not
- * a shortcut. A word-level anchor gives the model an ambiguous target — "this
+ * You cannot select a sub-line span. This is a constraint, not a shortcut. A word-level anchor gives the model an ambiguous target — "this
  * word, in a sentence you are about to rewrite anyway" — while a line range
  * gives it a self-contained unit it can reason about and replace. It also means
  * feedback anchors, lock anchors and diff hunks share one coordinate system, so
@@ -24,7 +22,7 @@ export interface SelectionState {
   /** Where the selection started; null when nothing is being selected. */
   anchor: number | null;
   cursor: number;
-  /** True while dragging or in keyboard visual mode. */
+  /** True while a selection is being extended. */
   active: boolean;
 }
 
@@ -36,10 +34,7 @@ export type SelectionEvent =
   | { type: 'move'; delta: number }
   | { type: 'moveTo'; index: number }
   | { type: 'toggleVisual' }
-  | { type: 'clear' }
-  | { type: 'mouseDown'; index: number }
-  | { type: 'mouseDrag'; index: number }
-  | { type: 'mouseUp'; index: number };
+  | { type: 'clear' };
 
 export function reduceSelection(
   state: SelectionState,
@@ -56,28 +51,15 @@ export function reduceSelection(
       return { ...state, cursor: clamp(event.index) };
     }
     case 'toggleVisual': {
-      // Keyboard visual mode is not optional. Mouse capture hijacks the
-      // terminal's own text selection, which infuriates anyone trying to copy a
-      // line out, so `m` can turn the mouse off — and then this is the only way
-      // to select anything (PLAN §8).
+      // `v` anchors here and the arrows extend from it, which is the only way
+      // to select. Mouse capture used to be the other way in, but it hijacked
+      // the terminal's own text selection, so copying a line out of a plan
+      // stopped working — a bad trade for a drag (PLAN §8).
       if (state.active) return { ...state, active: false, anchor: null };
       return { ...state, active: true, anchor: state.cursor };
     }
     case 'clear': {
       return { ...state, active: false, anchor: null };
-    }
-    case 'mouseDown': {
-      return { anchor: clamp(event.index), cursor: clamp(event.index), active: true };
-    }
-    case 'mouseDrag': {
-      if (!state.active) return state;
-      return { ...state, cursor: clamp(event.index) };
-    }
-    case 'mouseUp': {
-      if (!state.active) return state;
-      // The selection survives the release: you drag, then press `c` to comment
-      // on it. Clearing here would make every drag a no-op.
-      return { ...state, cursor: clamp(event.index) };
     }
   }
 }
@@ -130,7 +112,7 @@ export function spanOf(rows: readonly SelectableRow[], state: SelectionState): L
 /**
  * The span to act on when nothing is selected: the cursor's own line.
  *
- * Pressing `c` without selecting first should comment on the line under the
+ * Pressing `f` without selecting first should comment on the line under the
  * cursor rather than doing nothing — an explicit selection is for ranges.
  */
 export function spanAtCursor(
