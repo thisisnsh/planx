@@ -1,4 +1,5 @@
 import { watch, type FSWatcher } from 'node:fs';
+import { cleanupOnSignals } from '../signals.js';
 import { ensureDir } from '../store/atomic.js';
 import { ulid } from '../store/ids.js';
 import { paths } from '../store/paths.js';
@@ -22,6 +23,19 @@ import { AwaitRequestSchema, type AwaitRequest, type Feedback } from '../store/t
  * of broken (PLAN §5).
  */
 const POLL_MS = 500;
+
+/**
+ * Floor on how long one wait may take, however early the watcher fires.
+ *
+ * `fs.watch` reports *activity*, not "your answer arrived", and the directories
+ * we watch are busy: every atomic write lands as a temp file plus a rename, a
+ * second `await` on the same plan writes and deletes its own request, and the
+ * TUI writes feedback while we are sitting here. Without a floor each of those
+ * events returns from the wait instantly, the loop re-checks and re-arms with
+ * no delay, and a 500ms poll becomes a spin that pins a core for the whole
+ * timeout. The floor also coalesces the temp+rename pair into a single wake.
+ */
+const MIN_WAIT_MS = 50;
 
 export type AwaitOutcome<T> = { kind: 'ready'; value: T } | { kind: 'timeout'; waitedSec: number };
 
@@ -50,6 +64,12 @@ async function awaitOn<T>(
   const started = Date.now();
   const deadline = started + timeoutSec * 1000;
 
+  // An await that is cancelled — ctrl-c, a closed terminal, a harness giving up
+  // on the call — must still retract its request. Left behind, it sits in the
+  // inbox for its full 24h TTL and the TUI keeps insisting an agent is waiting
+  // on a process that died hours ago.
+  const detach = cleanupOnSignals(() => removeRequest(planId, request.id));
+
   try {
     for (;;) {
       const value = check();
@@ -65,20 +85,26 @@ async function awaitOn<T>(
       );
     }
   } finally {
+    detach();
     removeRequest(planId, request.id);
   }
 }
 
-/** Resolve on the first filesystem event in any directory, or after `ms`. */
-function sleepUntilChange(dirs: string[], ms: number): Promise<void> {
+/**
+ * Resolve on the first filesystem event in any directory, or after `ms` —
+ * but never sooner than `minMs`, so an event storm cannot turn the caller's
+ * loop into a spin.
+ */
+function sleepUntilChange(dirs: string[], ms: number, minMs = MIN_WAIT_MS): Promise<void> {
+  const floor = Math.min(minMs, ms);
+
   return new Promise((resolve) => {
     const watchers: FSWatcher[] = [];
+    const started = Date.now();
     let done = false;
+    let floorTimer: ReturnType<typeof setTimeout> | undefined;
 
-    const finish = () => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
+    const closeWatchers = () => {
       for (const w of watchers) {
         try {
           w.close();
@@ -86,13 +112,33 @@ function sleepUntilChange(dirs: string[], ms: number): Promise<void> {
           /* already closed */
         }
       }
+      watchers.length = 0;
+    };
+
+    const settle = () => {
+      clearTimeout(timer);
+      clearTimeout(floorTimer);
+      closeWatchers();
       resolve();
     };
 
+    const finish = () => {
+      if (done) return;
+      done = true;
+      // Stop listening before serving out the floor, so a burst of further
+      // events cannot queue up callbacks behind us.
+      closeWatchers();
+      const remaining = floor - (Date.now() - started);
+      if (remaining <= 0) return settle();
+      floorTimer = setTimeout(settle, remaining);
+    };
+
+    // Deliberately not unref'd. This timer is the only thing guaranteed to be
+    // pending when every `watch` below fails — on a missing directory, or at
+    // the EMFILE ceiling — and unref'ing it there drains the event loop and
+    // exits the process mid-await, silently, instead of returning the
+    // resumable timeout the caller is written to expect.
     const timer = setTimeout(finish, ms);
-    // Do not hold the event loop open on the timer alone; the caller's loop
-    // decides when this process is finished.
-    timer.unref?.();
 
     for (const dir of dirs) {
       try {
