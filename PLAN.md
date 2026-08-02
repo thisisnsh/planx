@@ -455,13 +455,13 @@ A **postinstall** runs `planx install` idempotently: writes skills to `~/.claude
 
 **`scripts/release-staging.js`** — from a clean local checkout: verify npm login → test → build → publish `--tag staging`. The version is derived at publish time as `<version-in-package.json>-staging.<n>`, where `n` is the next suffix available on npm. The script temporarily updates the package files and restores them on every exit path.
 
-**`release.yml`** — on `release: published`: set the package version from the stable semver release tag, test → build → publish `--tag latest`, then commit the next patch target back to `main`. It builds from the release tag's source, so a `latest` publish is the same source tree that was on `staging`, minus the prerelease suffix.
+**`release.yml`** — on `release: published`: set the package version from the stable semver release tag inside the runner, test → build → publish `--tag latest`. It does not predict or commit another version. It builds from the release tag's source, so a `latest` publish is the same source tree that was on `staging`, minus the prerelease suffix.
 
 Promoting the staging artifact via `npm dist-tag add` instead would reuse the exact tested bytes, but it would leave `latest` pointing at a version literally named `1.2.0-staging.47` — every `planx --version` and bug report would carry the suffix. A clean rebuild from the tag is worth more than byte-identity here.
 
 Staging authenticates with the maintainer's local npm login. Production uses npm trusted publishing with GitHub Actions OIDC, without a long-lived token.
 
-Cutting a release is: create a GitHub Release from the tip of `main` with the desired semver tag. The workflow sets that package version, publishes it, and advances `package.json` to the next patch target. `planx --version` reports its channel (`1.2.0` vs `1.2.0-staging.47`), so a bug report says which one you're on.
+Cutting a release is: create a GitHub Release from the tip of `main` with the desired semver tag. The workflow sets that exact package version in the runner and publishes it without predicting the next one. `planx --version` reports its channel (`1.2.0` vs `1.2.0-staging.47`), so a bug report says which one you're on.
 
 ---
 
@@ -490,7 +490,7 @@ The things an OSS repo needs before anyone else can usefully touch it.
 The runbook, written so a release is mechanical:
 
 1. **Channels** — the table from §13: a local staging command → `staging`; GitHub Release → `latest`.
-2. **Cutting a release** — merge the release source, smoke-test `npm i -g @thisisnsh/planx@staging`, then create the GitHub Release from `main` with the desired semver tag. `release.yml` sets the version, publishes it, and advances the next patch target.
+2. **Cutting a release** — merge the release source, smoke-test `npm i -g @thisisnsh/planx@staging`, then create the GitHub Release from `main` with the desired semver tag. `release.yml` sets and publishes that exact version without committing a future version.
 3. **Version policy** — semver. Pre-1.0, breaking changes bump minor. The **`~/.planx` on-disk format is versioned independently** and any migration is described in the GitHub Release notes; that's the thing users can't roll back cleanly.
 4. **Rollback** — `npm dist-tag add @thisisnsh/planx@1.1.3 latest` repoints `latest` in seconds and is the first move, always. `npm deprecate` the bad version with a message pointing at the issue. **Unpublish only works within 72 hours** and breaks anyone who pinned the version, so it's a last resort, documented as such rather than left for someone to discover under pressure.
 5. **Prerequisites** — a maintainer npm login for staging, trusted publishing plus workflow `id-token: write` for production, and who can create releases.

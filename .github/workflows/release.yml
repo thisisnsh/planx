@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write # advance package.json to the next release target after publishing
+  contents: read
   id-token: write # OIDC for trusted publishing, and provenance
 
 jobs:
@@ -44,7 +44,6 @@ jobs:
       # without first making a version-only commit; npm updates both manifests
       # in the runner before anything is built or published.
       - name: Set package version from the release tag
-        id: version
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
@@ -54,7 +53,6 @@ jobs:
             exit 1
           fi
           npm version "$VERSION" --no-git-tag-version --allow-same-version
-          echo "release=$VERSION" >> "$GITHUB_OUTPUT"
 
       # The postinstall writes skills into ~/.claude and ~/.codex. It already
       # no-ops in a planx checkout, but being explicit means a change to that
@@ -72,22 +70,3 @@ jobs:
       # Scoped packages are private by default, so --access public is required.
       - name: Publish
         run: npm publish --tag latest --access public
-
-      # package.json is the next release target used by staging. Advance its
-      # patch after a successful publish and commit that small bookkeeping
-      # change back to main. Pushing the release tag's child commit is
-      # fast-forward-only, so a release cut from stale source cannot overwrite
-      # newer work on main.
-      - name: Prepare the next release target
-        env:
-          RELEASE_VERSION: ${{ steps.version.outputs.release }}
-        run: |
-          npm version patch --no-git-tag-version
-          NEXT_VERSION=$(node -p "require('./package.json').version")
-          npm run docs:cli
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json package-lock.json site/reference/cli.md
-          git commit -m "chore(release): prepare v$NEXT_VERSION"
-          git push origin HEAD:main
-          echo "Published $RELEASE_VERSION; package.json now targets $NEXT_VERSION"

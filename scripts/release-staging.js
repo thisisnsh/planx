@@ -8,8 +8,8 @@
 // cannot become `latest` by default either.
 //
 // The version is synthesised at publish time and package.json is never left
-// modified: the committed version is "the next release target", and rewriting
-// it in a commit would mean bot churn on main for every dogfood build.
+// modified: rewriting it in a commit would mean bot churn on main for every
+// dogfood build.
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -44,7 +44,7 @@ const original = readFileSync(pkgPath, 'utf8');
 const { name, version: base } = JSON.parse(original);
 
 if (base.includes('-')) {
-  die(`package.json version (${base}) is already a prerelease. Set it to the next release target.`);
+  die(`package.json version (${base}) is already a prerelease. Set it to a stable base version.`);
 }
 
 // npm reports a misleading 404 when a publish is unauthenticated. Check the
