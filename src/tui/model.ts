@@ -28,9 +28,15 @@ export interface FeedbackRow {
   kind: 'feedback';
   /** Which annotation this belongs to, so `d` knows what to remove. */
   annotationId: string;
-  /** Box edges carry no text; only `body` is editable. */
-  part: 'top' | 'body' | 'bottom';
+  /** Box edges are drawn whole; only `body` carries editable text. */
+  part: 'top' | 'body' | 'bottom' | 'collapsed';
   text: string;
+  /** The caret sits after the last body line while the note is being typed. */
+  last: boolean;
+  /** Columns the box occupies, so the closing edge lands in the same column. */
+  boxWidth: number;
+  /** Blank prefix aligning the box under the text column. */
+  gutter: string;
   /** Feedback rows annotate lines but do not occupy one, so they never
    *  contribute to a selection span. */
   newLine: null;
@@ -49,6 +55,8 @@ export interface ReviewModel {
   lockedLines: ReadonlyMap<number, string>;
   blocks: Block[];
   rows: ViewRow[];
+  /** Columns before the text column, for anything drawing under it. */
+  gutterWidth: number;
 }
 
 export interface BuildModelOptions {
@@ -58,8 +66,14 @@ export interface BuildModelOptions {
   mode: RenderMode;
   expandedGaps: ReadonlySet<number>;
   annotations: readonly Annotation[];
-  /** Collapse the note bodies, keeping the dotted edge on the lines. */
+  /** Columns available for gutter and text together. */
+  width: number;
+  /** Collapse every note to its title row. */
   hiddenFeedback?: boolean;
+  /** Notes collapsed one at a time, by id. */
+  collapsedFeedback?: ReadonlySet<string>;
+  /** The note being typed right now, so the box grows under the cursor. */
+  draft?: { annotationId: string; text: string } | null;
 }
 
 /**
@@ -89,18 +103,20 @@ export function buildModel(opts: BuildModelOptions): ReviewModel {
   );
 
   const lockedLines = lockedLineMap(docLines, locks);
-  const rendered = renderRichLines(shown, {
-    mode: opts.mode,
-    lockedLines,
-    annotated: annotationMap(opts.annotations),
-  });
+  const rendered = renderRichLines(shown, { mode: opts.mode, lockedLines });
+
+  // The box hangs under the text column, so it reads as attached to the passage
+  // rather than as a second gutter. Capped, because a note stretched across a
+  // very wide terminal is harder to read, not easier.
+  const boxWidth = Math.max(24, Math.min(MAX_BOX_WIDTH, opts.width - rendered.gutterWidth));
+  const gutter = ' '.repeat(rendered.gutterWidth);
 
   // renderRichLines emits one line per row and one per collapsed gap, in block
   // order, so walking the blocks in parallel recovers which block each came from.
   const rows: ViewRow[] = [];
   let blockIndex = 0;
   let withinBlock = 0;
-  for (const line of rendered) {
+  for (const line of rendered.lines) {
     while (blockIndex < shown.length && withinBlock >= visibleHeight(shown[blockIndex]!)) {
       blockIndex++;
       withinBlock = 0;
@@ -110,10 +126,13 @@ export function buildModel(opts: BuildModelOptions): ReviewModel {
 
     // A note belongs directly under the last line it refers to, so it reads as
     // a margin comment on that passage rather than a footnote.
-    if (line.newLine !== null && !opts.hiddenFeedback) {
-      for (const annotation of endingAt(opts.annotations, line.newLine)) {
-        rows.push(...feedbackRows(annotation, blockIndex));
-      }
+    if (line.newLine === null) continue;
+    for (const annotation of endingAt(opts.annotations, line.newLine)) {
+      const text =
+        opts.draft?.annotationId === annotation.id ? opts.draft.text : annotation.comment;
+      const collapsed =
+        Boolean(opts.hiddenFeedback) || Boolean(opts.collapsedFeedback?.has(annotation.id));
+      rows.push(...feedbackRows(annotation.id, text, { blockIndex, boxWidth, gutter, collapsed }));
     }
   }
 
@@ -126,6 +145,7 @@ export function buildModel(opts: BuildModelOptions): ReviewModel {
     lockedLines,
     blocks,
     rows,
+    gutterWidth: rendered.gutterWidth,
   };
 }
 
@@ -138,27 +158,74 @@ function endingAt(annotations: readonly Annotation[], line: number): Annotation[
   return annotations.filter((a) => a.kind === 'comment' && a.anchor.end_line === line);
 }
 
-const BOX_WIDTH = 58;
+const MAX_BOX_WIDTH = 72;
+/** `│ ` and ` │` — what the frame costs the text inside it. */
+const BOX_PADDING = 4;
 
-function feedbackRows(annotation: Annotation, blockIndex: number): FeedbackRow[] {
-  const base = { annotationId: annotation.id, newLine: null, gapIndex: null, blockIndex } as const;
-  const body = annotation.comment.length ? wrapComment(annotation.comment) : [''];
-  // Dashed, and deliberately not the glyphs the screen frame uses: a note has
-  // to read as pinned to the passage above it, not as another panel.
+interface BoxOptions {
+  blockIndex: number;
+  boxWidth: number;
+  gutter: string;
+  collapsed: boolean;
+}
+
+/**
+ * A note as a closed box under the line it annotates.
+ *
+ * Closed on all four sides, in solid glyphs. The half-open dashed bracket it
+ * replaced read as an unfinished panel rather than as a comment — a box you can
+ * see the end of is a box you can trust you have read all of.
+ */
+function feedbackRows(id: string, comment: string, opts: BoxOptions): FeedbackRow[] {
+  const { boxWidth, gutter, blockIndex } = opts;
+  const base = {
+    kind: 'feedback' as const,
+    annotationId: id,
+    newLine: null,
+    gapIndex: null,
+    blockIndex,
+    boxWidth,
+    gutter,
+    last: false,
+  };
+  const rule = '─'.repeat(Math.max(0, boxWidth - 2));
+
+  if (opts.collapsed) {
+    // One row carrying its own title, so a collapsed note still says what it
+    // is. The caret is the same one the cursor uses: it points at hidden text.
+    const title = ` ▸ ${firstLine(comment)} `;
+    const fill = Math.max(0, boxWidth - 3 - title.length);
+    return [{ ...base, part: 'collapsed', text: `╭─${title}${'─'.repeat(fill)}╮`, last: true }];
+  }
+
+  const body = comment.length ? wrapComment(comment, boxWidth - BOX_PADDING) : [''];
   return [
-    { ...base, kind: 'feedback', part: 'top', text: `╭${'╌'.repeat(BOX_WIDTH)}` },
-    ...body.map((text) => ({ ...base, kind: 'feedback' as const, part: 'body' as const, text })),
-    { ...base, kind: 'feedback', part: 'bottom', text: `╰${'╌'.repeat(BOX_WIDTH)}` },
+    { ...base, part: 'top', text: `╭${rule}╮` },
+    ...body.map((text, i) => ({
+      ...base,
+      part: 'body' as const,
+      text,
+      last: i === body.length - 1,
+    })),
+    { ...base, part: 'bottom', text: `╰${rule}╯` },
   ];
 }
 
+/** The note reduced to a title: enough to recognise it, never enough to wrap. */
+function firstLine(comment: string): string {
+  const text = comment.split('\n')[0]?.trim() ?? '';
+  if (!text) return 'empty note';
+  return text.length > 40 ? `${text.slice(0, 39)}…` : text;
+}
+
 /** Wrap on words so a long note does not run off the right edge. */
-function wrapComment(comment: string): string[] {
+export function wrapComment(comment: string, width: number): string[] {
+  const limit = Math.max(8, width);
   const out: string[] = [];
   for (const paragraph of comment.split('\n')) {
     let current = '';
     for (const word of paragraph.split(/\s+/).filter(Boolean)) {
-      if (current && `${current} ${word}`.length > BOX_WIDTH - 2) {
+      if (current && `${current} ${word}`.length > limit) {
         out.push(current);
         current = word;
       } else {
@@ -168,20 +235,6 @@ function wrapComment(comment: string): string[] {
     out.push(current);
   }
   return out.length ? out : [''];
-}
-
-/** new-version line → the annotation ids sitting on it, for the dotted edge. */
-export function annotationMap(annotations: readonly Annotation[]): Map<number, string[]> {
-  const map = new Map<number, string[]>();
-  for (const annotation of annotations) {
-    if (annotation.kind !== 'comment') continue;
-    for (let line = annotation.anchor.start_line; line <= annotation.anchor.end_line; line++) {
-      const existing = map.get(line);
-      if (existing) existing.push(annotation.id);
-      else map.set(line, [annotation.id]);
-    }
-  }
-  return map;
 }
 
 /** The first row showing a given new-version line, for jumping to an annotation. */

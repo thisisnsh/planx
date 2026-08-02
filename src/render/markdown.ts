@@ -1,4 +1,4 @@
-import { bold, cyan, dim, green, italic, underline, yellow } from './ansi.js';
+import { bold, dim, green, italic, signal, underline } from './ansi.js';
 
 /**
  * Enough markdown highlighting to read a plan comfortably, and no more.
@@ -48,7 +48,7 @@ export function highlightLine(line: string, state: MarkdownState): string {
 
   const heading = HEADING.exec(line);
   if (heading) {
-    return `${heading[1]}${dim(heading[2]!)}${heading[3]}${bold(cyan(inline(heading[4]!)))}`;
+    return `${heading[1]}${dim(heading[2]!)}${heading[3]}${bold(signal(inline(heading[4]!)))}`;
   }
 
   const quote = QUOTE.exec(line);
@@ -62,7 +62,7 @@ export function highlightLine(line: string, state: MarkdownState): string {
 
   const list = LIST.exec(line);
   if (list) {
-    return `${list[1]}${yellow(list[2]!)}${list[3]}${inline(list[4]!)}`;
+    return `${list[1]}${signal(list[2]!)}${list[3]}${inline(list[4]!)}`;
   }
 
   return inline(line);
@@ -83,7 +83,9 @@ const INLINE =
  */
 function inline(text: string): string {
   return text.replace(INLINE, (match, _ticks, code, b1, b2, i1, i2, linkText, href) => {
-    if (code !== undefined) return yellow(match);
+    // Green, the same as a fenced block: code reads as code wherever it sits,
+    // and yellow is spoken for — it means "planx is telling you something".
+    if (code !== undefined) return green(match);
     if (b1 !== undefined) return `${dim('**')}${bold(b1)}${dim('**')}`;
     if (b2 !== undefined) return `${dim('__')}${bold(b2)}${dim('__')}`;
     if (i1 !== undefined) return `${dim('*')}${italic(i1)}${dim('*')}`;

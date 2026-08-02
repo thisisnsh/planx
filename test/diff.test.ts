@@ -128,35 +128,41 @@ describe('unified rendering', () => {
 });
 
 describe('rich rendering', () => {
-  it('marks locked lines in the gutter and tags them with the lock id', () => {
+  it('marks locked lines in the gutter, and does not repeat the id after the text', () => {
     setColorEnabled(false);
     const rows = diffVersions('a\nb\n', 'a\nB\n');
-    const lines = renderRichLines(collapse(rows), {
+    const { lines } = renderRichLines(collapse(rows), {
       mode: 'rich',
       lockedLines: new Map([[1, 'L2']]),
     });
     const locked = lines.find((l) => l.newLine === 1)!;
-    expect(locked.text).toContain('🔒');
-    expect(locked.text).toContain('[L2]');
+    expect(locked.gutter).toContain('⚿');
+    expect(locked.locked).toBe(true);
+    expect(locked.text).not.toContain('[L2]');
+    expect(lines.find((l) => l.newLine === 2)!.gutter).not.toContain('⚿');
   });
 
-  it('marks annotated lines with a dotted left edge', () => {
+  it('keeps every gutter the same width, so the text column never moves', () => {
     setColorEnabled(false);
     const rows = diffVersions('a\nb\n', 'a\nB\n');
-    const lines = renderRichLines(collapse(rows), {
+    const { lines, gutterWidth } = renderRichLines(collapse(rows), {
       mode: 'rich',
-      annotated: new Map([[2, ['a1', 'a2']]]),
+      lockedLines: new Map([[1, 'L2']]),
     });
-    // The note itself is rendered below the line, so the line only carries the
-    // edge that brackets it.
-    expect(lines.find((l) => l.newLine === 2)!.text).toContain('╎');
-    expect(lines.find((l) => l.newLine === 1)!.text).not.toContain('╎');
+    for (const line of lines) expect(line.gutter).toHaveLength(gutterWidth);
+  });
+
+  it('drops the sign column when there is nothing to sign', () => {
+    setColorEnabled(false);
+    const withDiff = renderRichLines(collapse(diffVersions('a\n', 'b\n')), { mode: 'rich' });
+    const withoutDiff = renderRichLines(collapse(rowsForSingleVersion('a\n')), { mode: 'rich' });
+    expect(withoutDiff.gutterWidth).toBe(withDiff.gutterWidth - 1);
   });
 
   it('keeps deletions addressable but outside the new-version numbering', () => {
     setColorEnabled(false);
     const rows = diffVersions('gone\nkept\n', 'kept\n');
-    const lines = renderRichLines(collapse(rows), { mode: 'rich' });
+    const { lines } = renderRichLines(collapse(rows), { mode: 'rich' });
     expect(lines.some((l) => l.newLine === null && l.gapIndex === null)).toBe(true);
   });
 });

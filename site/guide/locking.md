@@ -1,7 +1,16 @@
 # Locking
 
-Select lines exactly as you would to comment on them, and press `l` instead of
-`c`. Those lines are frozen. `u` on locked lines lifts the lock.
+Select lines exactly as you would to comment on them, and press `l`. Those lines
+are frozen, and `l` again on locked lines lifts the lock.
+
+`l` writes to the lock file the moment you press it — the marker appears in the
+gutter straight away and survives leaving the review without submitting. A lock
+is a decision about the document rather than a comment on it, so it does not
+queue up behind a submit that may never come.
+
+Because a locked passage is settled, the review will not take feedback on one:
+`f` is dropped from the hints and refuses if pressed. Unlock it first, then say
+what you wanted to say.
 
 ## Enforcement is in the CLI, not in the prompt
 

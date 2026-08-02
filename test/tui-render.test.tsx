@@ -3,6 +3,7 @@ import { render } from 'ink';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { capture } from '../src/protocol/capture.js';
 import { setColorEnabled, stripAnsi } from '../src/render/ansi.js';
+import { readLocks } from '../src/store/plans.js';
 import { ReviewApp, type ReviewResult } from '../src/tui/ReviewApp.js';
 import { SAMPLE_PLAN, tempStore } from './helpers.js';
 
@@ -174,10 +175,21 @@ function seed(): string {
 
 const ESC = '\x1b';
 const ENTER = '\r';
+const SPACE = ' ';
 const DOWN = '\x1b[B';
 const ARROW = '▸';
-/** Dashed, so it cannot be confused with the screen frame's own border. */
-const BOX_EDGE = '╌';
+/** The closing corner of a note box — the thing that used to be missing. */
+const BOX_CLOSE = '╮';
+
+/** Every line of the drawn frame, blank ones dropped. */
+function frameRows(frame: string): string[] {
+  return frame.split('\n').filter((line) => line.trim());
+}
+
+/** Rows inside the frame — the top and bottom rules carry corners of their own. */
+function bodyRows(frame: string): string[] {
+  return frameRows(frame).filter((line) => line.startsWith('│'));
+}
 
 describe('the review frame', () => {
   it('names itself and its version, and points at the repo', async () => {
@@ -193,6 +205,28 @@ describe('the review frame', () => {
     app.unmount();
   });
 
+  it('carries the header and the repo on the border itself, not on rows inside it', async () => {
+    const id = seed();
+    const app = mount(id, null, 1);
+    await app.ready();
+
+    const lines = frameRows(app.stdout.lastFrame);
+    expect(lines[0]).toContain('╭─');
+    expect(lines[0]).toContain(id);
+    expect(lines.at(-1)).toContain('github.com/thisisnsh/planx');
+    expect(lines.at(-1)).toContain('╯');
+    app.unmount();
+  });
+
+  it('closes the frame in the same column on every row', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    const widths = new Set(frameRows(app.stdout.lastFrame).map((line) => line.length));
+    expect(widths.size).toBe(1);
+    app.unmount();
+  });
+
   it('marks the current line with an arrow in the left gutter', async () => {
     const app = mount(seed(), null, 1);
     await app.frame(ARROW);
@@ -205,8 +239,25 @@ describe('the review frame', () => {
 
     const frame = app.stdout.lastFrame;
     expect(frame).toContain('f feedback');
+    expect(frame).toContain('n note');
     expect(frame).toContain('x exit');
     expect(frame).not.toContain('c comment');
+    app.unmount();
+  });
+
+  it('offers approve while there is nothing to submit, and submit once there is', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    expect(app.stdout.lastFrame).toContain('a approve');
+    expect(app.stdout.lastFrame).not.toContain('s submit');
+
+    await app.press('f');
+    await app.press('needs work');
+    await app.press(ENTER);
+    await app.frame('s submit');
+
+    expect(app.stdout.lastFrame).not.toContain('a approve');
     app.unmount();
   });
 });
@@ -223,7 +274,7 @@ describe('feedback lives in the document', () => {
     app.unmount();
   });
 
-  it('keeps the note after enter, below the line it annotates', async () => {
+  it('keeps the note after enter, in a box closed on all four sides', async () => {
     const app = mount(seed(), null, 1);
     await app.ready();
 
@@ -231,7 +282,10 @@ describe('feedback lives in the document', () => {
     await app.press('wrong layer');
     await app.press(ENTER);
     await app.frame('wrong layer');
-    expect(app.stdout.lastFrame).toContain(BOX_EDGE);
+
+    const box = frameRows(app.stdout.lastFrame).find((line) => line.includes('wrong layer'))!;
+    // `│ wrong layer … │` — the right-hand edge is the whole point.
+    expect(box).toMatch(/│\s+│\s+wrong layer\s+│\s+│/);
     app.unmount();
   });
 
@@ -243,11 +297,34 @@ describe('feedback lives in the document', () => {
     await app.press(ESC);
     await new Promise((r) => setTimeout(r, 120));
 
-    expect(app.stdout.lastFrame).not.toContain(BOX_EDGE);
+    expect(bodyRows(app.stdout.lastFrame).some((l) => l.includes(BOX_CLOSE))).toBe(false);
     app.unmount();
   });
 
-  it('h hides the note body, keeping the plan readable', async () => {
+  it('space folds the note under the cursor down to its title, and back', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('f');
+    await app.press('fold me');
+    await app.press(ENTER);
+    await app.frame('fold me');
+    expect(bodyRows(app.stdout.lastFrame).filter((l) => l.includes('╯'))).toHaveLength(1);
+
+    await app.press(DOWN);
+    await app.press(SPACE);
+    await new Promise((r) => setTimeout(r, 120));
+    // One row left, still naming itself so a folded note is not a mystery.
+    expect(bodyRows(app.stdout.lastFrame).filter((l) => l.includes('╯'))).toHaveLength(0);
+    expect(app.stdout.lastFrame).toContain('fold me');
+
+    await app.press(SPACE);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(bodyRows(app.stdout.lastFrame).filter((l) => l.includes('╯'))).toHaveLength(1);
+    app.unmount();
+  });
+
+  it('h folds every note at once, keeping the plan readable', async () => {
     const app = mount(seed(), null, 1);
     await app.ready();
 
@@ -258,7 +335,9 @@ describe('feedback lives in the document', () => {
 
     await app.press('h');
     await new Promise((r) => setTimeout(r, 120));
-    expect(app.stdout.lastFrame).not.toContain('hidden please');
+    const lines = frameRows(app.stdout.lastFrame).filter((l) => l.includes('hidden please'));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('▸ hidden please');
     app.unmount();
   });
 
@@ -276,6 +355,47 @@ describe('feedback lives in the document', () => {
     await new Promise((r) => setTimeout(r, 120));
 
     expect(app.stdout.lastFrame).not.toContain('delete me');
+    app.unmount();
+  });
+});
+
+describe('locking', () => {
+  it('marks the line in the gutter and writes the lock immediately', async () => {
+    const id = seed();
+    const app = mount(id, null, 1);
+    await app.ready();
+
+    await app.press('l');
+    await app.frame('⚿');
+    // On disk, not queued behind a submit that may never come.
+    expect(Object.keys(readLocks(id).locks)).toHaveLength(1);
+    app.unmount();
+  });
+
+  it('l again lifts the lock it just applied', async () => {
+    const id = seed();
+    const app = mount(id, null, 1);
+    await app.ready();
+
+    await app.press('l');
+    await app.frame('⚿');
+    await app.press('l');
+    await app.frame('unlocked lines');
+
+    expect(Object.keys(readLocks(id).locks)).toHaveLength(0);
+    app.unmount();
+  });
+
+  it('refuses feedback on a locked passage and stops offering it', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('l');
+    await app.frame('l unlock');
+    expect(app.stdout.lastFrame).not.toContain('f feedback');
+
+    await app.press('f');
+    await app.frame('those lines are locked');
     app.unmount();
   });
 });

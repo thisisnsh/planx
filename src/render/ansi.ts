@@ -41,6 +41,21 @@ export const gray = style(90, 39);
 export const bgRed = style(41, 49);
 export const bgGreen = style(42, 49);
 
+/**
+ * The one accent colour, matching the yellow the docs are built on (#ffd400).
+ *
+ * Truecolor rather than one of the sixteen: the palette yellow is whatever the
+ * user's theme decided it is, and the whole point of an accent is that it is the
+ * same yellow here as on the website. Terminals without truecolor fall back to
+ * their nearest colour rather than dropping the sequence, so nothing is lost.
+ */
+export const SIGNAL_RGB = [255, 212, 0] as const;
+
+export function signal(text: string): string {
+  const [r, g, b] = SIGNAL_RGB;
+  return colorEnabled() ? `\x1b[38;2;${r};${g};${b}m${text}\x1b[39m` : text;
+}
+
 const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
 
 export function stripAnsi(text: string): string {

@@ -15,7 +15,7 @@ without being told.
 
 | Flag | Rendering |
 | --- | --- |
-| *(default)* | **Rich** — highlighted code fences, bold headings, word-level intra-line diff, collapsed runs of unchanged lines, 🔒 gutter |
+| *(default)* | **Rich** — highlighted code fences, bold headings, word-level intra-line diff, collapsed runs of unchanged lines, `⚿` lock gutter |
 | `--plain` | **Plain** — raw source as a real unified diff with `@@` hunk headers, no ANSI beyond `+`/`-` colouring |
 
 Rendering mode is independent of interactivity: `--plain` works in the TUI and
@@ -69,16 +69,21 @@ Accepted anywhere a version is named:
 | --- | --- |
 | `↑` `↓` | Move the cursor |
 | `v` | Start or end a selection, then `↑` `↓` to extend |
-| `space` | Expand the collapsed run under the cursor |
+| `space` | Fold the note, or expand the collapsed run, under the cursor |
 | `f` | Feedback on the selection, or edit the note under the cursor |
-| `l` | Lock or unlock the selection |
+| `l` | Lock or unlock the selection — written immediately |
 | `d` | Delete the note under the cursor |
-| `h` | Hide or show the note bodies |
+| `h` | Fold or unfold every note at once |
 | `n` | A note about the whole plan |
 | `s` | Submit everything at once |
 | `a` | Approve — seals the plan |
 | `x` | Leave without submitting |
 | `?` | Help |
+
+The hints along the bottom offer only what the row under the cursor can do, so
+`s` and `a` are never both on screen: `a` while you have nothing to say, `s`
+once you do. A locked passage offers `l unlock` and no `f` at all — see
+[Locking](/guide/locking).
 
 All lowercase, and there is no `c`: it sits next to `ctrl-c`, which is how you
 leave a terminal program.
@@ -86,10 +91,13 @@ leave a terminal program.
 ### Notes live in the document
 
 Pressing `f` opens a box directly under the lines it refers to, and you type
-into it there rather than into a dialog over the top. The annotated lines keep a
-dotted edge in the gutter whether or not the note body is showing, so `h`
-collapses the bodies without losing track of which passages you have been
-through.
+into it there rather than into a dialog over the top. The box is closed on all
+four sides and grows as you type, so what you have written is always the whole
+of what is in it.
+
+`space` folds the note under the cursor down to a single row that still carries
+its opening words, and `h` folds every note at once — the plan comes back
+readable without losing track of which passages you have been through.
 
 One note per passage: pressing `f` on lines that already carry one edits it
 rather than stacking a second note on the same text.

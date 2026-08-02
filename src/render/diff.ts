@@ -4,7 +4,6 @@ import type { Block, DiffRow, Segment } from '../diff/types.js';
 import {
   bgGreen,
   bgRed,
-  blue,
   bold,
   cyan,
   dim,
@@ -12,6 +11,7 @@ import {
   gray,
   padStart,
   red,
+  signal,
   strikethrough,
 } from './ansi.js';
 import { highlightLine, highlightMarkdown, initialMarkdownState } from './markdown.js';
@@ -22,18 +22,20 @@ export interface DiffRenderOptions {
   mode: RenderMode;
   /** new-version line number → lock id, drawn in the gutter. */
   lockedLines?: ReadonlyMap<number, string>;
-  /** new-version line number → annotation ids, drawn at end of line. */
-  annotated?: ReadonlyMap<number, string[]>;
   context?: number;
   oldLabel?: string;
   newLabel?: string;
 }
 
-const LOCK_ICON = '🔒';
+/**
+ * A glyph, not the padlock emoji.
+ *
+ * Emoji are two cells wide in some terminals and one in others, which is fatal
+ * for a fixed-width gutter: the text column moves depending on whether a line
+ * happens to be locked. This is one cell everywhere.
+ */
+const LOCK_ICON = '⚿';
 const GAP_MARKER = '⋯';
-/** Left edge drawn beside lines carrying feedback. Dotted, so it reads as a
- *  margin note rather than another kind of diff marker. */
-const ANNOTATED_EDGE = '╎';
 
 /* ------------------------------------------------------------------ rich */
 
@@ -42,24 +44,46 @@ export function lineNumberWidth(rows: DiffRow[]): number {
   return Math.max(2, String(max).length);
 }
 
+export interface GutterOptions {
+  numberWidth: number;
+  lockId?: string | undefined;
+  /** Reserve the +/- column. Off when there is no diff to sign. */
+  signs?: boolean;
+  /** Light the number up, for the row under the cursor. */
+  active?: boolean;
+}
+
+/** Columns a gutter built with these options occupies. */
+export function gutterWidth(opts: { numberWidth: number; signs?: boolean }): number {
+  return 2 + (opts.signs === false ? 0 : 1) + opts.numberWidth + 2;
+}
+
 /**
- * The fixed-width prefix: lock marker, annotation edge, change sign, number.
+ * The fixed-width prefix: lock marker, change sign, number.
  *
  * Fixed width is what keeps the text column aligned, so a multi-line selection
- * reads as a block rather than a ragged stack. The cursor is deliberately *not*
- * here: it moves on every keypress, and baking it into this string would mean
- * re-rendering every line in the document to move an arrow one row.
+ * reads as a block rather than a ragged stack. Every column here has to earn its
+ * place — each one pushes the plan itself further right — so the sign column is
+ * dropped entirely when nothing on screen is an addition or a deletion.
+ *
+ * The cursor arrow is deliberately *not* here: it moves on every keypress, and
+ * baking it into this string would mean re-rendering the whole document to move
+ * an arrow one row.
  */
-export function renderGutter(
-  row: DiffRow,
-  opts: { numberWidth: number; lockId?: string | undefined; annotated?: boolean },
-): string {
-  const lock = opts.lockId ? LOCK_ICON : '  ';
-  const edge = opts.annotated ? blue(ANNOTATED_EDGE) : ' ';
-  const sign = row.kind === 'add' ? green('+') : row.kind === 'del' ? red('-') : ' ';
+export function renderGutter(row: DiffRow, opts: GutterOptions): string {
+  const lock = opts.lockId ? signal(LOCK_ICON) : ' ';
+  const sign =
+    opts.signs === false
+      ? ''
+      : row.kind === 'add'
+        ? green('+')
+        : row.kind === 'del'
+          ? red('-')
+          : ' ';
   const number = row.newLine ?? row.oldLine;
   const num = padStart(number === null ? '' : String(number), opts.numberWidth);
-  return `${lock}${edge} ${sign} ${dim(num)}  `;
+  // One space after the marker, so `⚿10` does not read as one token.
+  return `${lock} ${sign}${opts.active ? signal(num) : dim(num)}  `;
 }
 
 /**
@@ -88,47 +112,75 @@ function renderSegments(segments: Segment[], kind: 'add' | 'del'): string {
 }
 
 export interface RenderedLine {
+  /** The fixed-width prefix, styled. */
+  gutter: string;
+  /** The same prefix with the number lit, for the row under the cursor. */
+  gutterActive: string;
+  /** The row's own text, with no gutter on it. */
   text: string;
   /** The new-version line this row occupies, or null (deletions, gaps). */
   newLine: number | null;
   gapIndex: number | null;
+  /** Whether a lock covers this line — the TUI refuses to comment on it. */
+  locked: boolean;
+}
+
+export interface RichLines {
+  lines: RenderedLine[];
+  /** Columns every gutter takes, so callers can indent under the text column. */
+  gutterWidth: number;
 }
 
 /**
  * Rich rendering of collapsed diff blocks. Returns structured lines so the TUI
  * can reuse the exact same output and only add selection on top of it.
+ *
+ * Gutter and text stay separate: the TUI restyles the gutter of the row under
+ * the cursor and pads the text to the frame, and neither is possible once the
+ * two have been concatenated into one escape-laden string.
  */
-export function renderRichLines(blocks: Block[], opts: DiffRenderOptions): RenderedLine[] {
+export function renderRichLines(blocks: Block[], opts: DiffRenderOptions): RichLines {
   const allRows = blocks.flatMap((b) => b.rows);
   const numberWidth = lineNumberWidth(allRows);
+  // Nothing added or removed means nothing to sign, so the column comes back.
+  const signs = allRows.some((r) => r.kind !== 'context');
+  const width = gutterWidth({ numberWidth, signs });
   const state = initialMarkdownState();
-  const out: RenderedLine[] = [];
+  const lines: RenderedLine[] = [];
 
   blocks.forEach((block, index) => {
     if (block.kind === 'gap') {
       // Deleted lines never existed in the new document, so they must not
       // advance the fence tracker; hidden context lines must.
       for (const row of block.rows) if (row.kind !== 'del') highlightLine(row.text, state);
-      const pad = ' '.repeat(numberWidth + 6);
-      out.push({
-        text: `${pad}${dim(`${GAP_MARKER} ${block.count} unchanged lines (space to expand)`)}`,
+      const pad = ' '.repeat(width);
+      lines.push({
+        gutter: pad,
+        gutterActive: pad,
+        text: dim(`${GAP_MARKER} ${block.count} unchanged lines (space to expand)`),
         newLine: null,
         gapIndex: index,
+        locked: false,
       });
       return;
     }
 
     for (const row of block.rows) {
       const lockId = row.newLine === null ? undefined : opts.lockedLines?.get(row.newLine);
-      const marks = row.newLine === null ? undefined : opts.annotated?.get(row.newLine);
-      const gutter = renderGutter(row, { numberWidth, lockId, annotated: Boolean(marks?.length) });
-      let text = renderRowText(row, state);
-      if (lockId) text += dim(`   [${lockId}]`);
-      out.push({ text: `${gutter}${text}`, newLine: row.newLine, gapIndex: null });
+      // The lock id is not repeated after the text: the marker in the gutter
+      // already says the line is frozen, and `planx locks` says by which lock.
+      lines.push({
+        gutter: renderGutter(row, { numberWidth, lockId, signs }),
+        gutterActive: renderGutter(row, { numberWidth, lockId, signs, active: true }),
+        text: renderRowText(row, state),
+        newLine: row.newLine,
+        gapIndex: null,
+        locked: Boolean(lockId),
+      });
     }
   });
 
-  return out;
+  return { lines, gutterWidth: width };
 }
 
 /* ----------------------------------------------------------------- plain */
@@ -184,7 +236,7 @@ export function renderDocument(
   const width = Math.max(2, String(lines.length).length);
   return highlighted.map((line, i) => {
     const lockId = lockedLines.get(i + 1);
-    const marker = lockId ? LOCK_ICON : '  ';
+    const marker = lockId ? signal(LOCK_ICON) : ' ';
     return `${marker} ${dim(padStart(String(i + 1), width))}  ${line}`;
   });
 }
