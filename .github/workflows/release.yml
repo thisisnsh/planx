@@ -28,7 +28,7 @@ jobs:
           # Build from the tag, not from whatever main has drifted to since.
           ref: ${{ github.event.release.tag_name }}
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
