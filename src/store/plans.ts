@@ -188,7 +188,22 @@ export interface CreatePlanOptions {
 export function createPlan(opts: CreatePlanOptions): PlanMeta {
   ensureStore();
   const now = opts.created ?? new Date().toISOString();
-  const id = opts.name ? uniqueId(slugify(opts.name)) : uniqueId(planId(opts.title, opts.content));
+
+  let id: string;
+  if (opts.name) {
+    // A name the user chose can legitimately collide with an unrelated plan.
+    id = uniqueId(slugify(opts.name));
+  } else {
+    // A derived id encodes the title *and* the content, so an existing plan
+    // under it is the same plan. Returning it makes re-import and defensive
+    // re-capture idempotent; allocating `-2` would fork a duplicate every time.
+    const derived = planId(opts.title, opts.content);
+    const existing = readMeta(derived);
+    if (existing) return existing;
+    // A trashed plan still owns its directory name, so step around it rather
+    // than resurrecting something the user deleted.
+    id = pathExists(paths.trashed(derived)) ? uniqueId(derived) : derived;
+  }
 
   const meta = PlanMetaSchema.parse({
     id,
