@@ -46,6 +46,7 @@
     "docs:cli": "node dist/cli.js __gen-cli-docs > site/reference/cli.md",
     "docs:dev": "vitepress dev site",
     "docs:build": "vitepress build site",
+    "release:staging": "node scripts/release-staging.js",
     "postinstall": "node scripts/postinstall.js",
     "prepublishOnly": "npm run build"
   },

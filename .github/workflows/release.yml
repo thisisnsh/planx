@@ -1,20 +1,16 @@
 name: release
 
-# Both channels live in one workflow because npm trusted publishing pins a
-# single repository *and workflow filename*. Splitting staging and latest into
-# two files would mean two trusted publishers for one package, so the trigger
-# — not the filename — decides the channel:
+# Publishing a GitHub Release promotes that tag to `latest`. This is the only
+# thing that publishes to production, and the only thing CI publishes at all.
 #
-#   push to main      -> <version>-staging.<run> under the `staging` tag
-#   release published -> <version> under the `latest` tag
+# Staging builds are cut from a maintainer's machine with `npm run
+# release:staging`, which publishes under the `staging` tag. Merging to main
+# does not publish: most merges are not a build anybody needs, and a channel
+# that moves on every merge is one nobody can pin to.
 on:
-  push:
-    branches: [main]
   release:
     types: [published]
 
-# Serialised across both channels. Cutting a release merges a version bump to
-# main, so a staging publish and a latest publish can otherwise overlap.
 concurrency:
   group: release
   cancel-in-progress: false
@@ -29,9 +25,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          # A release builds from its tag, not from whatever main has drifted
-          # to since. An empty ref means "whatever the event points at".
-          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
+          # Build from the tag, not from whatever main has drifted to since.
+          ref: ${{ github.event.release.tag_name }}
 
       - uses: actions/setup-node@v5
         with:
@@ -48,7 +43,6 @@ jobs:
       # Fail loudly and early: publishing 1.2.0 from a tag called v1.3.0 would
       # be almost impossible to notice afterwards and impossible to undo.
       - name: Assert the tag matches package.json
-        if: github.event_name == 'release'
         run: |
           TAG="${{ github.event.release.tag_name }}"
           PKG=$(node -p "require('./package.json').version")
@@ -72,28 +66,8 @@ jobs:
       - run: npm test
       - run: npm run build
 
-      # The version is synthesised here and package.json is never rewritten in
-      # a commit. A bot commit on the default branch causes push loops, forces
-      # everyone to pull after every merge, and needs [skip ci] guards — all
-      # avoidable by treating the committed version as the next release target.
-      - name: Set the staging version
-        if: github.event_name == 'push'
-        run: |
-          BASE=$(node -p "require('./package.json').version")
-          if [[ "$BASE" == *-* ]]; then
-            echo "::error::package.json version ($BASE) is already a prerelease. Set it to the next release target."
-            exit 1
-          fi
-          npm version --no-git-tag-version --allow-same-version "${BASE}-staging.${GITHUB_RUN_NUMBER}"
-          echo "Publishing ${BASE}-staging.${GITHUB_RUN_NUMBER}"
-
-      # A clean rebuild from the tag rather than `npm dist-tag add` on the
-      # staging artifact. Promoting would reuse the exact tested bytes, but it
-      # would leave `latest` pointing at a version literally named
-      # 1.2.0-staging.47 — in every --version, bug report and changelog entry.
-      #
       # No NODE_AUTH_TOKEN: trusted publishing exchanges the job's OIDC token
       # for a short-lived credential, and generates provenance on its own.
       # Scoped packages are private by default, so --access public is required.
       - name: Publish
-        run: npm publish --tag "${{ github.event_name == 'release' && 'latest' || 'staging' }}" --access public
+        run: npm publish --tag latest --access public

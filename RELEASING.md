@@ -1,31 +1,51 @@
 # Releasing planx
 
-Nothing is ever published by hand.
+Production is never published by hand.
 
 ## 1. Channels
 
 | Trigger | Publishes | npm tag | Who gets it |
 | --- | --- | --- | --- |
-| Merge to `main` | `1.2.0-staging.47` | `staging` | `@staging` installers, dogfooding |
+| `npm run release:staging` (local) | `1.2.0-staging.47` | `staging` | `@staging` installers, dogfooding |
 | GitHub Release published | `1.2.0` | `latest` | everyone |
 
-Both channels are one workflow, `release.yml`, because npm trusted publishing
-pins a single repository *and workflow filename* — two files would mean two
-trusted publishers for one package. The trigger picks the channel.
+**Merging to `main` publishes nothing.** Most merges are not a build anyone
+needs, and a channel that moves on every merge is one nobody can pin to. A
+staging build is something you decide to cut.
 
-It synthesises the prerelease version at build time as
-`<version-in-package.json>-staging.<run_number>`. **`package.json` is never
-rewritten in a commit and CI never pushes to `main`.** Bot commits on the
-default branch cause push loops, force everyone to pull after every merge, and
-need `[skip ci]` guards — all avoidable by treating the committed version as
-"the next release target".
+Only `release.yml` publishes to production, and it is the sole workflow that
+touches npm at all — npm trusted publishing pins one repository *and workflow
+filename*, so a second publishing workflow would need a second trusted
+publisher for the same package.
 
-## 2. Cutting a release
+Both channels synthesise the version at publish time as
+`<version-in-package.json>-staging.<n>`. **`package.json` is never rewritten in
+a commit.** Bot commits on the default branch cause push loops, force everyone
+to pull after every merge, and need `[skip ci]` guards — all avoidable by
+treating the committed version as "the next release target". The local script
+restores `package.json` on every exit path, including a failed publish.
+
+## 2. Cutting a staging build
+
+From a clean checkout of the commit you want to test:
+
+```bash
+npm run release:staging
+```
+
+It refuses a dirty tree, runs typecheck, tests and build, picks the next free
+`-staging.N` by asking npm what is already published, and publishes under the
+`staging` tag. It never moves `latest` — a plain `npm install @thisisnsh/planx`
+keeps resolving to the last real release. There is no provenance on a staging
+build: that needs a CI OIDC token, and signed provenance is a property of the
+release build.
+
+## 3. Cutting a release
 
 1. Bump `version` in `package.json` to the release you are cutting.
 2. Move the `Unreleased` section of `CHANGELOG.md` into a dated section.
-3. Merge that PR. This publishes one more `staging` build, which is the exact
-   tree the release will be cut from.
+3. Merge that PR, then cut a staging build from the merge commit — that is the
+   exact tree the release will be cut from.
 4. Smoke-test it:
    ```bash
    npm install -g @thisisnsh/planx@staging
@@ -47,7 +67,7 @@ The tag must match `package.json` exactly — the workflow asserts this and fail
 loudly if not, because publishing `1.2.0` from a tag called `v1.3.0` is nearly
 impossible to notice afterwards and impossible to undo.
 
-## 3. Version policy
+## 4. Version policy
 
 Semver. **Pre-1.0, breaking changes bump the minor.**
 
@@ -56,7 +76,7 @@ in every stored file) and gets its own migration note in the changelog whenever
 it changes. That is the thing users cannot roll back cleanly: downgrading the
 CLI is instant, but a store already migrated forward is not.
 
-## 4. Rollback
+## 5. Rollback
 
 In order, always:
 
@@ -74,7 +94,7 @@ In order, always:
 
 Then fix forward and cut a new release. Never re-publish a version number.
 
-## 5. Prerequisites
+## 6. Prerequisites
 
 - **A trusted publisher** on npmjs.com for `@thisisnsh/planx`, pointed at this
   repository and the workflow file `release.yml`. There is no `NPM_TOKEN` and
@@ -88,9 +108,14 @@ Then fix forward and cut a new release. Never re-publish a version number.
   publishing rather than via an explicit `--provenance` flag.
 - **`--access public`** on publish. Scoped packages are private by default, so
   this flag is not optional; omitting it fails the publish on a free account.
+- **`npm login` on the maintainer's machine** for staging builds, which
+  authenticate with your own credentials rather than OIDC. If the package is
+  ever set to *require* trusted publishing on npmjs.com, that setting rejects
+  every token-based publish — including `release:staging`. Keep that option off
+  unless you are willing to move staging into CI too.
 - Release creation is restricted to maintainers (`@thisisnsh`).
 
-## 6. Post-release verification
+## 7. Post-release verification
 
 ```bash
 npm view @thisisnsh/planx dist-tags       # latest and staging point where you expect

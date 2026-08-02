@@ -93,12 +93,13 @@ afterEach(() => {
  * laptop is not a bound on a contended CI runner, and overrunning it reads as
  * an empty frame — an assertion failure indistinguishable from a real break.
  */
-async function waitFor(predicate: () => boolean, timeoutMs = 5_000): Promise<void> {
+async function waitFor(predicate: () => boolean, timeoutMs = 5_000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (!predicate()) {
-    if (Date.now() >= deadline) return;
+    if (Date.now() >= deadline) return false;
     await new Promise((r) => setTimeout(r, 10));
   }
+  return true;
 }
 
 interface Harness {
@@ -157,7 +158,13 @@ function mount(
       // effort nudge past a slow render, not a requirement.
       await waitFor(() => stdout.frames.length > before, 1_000);
     },
-    ready: () => waitFor(() => stdout.lastFrame.trim().length > 0),
+    ready: async () => {
+      // A silent give-up here surfaces later as `expected '' to contain ...`,
+      // which reads as a rendering bug rather than an app that never mounted.
+      if (!(await waitFor(() => stdout.lastFrame.trim().length > 0))) {
+        throw new Error(`the app never drew a frame (${stdout.frames.length} raw writes)`);
+      }
+    },
     frame: async (text: string) => {
       await waitFor(() => stdout.lastFrame.includes(text));
       expect(stdout.lastFrame).toContain(text);
