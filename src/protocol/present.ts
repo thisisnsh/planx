@@ -101,7 +101,9 @@ function describeLocks(opts: PresentOptions): string[] {
  * reviewer's latest submit is their current position.
  */
 function summarizeVerdict(feedback: Feedback[]): Feedback['verdict'] {
-  const ordered = [...feedback].sort((a, b) => a.created.localeCompare(b.created));
+  const ordered = [...feedback].sort(
+    (a, b) => a.created.localeCompare(b.created) || a.id.localeCompare(b.id),
+  );
   return ordered[ordered.length - 1]?.verdict ?? 'revise';
 }
 

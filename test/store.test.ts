@@ -65,6 +65,14 @@ describe('ids', () => {
     expect(early.length).toBe(26);
     expect(early < late).toBe(true);
   });
+
+  it('stays monotonic within a single millisecond', () => {
+    // Two records written in the same millisecond must still have a defined
+    // order — otherwise "the reviewer's latest verdict" is a coin flip.
+    const ids = Array.from({ length: 50 }, () => ulid(1_700_000_000_000));
+    expect(new Set(ids).size).toBe(50);
+    expect([...ids].sort()).toEqual(ids);
+  });
 });
 
 describe('plan lifecycle', () => {

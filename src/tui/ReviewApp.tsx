@@ -51,7 +51,9 @@ const MIN_BODY = 5;
 export function ReviewApp(props: ReviewAppProps) {
   const { exit } = useApp();
   const { stdout } = useStdout();
-  const { stdin, setRawMode, isRawModeSupported } = useStdin();
+  // Ink owns stdin: useInput turns raw mode on for us, and the mouse handler
+  // reads from that same stream rather than opening a second one.
+  const { isRawModeSupported } = useStdin();
 
   const [selection, setSelection] = useState<SelectionState>(initialSelection);
   const [offset, setOffset] = useState(0);
@@ -97,8 +99,6 @@ export function ReviewApp(props: ReviewAppProps) {
   rowCountRef.current = model.rows.length;
 
   const overlayOpen = overlay.kind !== 'none';
-  const overlayRef = useRef(overlayOpen);
-  overlayRef.current = overlayOpen;
 
   const move = useCallback(
     (delta: number) => {

@@ -35,7 +35,10 @@ export function listFeedback(id: string): Feedback[] {
     const record = readJson(join(dir, file), FeedbackSchema, null);
     if (record) out.push(record);
   }
-  return out.sort((a, b) => a.created.localeCompare(b.created));
+  // Ids are monotonic ULIDs, so they break a same-millisecond tie in creation
+  // order rather than arbitrarily. "The reviewer's latest verdict" depends on
+  // this being a total order.
+  return out.sort((a, b) => a.created.localeCompare(b.created) || a.id.localeCompare(b.id));
 }
 
 /**
