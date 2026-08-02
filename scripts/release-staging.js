@@ -68,15 +68,28 @@ console.log(`\n  Authenticated with npm as ${npmUser}.`);
 // with a 404 that is indistinguishable from an unpublished package.
 let next = 1;
 try {
-  const published = JSON.parse(capture('npm', ['view', name, 'versions', '--json']));
+  // The first publish leaves the old packument in npm's local HTTP cache. A
+  // second release run within that cache's freshness window would otherwise
+  // see the pre-publish version list and try to reuse the same suffix.
+  const published = JSON.parse(
+    capture('npm', ['view', name, 'versions', '--json', '--prefer-online']),
+  );
   const suffix = new RegExp(`^${base.replace(/\./g, '\\.')}-${DIST_TAG}\\.(\\d+)$`);
   const taken = (Array.isArray(published) ? published : [published])
     .map((v) => Number(suffix.exec(v)?.[1]))
     .filter(Number.isInteger);
   if (taken.length) next = Math.max(...taken) + 1;
-} catch {
-  // Nothing published under this base yet, or npm is unreachable. The publish
-  // itself will fail loudly if it is the latter.
+} catch (error) {
+  const stderr =
+    typeof error === 'object' && error !== null && 'stderr' in error ? String(error.stderr) : '';
+
+  // A brand-new package has no version list yet, so its first staging suffix
+  // is legitimately 1. Any other lookup failure is unsafe to ignore: guessing
+  // 1 can only produce a collision or hide a registry/network problem until
+  // after all the checks have run.
+  if (!/\bE404\b|404 Not Found/.test(stderr)) {
+    die('could not read published versions from npm. No publish was attempted.');
+  }
 }
 
 const version = `${base}-${DIST_TAG}.${next}`;
