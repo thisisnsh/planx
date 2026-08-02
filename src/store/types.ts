@@ -59,6 +59,12 @@ export const LockRecordSchema = z.object({
   section: z.string().nullable().default(null),
   /** sha256 of the normalized locked text. */
   sha256: z.string(),
+  /**
+   * sha256 of the lines immediately surrounding the lock. Only consulted when
+   * the locked text appears more than once, to pick the right occurrence
+   * instead of guessing (PLAN §20).
+   */
+  context_sha: z.string().default(''),
   /** Verbatim locked text, so it can be re-spliced into a later version. */
   text: z.string(),
   first_locked_version: z.number().int(),
