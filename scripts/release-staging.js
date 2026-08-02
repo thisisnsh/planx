@@ -130,4 +130,6 @@ if (failure) {
 }
 
 console.log(`\n  Published ${name}@${version}\n`);
-console.log(`  Smoke-test it:\n    npm install -g ${name}@${DIST_TAG}\n    planx --version\n`);
+console.log(
+  `  Smoke-test it:\n    npm install -g ${name}@${version} --prefer-online\n    planx --version\n`,
+);

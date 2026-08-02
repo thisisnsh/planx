@@ -50,7 +50,7 @@ release build.
    exact tree the release will be cut from.
 2. Smoke-test it:
    ```bash
-   npm install -g @thisisnsh/planx@staging
+   npm install -g @thisisnsh/planx@1.2.0-staging.N --prefer-online
    planx --version                       # should print 1.2.0-staging.N
    planx doctor
    ```
