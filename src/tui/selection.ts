@@ -16,6 +16,9 @@ export interface SelectableRow {
   newLine: number | null;
   /** Index of the collapsed gap this row stands for, or null. */
   gapIndex: number | null;
+  /** Feedback rows are drawn in the document but are not part of it, so the
+   *  cursor steps over them. Absent means a document row. */
+  kind?: 'doc' | 'feedback';
 }
 
 export interface SelectionState {
@@ -39,16 +42,14 @@ export type SelectionEvent =
 export function reduceSelection(
   state: SelectionState,
   event: SelectionEvent,
-  rowCount: number,
+  rows: readonly SelectableRow[],
 ): SelectionState {
-  const clamp = (n: number) => Math.max(0, Math.min(rowCount - 1, n));
-
   switch (event.type) {
     case 'move': {
-      return { ...state, cursor: clamp(state.cursor + event.delta) };
+      return { ...state, cursor: walk(rows, state.cursor, event.delta) };
     }
     case 'moveTo': {
-      return { ...state, cursor: clamp(event.index) };
+      return { ...state, cursor: settle(rows, event.index) };
     }
     case 'toggleVisual': {
       // `v` anchors here and the arrows extend from it, which is the only way
@@ -62,6 +63,38 @@ export function reduceSelection(
       return { ...state, active: false, anchor: null };
     }
   }
+}
+
+/**
+ * Take `delta` document rows, stepping over the notes in between.
+ *
+ * A note is attached to a line, not a line of its own: everything you can do to
+ * one is done from the line it hangs off. Walking into a six-row box to get past
+ * a six-word comment would make a heavily annotated plan unreadable by arrow
+ * key, and there would be nothing to do once you were in there.
+ */
+function walk(rows: readonly SelectableRow[], from: number, delta: number): number {
+  const direction = Math.sign(delta);
+  if (direction === 0) return from;
+
+  let cursor = from;
+  for (let taken = 0; taken < Math.abs(delta); taken++) {
+    let next = cursor + direction;
+    while (next >= 0 && next < rows.length && rows[next]?.kind === 'feedback') next += direction;
+    // Stepping off either end leaves the cursor where it was rather than
+    // parking it on a box edge.
+    if (next < 0 || next >= rows.length) break;
+    cursor = next;
+  }
+  return cursor;
+}
+
+/** Clamp an absolute jump to the row list, and off a note if it lands on one. */
+function settle(rows: readonly SelectableRow[], index: number): number {
+  let cursor = Math.max(0, Math.min(rows.length - 1, index));
+  while (cursor > 0 && rows[cursor]?.kind === 'feedback') cursor--;
+  while (cursor < rows.length - 1 && rows[cursor]?.kind === 'feedback') cursor++;
+  return cursor;
 }
 
 /** The inclusive row-index range currently highlighted, or null. */

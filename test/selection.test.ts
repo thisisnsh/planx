@@ -23,11 +23,18 @@ const ROWS: SelectableRow[] = [
   { newLine: 5, gapIndex: null },
 ];
 
+/** The same, with a three-row note box hanging off line 2. */
+const ANNOTATED: SelectableRow[] = [
+  { newLine: 1, gapIndex: null },
+  { newLine: 2, gapIndex: null },
+  { newLine: null, gapIndex: null, kind: 'feedback' },
+  { newLine: null, gapIndex: null, kind: 'feedback' },
+  { newLine: null, gapIndex: null, kind: 'feedback' },
+  { newLine: 3, gapIndex: null },
+];
+
 function run(events: SelectionEvent[], rows = ROWS): SelectionState {
-  return events.reduce(
-    (state, event) => reduceSelection(state, event, rows.length),
-    initialSelection(),
-  );
+  return events.reduce((state, event) => reduceSelection(state, event, rows), initialSelection());
 }
 
 describe('keyboard selection', () => {
@@ -62,6 +69,26 @@ describe('keyboard selection', () => {
   it('clamps the cursor to the row list', () => {
     expect(run([{ type: 'move', delta: -5 }]).cursor).toBe(0);
     expect(run([{ type: 'move', delta: 99 }]).cursor).toBe(ROWS.length - 1);
+  });
+});
+
+describe('walking past notes', () => {
+  it('steps over a note box rather than into it', () => {
+    const down = run([{ type: 'moveTo', index: 1 }, { type: 'move', delta: 1 }], ANNOTATED);
+    expect(down.cursor).toBe(5);
+
+    const up = run([{ type: 'moveTo', index: 5 }, { type: 'move', delta: -1 }], ANNOTATED);
+    expect(up.cursor).toBe(1);
+  });
+
+  it('counts document rows, not drawn rows', () => {
+    expect(run([{ type: 'move', delta: 2 }], ANNOTATED).cursor).toBe(5);
+  });
+
+  it('stays put rather than landing on a box at the end of the list', () => {
+    const rows: SelectableRow[] = [...ANNOTATED.slice(0, 5)];
+    expect(run([{ type: 'moveTo', index: 1 }, { type: 'move', delta: 1 }], rows).cursor).toBe(1);
+    expect(run([{ type: 'moveTo', index: 4 }], rows).cursor).toBe(1);
   });
 });
 
