@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write # advance package.json to the next release target after publishing
   id-token: write # OIDC for trusted publishing, and provenance
 
 jobs:
@@ -40,20 +40,21 @@ jobs:
       - name: Use an npm that supports trusted publishing
         run: npm install -g npm@latest
 
-      # Fail loudly and early: publishing 1.2.0 from a tag called v1.3.0 would
-      # be almost impossible to notice afterwards and impossible to undo.
-      - name: Assert the tag matches package.json
+      # The release tag is authoritative. This lets a maintainer create v1.2.0
+      # without first making a version-only commit; npm updates both manifests
+      # in the runner before anything is built or published.
+      - name: Set package version from the release tag
+        id: version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          TAG="${{ github.event.release.tag_name }}"
-          PKG=$(node -p "require('./package.json').version")
-          if [ "${TAG#v}" != "$PKG" ]; then
-            echo "::error::release tag $TAG does not match package.json version $PKG"
+          VERSION="${RELEASE_TAG#v}"
+          if [[ "$VERSION" == *-* ]]; then
+            echo "::error::refusing to publish prerelease version $VERSION to latest"
             exit 1
           fi
-          if [[ "$PKG" == *-* ]]; then
-            echo "::error::refusing to publish prerelease version $PKG to latest"
-            exit 1
-          fi
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          echo "release=$VERSION" >> "$GITHUB_OUTPUT"
 
       # The postinstall writes skills into ~/.claude and ~/.codex. It already
       # no-ops in a planx checkout, but being explicit means a change to that
@@ -71,3 +72,21 @@ jobs:
       # Scoped packages are private by default, so --access public is required.
       - name: Publish
         run: npm publish --tag latest --access public
+
+      # package.json is the next release target used by staging. Advance its
+      # patch after a successful publish and commit that small bookkeeping
+      # change back to main. Pushing the release tag's child commit is
+      # fast-forward-only, so a release cut from stale source cannot overwrite
+      # newer work on main.
+      - name: Prepare the next release target
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.release }}
+        run: |
+          npm version patch --no-git-tag-version
+          NEXT_VERSION=$(node -p "require('./package.json').version")
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "chore(release): prepare v$NEXT_VERSION"
+          git push origin HEAD:main
+          echo "Published $RELEASE_VERSION; package.json now targets $NEXT_VERSION"

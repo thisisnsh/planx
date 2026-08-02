@@ -18,10 +18,11 @@ touches npm at all — npm trusted publishing pins one repository *and workflow
 filename*, so a second publishing workflow would need a second trusted
 publisher for the same package.
 
-Staging synthesises `<version-in-package.json>-staging.<n>` at publish time;
-production uses the exact version committed in `package.json`. The staging
-version is never committed. The local script restores both `package.json` and
-the lockfile on every exit path, including a failed publish.
+Staging synthesises `<version-in-package.json>-staging.<n>` at publish time.
+Production takes its version from the GitHub Release tag, then automatically
+advances the committed `package.json` patch version for the next staging cycle.
+The local staging script restores both `package.json` and the lockfile on every
+exit path, including a failed publish.
 
 ## 2. Cutting a staging build
 
@@ -44,10 +45,10 @@ release build.
 
 ## 3. Cutting a release
 
-1. Bump `version` in `package.json` to the release you are cutting.
-2. Merge that PR, then cut a staging build from the merge commit — that is the
+1. Merge the changes you want to release, then cut a staging build from that
+   merge commit — that is the
    exact tree the release will be cut from.
-3. Smoke-test it:
+2. Smoke-test it:
    ```bash
    npm install -g @thisisnsh/planx@staging
    planx --version                       # should print 1.2.0-staging.N
@@ -61,12 +62,13 @@ release build.
    one'
    planx --dir /tmp/planx-smoke submit <id> --comment "3:no" --approve
    ```
-4. Create a GitHub Release on tag `v1.2.0`. Summarise notable changes and any
-   on-disk format migration in the release notes. `release.yml` does the rest.
+3. Create a GitHub Release with the desired semver tag, such as `v1.2.0`, from
+   the tip of `main`. Summarise notable changes and any on-disk format migration
+   in the release notes. `release.yml` sets the package version from the tag,
+   publishes it, then commits the next patch target (`1.2.1`) back to `main`.
 
-The tag must match `package.json` exactly — the workflow asserts this and fails
-loudly if not, because publishing `1.2.0` from a tag called `v1.3.0` is nearly
-impossible to notice afterwards and impossible to undo.
+Release tags must be stable semver versions. Prerelease tags are rejected so a
+prerelease can never move npm's `latest` tag.
 
 ## 4. Version policy
 
@@ -109,6 +111,8 @@ Then fix forward and cut a new release. Never re-publish a version number.
   publishing rather than via an explicit `--provenance` flag.
 - **`--access public`** on publish. Scoped packages are private by default, so
   this flag is not optional; omitting it fails the publish on a free account.
+- **`contents: write`** on the publishing job, so it can commit the next patch
+  target to `main` after npm confirms the release was published.
 - **`npm login` on the maintainer's machine** for staging builds, which
   authenticate with your own credentials rather than OIDC. If the package is
   ever set to *require* trusted publishing on npmjs.com, that setting rejects
