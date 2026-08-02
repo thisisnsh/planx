@@ -137,21 +137,6 @@ export const COMMANDS: CommandSpec[] = [
     summary: 'Show a plan’s locks and any outstanding unlock grants.',
   },
   {
-    name: 'execute',
-    usage: 'planx execute [id] [version] [--agent NAME] [--model M] [--dry-run]',
-    summary: 'Run a plan by spawning a fresh agent process.',
-    description:
-      'From a terminal this spawns a new agent with the plan as its prompt. From inside an ' +
-      'agent, use the /planx-execute skill instead: spawning a nested agent would lose the ' +
-      'context, the permissions and your ability to intervene.',
-    flags: [
-      { name: '--agent', arg: 'NAME', summary: 'Which configured agent to launch.' },
-      { name: '--model', arg: 'M', summary: 'Model to pass to it.' },
-      { name: '--args', arg: 'STR', summary: 'Extra arguments appended to the command.' },
-      { name: '--dry-run', summary: 'Print the exact argv and exit without running it.' },
-    ],
-  },
-  {
     name: 'import',
     usage: 'planx import --from claude|codex [--latest|--all] [--since 7d]',
     summary: 'Backfill plans from an agent’s own history.',
@@ -198,9 +183,7 @@ export const COMMANDS: CommandSpec[] = [
     name: 'config',
     usage: 'planx config get|set <key> [value]',
     summary: 'Read or write configuration.',
-    description:
-      'Settable keys: enabled, defaultAgent, render. Agent definitions are edited ' +
-      'in config.json directly — a flag syntax for nested argv arrays would be worse than an editor.',
+    description: 'Settable keys: enabled, render.',
   },
   {
     name: 'install',

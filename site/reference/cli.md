@@ -169,23 +169,6 @@ Show a plan’s locks and any outstanding unlock grants.
 planx locks <id> [--json]
 ```
 
-## `planx execute`
-
-Run a plan by spawning a fresh agent process.
-
-```
-planx execute [id] [version] [--agent NAME] [--model M] [--dry-run]
-```
-
-From a terminal this spawns a new agent with the plan as its prompt. From inside an agent, use the /planx-execute skill instead: spawning a nested agent would lose the context, the permissions and your ability to intervene.
-
-| Flag | Meaning |
-| --- | --- |
-| `--agent <NAME>` | Which configured agent to launch. |
-| `--model <M>` | Model to pass to it. |
-| `--args <STR>` | Extra arguments appended to the command. |
-| `--dry-run` | Print the exact argv and exit without running it. |
-
 ## `planx import`
 
 Backfill plans from an agent’s own history.
@@ -273,7 +256,7 @@ Read or write configuration.
 planx config get|set <key> [value]
 ```
 
-Settable keys: enabled, defaultAgent, render. Agent definitions are edited in config.json directly — a flag syntax for nested argv arrays would be worse than an editor.
+Settable keys: enabled, render.
 
 ## `planx install`
 

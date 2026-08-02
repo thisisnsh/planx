@@ -9,7 +9,6 @@ import {
   cmdConfig,
   cmdDiff,
   cmdDoctor,
-  cmdExecute,
   cmdImport,
   cmdInstall,
   cmdList,
@@ -86,8 +85,6 @@ async function dispatch(name: string, ctx: Ctx): Promise<number> {
       return cmdVersions(ctx);
     case 'locks':
       return cmdLocks(ctx);
-    case 'execute':
-      return cmdExecute(ctx);
     case 'import':
       return cmdImport(ctx);
     case 'clean':

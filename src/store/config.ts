@@ -3,37 +3,15 @@ import { paths } from './paths.js';
 import { ConfigSchema, type Config } from './types.js';
 
 /**
- * Seeded on first use. `claude` and `codex` ship configured because they are the
- * two agents planx is tested against; `aider` is here as the worked example that
- * adding an agent is a config entry, not a code change (PLAN §10).
+ * Seeded on first use.
+ *
+ * There is very little here. The agent registry this used to carry — argv
+ * templates, model lists, a slash command to paste — existed only so planx
+ * could spawn an agent for you. It does not any more: it prints the command
+ * and you run it where you already are.
  */
 export function defaultConfig(): Config {
-  return ConfigSchema.parse({
-    defaultAgent: 'claude',
-    agents: {
-      claude: {
-        cmd: 'claude',
-        args: ['--permission-mode', 'acceptEdits', '--model', '{model}', '{prompt}'],
-        models: ['opus', 'sonnet', 'haiku'],
-        model_switch: '/model {model}',
-        skills_dir: '.claude/skills',
-      },
-      codex: {
-        cmd: 'codex',
-        args: ['exec', '-m', '{model}', '{prompt}'],
-        models: ['gpt-5.6-terra', 'gpt-5.6'],
-        model_switch: '/model {model}',
-        skills_dir: '.codex/skills',
-      },
-      aider: {
-        cmd: 'aider',
-        args: ['--message-file', '{prompt_file}'],
-        models: [],
-        model_switch: '/model {model}',
-        skills_dir: '',
-      },
-    },
-  });
+  return ConfigSchema.parse({});
 }
 
 export function readConfig(): Config {

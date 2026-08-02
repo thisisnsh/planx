@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { adapters, runImport } from '../adapters/index.js';
 import { diffVersions, rowsForSingleVersion } from '../diff/lines.js';
-import { buildCommand, formatCommand, resolveAgent, runCommand } from '../exec/registry.js';
 import {
   describeSkill,
   installedSkills,
@@ -44,7 +43,7 @@ import {
 } from '../store/plans.js';
 import { listFeedback } from '../store/feedback.js';
 import { isInteractive, runPicker, runReview } from '../tui/run.js';
-import { all, has, one, parseDuration, splitArgs, type ParsedArgs } from './args.js';
+import { all, has, one, parseDuration, type ParsedArgs } from './args.js';
 
 export interface Ctx {
   args: ParsedArgs;
@@ -450,71 +449,27 @@ async function runInteractiveReview(
     ctx.out(dim(`  unlocked: ${submitted.locksRemoved.join(', ')}`));
   }
 
-  if (verdict === 'approve') await afterApproval(ctx, id, versionB, submitted.sealedLocks.length);
+  if (verdict === 'approve') afterApproval(ctx, id, versionB, submitted.sealedLocks.length);
   return 0;
 }
 
 /**
- * The approve → execute handoff.
+ * The approve → execute hand-off.
  *
- * Same-window model switching is the one thing planx cannot do for you: no
- * agent CLI exposes a way for a running session to change its own model, so we
- * print the exact line to paste rather than shipping something that quietly
- * does not switch (PLAN §9).
+ * One line, no questions. planx cannot switch a running session's model and no
+ * agent CLI exposes a way to, so the old picker only ever printed a suggestion
+ * to paste — two prompts to arrive at a string. The string is the whole value,
+ * so print it (PLAN §9).
  */
-async function afterApproval(
-  ctx: Ctx,
-  id: string,
-  version: number,
-  sections: number,
-): Promise<number> {
+function afterApproval(ctx: Ctx, id: string, version: number, sections: number): number {
   ctx.out('');
   ctx.out(
     `${green('✓')} Approved & sealed — ${bold(id)} v${version} (${sections} sections locked)`,
   );
-
-  if (!isInteractive()) return 0;
-
-  const [where] = await runPicker<'here' | 'new' | 'later'>({
-    title: 'Execute it?',
-    items: [
-      { value: 'here', label: 'same window', hint: 'keeps the research context this session has' },
-      { value: 'new', label: 'new window', hint: 'clean context; model applied automatically' },
-      { value: 'later', label: 'not now', hint: 'just tell me the id' },
-    ],
-  });
-  if (!where || where === 'later') return 0;
-
-  const config = readConfig();
-  const { name: agentName, agent } = resolveAgent(config, one(ctx.args, '--agent'));
-  const models = agent.models.length ? agent.models : [];
-  const [model] = models.length
-    ? await runPicker<string>({
-        title: `Which model for ${agentName}?`,
-        items: [
-          { value: '', label: `(current default)`, hint: 'no --model flag' },
-          ...models.map((m) => ({ value: m, label: m })),
-        ],
-      })
-    : [''];
-
-  if (where === 'here') {
-    ctx.out('');
-    if (model) {
-      ctx.out('  Execute here with a different model? Paste this, then say "go":');
-      ctx.out(yellow(`      ${agent.model_switch.replace('{model}', model)}`));
-      ctx.out('');
-    }
-    ctx.out('  Or execute in a new window (model applied automatically):');
-    ctx.out(
-      yellow(
-        `      planx execute ${id} v${version} --agent ${agentName}${model ? ` --model ${model}` : ''}`,
-      ),
-    );
-    return 0;
-  }
-
-  return runExecute(ctx, id, version, agentName, model || null, [], false);
+  ctx.out('');
+  ctx.out('  To build it, tell your agent — this session or a new one:');
+  ctx.out(yellow(`      planx execute ${id} v${version}`));
+  return 0;
 }
 
 /* ---------------------------------------------------------------- show */
@@ -614,76 +569,6 @@ export function cmdLocks(ctx: Ctx): number {
 }
 
 /* ------------------------------------------------------------- execute */
-
-export async function cmdExecute(ctx: Ctx): Promise<number> {
-  const id = await resolvePlan(ctx.args.positionals[0], 'Execute which plan?');
-  if (!id) return 1;
-  const version = resolveVersionRef(id, ctx.args.positionals[1]);
-
-  const config = readConfig();
-  let agentName = one(ctx.args, '--agent') ?? null;
-  if (!agentName && isInteractive()) {
-    const [picked] = await runPicker<string>({
-      title: 'Which agent?',
-      items: Object.keys(config.agents).map((name) => ({
-        value: name,
-        label: name,
-        hint: config.agents[name]!.cmd,
-      })),
-    });
-    agentName = picked ?? null;
-    if (!agentName) return 1;
-  }
-
-  const { name, agent } = resolveAgent(config, agentName);
-  let model = one(ctx.args, '--model') ?? null;
-  if (!model && agent.models.length && isInteractive()) {
-    const [picked] = await runPicker<string>({
-      title: `Which model for ${name}?`,
-      items: [
-        { value: '', label: '(current default)', hint: 'no --model flag' },
-        ...agent.models.map((m) => ({ value: m, label: m })),
-      ],
-    });
-    model = picked || null;
-  }
-
-  const extra = splitArgs(one(ctx.args, '--args') ?? '');
-  return runExecute(ctx, id, version, name, model, extra, has(ctx.args, '--dry-run'));
-}
-
-async function runExecute(
-  ctx: Ctx,
-  id: string,
-  version: number,
-  agentName: string,
-  model: string | null,
-  extraArgs: string[],
-  dryRun: boolean,
-): Promise<number> {
-  const config = readConfig();
-  const { agent } = resolveAgent(config, agentName);
-  const meta = readMeta(id);
-  const built = buildCommand(agent, {
-    planId: id,
-    version,
-    planPath: paths.versionFile(id, version),
-    planText: requireVersionText(id, version),
-    model,
-    cwd: meta?.cwd || process.cwd(),
-    extraArgs,
-  });
-
-  // Always show the argv before running it — a command that spawns another
-  // agent with permissions attached should never be a surprise.
-  ctx.out(dim(`  ${formatCommand(built)}`));
-  if (dryRun) return 0;
-
-  if (!meta?.approved_at) {
-    ctx.err(yellow('  warning: this plan was never approved'));
-  }
-  return runCommand(built, meta?.cwd || process.cwd());
-}
 
 /* --------------------------------------------------------------- import */
 
@@ -882,7 +767,6 @@ export function cmdStatus(ctx: Ctx): number {
   ctx.out(`  plans      ${plans.length} (${plans.filter((p) => p.approved).length} approved)`);
   ctx.out(`  trash      ${listTrash().length}`);
   ctx.out(`  render     ${config.render}`);
-  ctx.out(`  agent      ${config.defaultAgent}`);
   ctx.out(`  skills     ${skills.length ? '' : dim('none installed — run `planx install`')}`);
   for (const skill of skills) ctx.out(`             ${dim(skill)}`);
   return 0;

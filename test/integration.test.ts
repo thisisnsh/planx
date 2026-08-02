@@ -286,7 +286,7 @@ describe('the generated reference', () => {
   it('documents every non-hidden command', async () => {
     const docs = await cli.run(['__gen-cli-docs']);
     expect(docs.code).toBe(0);
-    for (const command of ['capture', 'resume', 'submit', 'diff', 'locks', 'clean', 'execute']) {
+    for (const command of ['capture', 'resume', 'submit', 'diff', 'locks', 'clean', 'doctor']) {
       expect(docs.stdout).toContain(`## \`planx ${command}\``);
     }
     expect(docs.stdout).toContain('Do not edit by hand');

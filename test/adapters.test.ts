@@ -5,13 +5,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { claudeAdapter } from '../src/adapters/claude.js';
 import { codexAdapter } from '../src/adapters/codex.js';
 import { getAdapter, runImport } from '../src/adapters/index.js';
-import {
-  buildCommand,
-  executionPrompt,
-  formatCommand,
-  resolveAgent,
-} from '../src/exec/registry.js';
-import { defaultConfig } from '../src/store/config.js';
 import { listPlans, readVersionText } from '../src/store/plans.js';
 import { tempStore } from './helpers.js';
 
@@ -178,64 +171,5 @@ describe('importing', () => {
 
   it('names the alternatives when asked for an adapter that does not exist', () => {
     expect(() => getAdapter('emacs')).toThrow(/Available: claude, codex/);
-  });
-});
-
-describe('building an execution command', () => {
-  const ctx = {
-    planId: 'guard-clock-a3f9',
-    version: 3,
-    planPath: '/store/plans/guard-clock-a3f9/v3.md',
-    planText: '# Guard\n\n## Approach\nDo it.\n',
-    cwd: '/work/repo',
-    extraArgs: [] as string[],
-  };
-
-  it('substitutes every placeholder', () => {
-    const config = defaultConfig();
-    const { agent } = resolveAgent(config, 'claude');
-    const built = buildCommand(agent, { ...ctx, model: 'opus' });
-
-    expect(built.cmd).toBe('claude');
-    expect(built.args).toContain('--model');
-    expect(built.args).toContain('opus');
-    expect(built.args.at(-1)).toContain('planx plan guard-clock-a3f9 v3');
-    expect(built.args.at(-1)).toContain('## Approach');
-  });
-
-  it('drops the model flag entirely when no model was chosen', () => {
-    const { agent } = resolveAgent(defaultConfig(), 'claude');
-    const built = buildCommand(agent, { ...ctx, model: null });
-    expect(built.args).not.toContain('--model');
-    expect(built.args).not.toContain('');
-  });
-
-  it('writes a prompt file for an agent that takes one', () => {
-    const { agent } = resolveAgent(defaultConfig(), 'aider');
-    const built = buildCommand(agent, { ...ctx, model: null });
-    expect(built.promptFile).toBeTruthy();
-    expect(built.args).toContain(built.promptFile);
-  });
-
-  it('appends passthrough arguments last', () => {
-    const { agent } = resolveAgent(defaultConfig(), 'codex');
-    const built = buildCommand(agent, { ...ctx, model: 'gpt-5.6', extraArgs: ['--full-auto'] });
-    expect(built.args.at(-1)).toBe('--full-auto');
-  });
-
-  it('names the known agents when asked for one that is not configured', () => {
-    expect(() => resolveAgent(defaultConfig(), 'emacs')).toThrow(
-      /Known agents: claude, codex, aider/,
-    );
-  });
-
-  it('keeps the plan id and version in the prompt so transcripts trace back', () => {
-    expect(executionPrompt('p-1', 7, '# T\n')).toContain('planx plan p-1 v7');
-  });
-
-  it('shortens a huge argument when showing the command', () => {
-    const { agent } = resolveAgent(defaultConfig(), 'claude');
-    const built = buildCommand(agent, { ...ctx, model: 'opus', planText: 'x'.repeat(5000) });
-    expect(formatCommand(built).length).toBeLessThan(400);
   });
 });

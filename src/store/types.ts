@@ -162,24 +162,10 @@ export type Feedback = z.infer<typeof FeedbackSchema>;
 
 /* ---------------------------------------------------------------- config */
 
-export const AgentConfigSchema = z.object({
-  cmd: z.string(),
-  args: z.array(z.string()).default([]),
-  models: z.array(z.string()).default([]),
-  /** Slash command the user pastes to switch model in an existing session. */
-  model_switch: z.string().default('/model {model}'),
-  /** Where `planx install` writes this agent's skills, relative to $HOME. */
-  skills_dir: z.string().default(''),
-});
-export type AgentConfig = z.infer<typeof AgentConfigSchema>;
-
 export const ConfigSchema = z.object({
   format_version: formatVersion,
-  /** `planx off` makes capture/await no-ops so the skills degrade quietly. */
+  /** `planx off` makes capture a no-op so the skills degrade quietly. */
   enabled: z.boolean().default(true),
-  defaultAgent: z.string().default('claude'),
   render: z.enum(['rich', 'plain']).default('rich'),
-  /** Default `await` slice, kept under Claude Code's 600s Bash ceiling. */
-  agents: z.record(z.string(), AgentConfigSchema).default({}),
 });
 export type Config = z.infer<typeof ConfigSchema>;
