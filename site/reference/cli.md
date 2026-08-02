@@ -5,7 +5,7 @@
 
 # CLI reference
 
-Generated from planx 0.1.0.
+Generated from planx 0.1.2.
 
 ## Global flags
 
