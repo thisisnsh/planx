@@ -90,11 +90,7 @@ export function sealPlan(locks: LocksFile, docLines: string[], version: number):
  * lock *state* was always right, because a line is locked if any record covers
  * it, but the bookkeeping under it was not.
  */
-export function uncoveredRuns(
-  locks: LocksFile,
-  docLines: string[],
-  range: LineRange,
-): LineRange[] {
+export function uncoveredRuns(locks: LocksFile, docLines: string[], range: LineRange): LineRange[] {
   const covered = new Set<number>();
   for (const lock of Object.values(locks.locks)) {
     const found = locateLock(docLines, lock);

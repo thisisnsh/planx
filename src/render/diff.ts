@@ -86,13 +86,7 @@ export function renderGutter(row: DiffRow, opts: GutterOptions): string {
   // wide in a column nobody reads; the number beside the text is already in
   // view. Under the cursor it goes yellow instead — finding where you are beats
   // knowing what changed on the one line you are looking at.
-  const paint = opts.active
-    ? signal
-    : row.kind === 'add'
-      ? green
-      : row.kind === 'del'
-        ? red
-        : dim;
+  const paint = opts.active ? signal : row.kind === 'add' ? green : row.kind === 'del' ? red : dim;
   // One space after the marker, so `⚿10` does not read as one token.
   return `${lock} ${sign}${paint(num)}  `;
 }

@@ -224,9 +224,7 @@ export function feedbackRows(id: string, comment: string, opts: BoxOptions): Fee
     // closing corner to suggest anything was hidden sideways.
     const title = ` ▸ ${firstLine(comment)} `;
     const fill = Math.max(0, boxWidth - 2 - title.length);
-    return [
-      { ...base, part: 'collapsed', text: `├─${title}${'─'.repeat(fill)}`, last: true },
-    ];
+    return [{ ...base, part: 'collapsed', text: `├─${title}${'─'.repeat(fill)}`, last: true }];
   }
 
   // The caret needs a column of its own on the last line. Wrapping a column

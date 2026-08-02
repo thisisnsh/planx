@@ -5,14 +5,7 @@ import { buildAnnotation } from '../protocol/submit.js';
 import { bold, dim, inverse, padEnd, signal, stripAnsi, truncate } from '../render/ansi.js';
 import type { RenderMode } from '../render/diff.js';
 import type { Annotation, Feedback } from '../store/types.js';
-import {
-  bottomRule,
-  brandTitle,
-  frameLine,
-  FRAME_PADDING,
-  REPO,
-  topRule,
-} from './frame.js';
+import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO, topRule } from './frame.js';
 import { lockLines, unlockLines } from './locking.js';
 import { BOX_PADDING, buildModel, feedbackRows, type ViewRow } from './model.js';
 import {
@@ -184,7 +177,10 @@ export function ReviewApp(props: ReviewAppProps) {
         const next = reduceSelection(s, { type: 'move', delta }, rows);
         const travelled = next.cursor - s.cursor;
         setOffset((o) => {
-          const shifted = Math.max(0, Math.min(o + travelled, Math.max(0, rows.length - bodyHeight)));
+          const shifted = Math.max(
+            0,
+            Math.min(o + travelled, Math.max(0, rows.length - bodyHeight)),
+          );
           return scrollFor(next.cursor, shifted, bodyHeight, rows.length);
         });
         return next;
@@ -334,7 +330,8 @@ export function ReviewApp(props: ReviewAppProps) {
         (l) => `locked line${l.start === l.end ? '' : 's'} ${describeSpan(l)} as ${l.id}`,
       );
       if (result.skipped.length) {
-        const single = result.skipped.length === 1 && result.skipped[0]!.start === result.skipped[0]!.end;
+        const single =
+          result.skipped.length === 1 && result.skipped[0]!.start === result.skipped[0]!.end;
         parts.push(
           `${result.skipped.map(describeSpan).join(', ')} ${single ? 'was' : 'were'} already locked`,
         );

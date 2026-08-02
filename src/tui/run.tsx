@@ -70,9 +70,7 @@ export async function runReview(opts: RunReviewOptions): Promise<ReviewResult> {
 
     instance
       .waitUntilExit()
-      .then(() =>
-        finish({ action: 'quit', batches: [], version: opts.versionB, general: '' }),
-      );
+      .then(() => finish({ action: 'quit', batches: [], version: opts.versionB, general: '' }));
   });
 }
 

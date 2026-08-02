@@ -75,10 +75,22 @@ describe('keyboard selection', () => {
 
 describe('walking past notes', () => {
   it('steps over a note box rather than into it', () => {
-    const down = run([{ type: 'moveTo', index: 1 }, { type: 'move', delta: 1 }], ANNOTATED);
+    const down = run(
+      [
+        { type: 'moveTo', index: 1 },
+        { type: 'move', delta: 1 },
+      ],
+      ANNOTATED,
+    );
     expect(down.cursor).toBe(5);
 
-    const up = run([{ type: 'moveTo', index: 5 }, { type: 'move', delta: -1 }], ANNOTATED);
+    const up = run(
+      [
+        { type: 'moveTo', index: 5 },
+        { type: 'move', delta: -1 },
+      ],
+      ANNOTATED,
+    );
     expect(up.cursor).toBe(1);
   });
 
@@ -88,7 +100,15 @@ describe('walking past notes', () => {
 
   it('stays put rather than landing on a box at the end of the list', () => {
     const rows: SelectableRow[] = [...ANNOTATED.slice(0, 5)];
-    expect(run([{ type: 'moveTo', index: 1 }, { type: 'move', delta: 1 }], rows).cursor).toBe(1);
+    expect(
+      run(
+        [
+          { type: 'moveTo', index: 1 },
+          { type: 'move', delta: 1 },
+        ],
+        rows,
+      ).cursor,
+    ).toBe(1);
     expect(run([{ type: 'moveTo', index: 4 }], rows).cursor).toBe(1);
   });
 });
