@@ -44,7 +44,7 @@ PLAN
 
 ## 4. Hand back and stop
 
-> Captured `<plan-id>` v<n+1>. Run `planx` to review it.
+> Captured `<plan-id>` v<n+1>. Run `planx <plan-id>` to review it.
 
 Then end your turn. The next round starts when they paste a command back.
 

@@ -42,18 +42,19 @@ $ planx
 
 ```
 ╭─ planx v0.3.0  guard-the-clock-regression-26af  v1 ─────────────────────────╮
-│      1  ## Approach                                                         │
-│      2  Extend the existing snapshot-regression guard in `poller.ts`        │
-│      3  to also reject a cross-period backward jump.                        │
-│         ╭─────────────────────────────────────────────────────────────────╮ │
-│         │ Wrong layer. This belongs in the R2 write path.                 │ │
-│         ╰─────────────────────────────────────────────────────────────────╯ │
-│   ⚿  4                                                                      │
+│                                                                             │
+│   │   1  ## Approach                                                        │
+│   │   2  Extend the existing snapshot-regression guard in `poller.ts`       │
+│   │   3  to also reject a cross-period backward jump.                       │
+│   ├────────────────────────────────────────────────────────────╮            │
+│   │ Wrong layer. This belongs in the R2 write path.            │            │
+│   ╰────────────────────────────────────────────────────────────╯            │
+│       4                                                                     │
 │   ⚿  5  ## Rollout                                                          │
-│ ▸    6  Deploy behind the `ff_clock_guard` flag, 10% → 50% → 100% over 3 d… │
+│ ▸ ⚿  6  Deploy behind the `ff_clock_guard` flag, 10% → 50% → 100% over 3 d… │
 │                                                                             │
 │                                                                             │
-│ v select · f feedback · l lock · n note · s submit · x exit · ? help        │
+│ v select · f feedback · l lock · n note · d diff · [ ] version · g/G ^d/^u… │
 ╰────────────────────────────────────────────── ★ github.com/thisisnsh/planx ─╯
 ```
 

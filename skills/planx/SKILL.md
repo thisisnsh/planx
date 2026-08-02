@@ -70,11 +70,16 @@ PLAN
 This prints the plan id and version. Keep both. If the user named the plan, add
 `--name "<their name>"`.
 
+The heredoc is the point: the plan goes in on stdin and never touches a temp
+file on its way. Do not write it out and pass `--file` — that is a hand-off
+buffer, read once and never referenced again, and it leaves a copy of the plan
+somewhere nothing is going to clean up.
+
 ## 3. Hand it over, then stop
 
 Tell the user, in one line:
 
-> Plan captured as `<plan-id>` v1. Run `planx` to review it.
+> Plan captured as `<plan-id>` v1. Run `planx <plan-id>` to review it.
 
 **Then stop and end your turn.** Nothing blocks and nothing polls. They review
 it, and the reviewer prints a command they paste back to you — usually

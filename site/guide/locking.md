@@ -109,9 +109,32 @@ monolithic lock would need its own special case for all three.
 
 A plan with no `##` headings at all seals as one block.
 
-After approval you can still `planx diff` the plan and select lines to
-**unlock**. Carving a hole in a sealed plan is a normal, supported operation —
-it just has to be your explicit act.
+Sealing skips lines that are already locked, so a block you froze by hand inside
+a section keeps its own record and its own id rather than being buried under a
+section lock laid over the top of it.
+
+After approval you can still open the plan and select lines to **unlock**.
+Carving a hole in a sealed plan is a normal, supported operation — it just has
+to be your explicit act.
+
+## Locks never overlap
+
+At most one lock covers any given line. Locking a span that is already half
+locked adds records only for the other half, and the review says so:
+
+```
+locked lines 7–10 as L3 · 4–6 were already locked
+```
+
+Pressing `l` on something half locked still ends up with it locked — that is
+what the toggle means — but it does not write a second record over the first.
+Being disjoint is what makes the gutter's lock id unambiguous, keeps `planx
+locks` from listing the same text twice, and means an unlock has exactly one
+record to split.
+
+Adjacent locks are *not* merged into one. Two blocks locked separately stay
+separate, so a grant issued against one keeps naming the lines it named when it
+was issued.
 
 ## Partial unlock splits a lock
 

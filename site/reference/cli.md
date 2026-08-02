@@ -108,10 +108,10 @@ planx unlock guard-clock-a3f9 L2 --reason "the R2 path replaced this entirely"
 Review a plan, or print a diff between two versions.
 
 ```
-planx diff [id] [vA] [vB] [--print] [--plain|--rich] [--stat]
+planx [diff] [id] [vA] [vB] [--print] [--plain|--rich] [--stat]
 ```
 
-In a terminal this opens the review TUI: select lines and comment, lock or unlock them, then submit or approve. Piped or with --print it writes the diff to stdout and exits. With no arguments it opens a picker.
+In a terminal this opens the review TUI on the plan as it stands: select lines and comment, lock or unlock them, press d for the diff against the previous version, then submit or approve. The command name is optional in front of a plan — `planx <id>` is the same thing. Piped or with --print it writes the diff to stdout and exits. With no arguments it opens a picker.
 
 | Flag | Meaning |
 | --- | --- |
@@ -256,7 +256,7 @@ Read or write configuration.
 planx config get|set <key> [value]
 ```
 
-Settable keys: enabled, render.
+Settable keys: enabled, render, mouse. `mouse on` turns on wheel scrolling in the review, at the cost of the terminal’s own click-and-drag text selection.
 
 ## `planx install`
 

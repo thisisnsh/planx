@@ -7,6 +7,7 @@
   "format_version": 1,
   "enabled": true,
   "render": "rich",
+  "mouse": "off",
   "agents": {
     "claude": {
       "cmd": "claude",
@@ -31,6 +32,7 @@ planx config set render plain
 | --- | --- | --- | --- |
 | `enabled` | boolean | `true` | `planx off` sets this false. Write commands then print a notice and exit 0, so the skills degrade quietly instead of erroring. |
 | `render` | `rich` \| `plain` | `"rich"` | Default rendering for `diff` and `show`. |
+| `mouse` | `off` \| `on` | `"off"` | Wheel scrolling in the review. Off by default: capturing mouse events is what stops the terminal letting you select and copy a line out of a plan, so it is a trade you make deliberately. Only the wheel is acted on. |
 
 Agent definitions are edited in `config.json` directly. There is no
 `planx config set agents.claude.args[2]` — a flag syntax for nested argv arrays

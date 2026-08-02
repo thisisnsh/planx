@@ -46,24 +46,30 @@ work on the text directly:
 - **Approve when you are done.** The plan seals and every section locks.
 
 ```console
-$ planx diff guard-clock-regression-a3f9
+$ planx guard-clock-regression-a3f9
 ```
 
 ```
-┌ planx · guard-clock-regression-a3f9 · v1 · REVIEW ──────────────────┐
-│    38   ## Approach                                                 │
-│  ▓ 42   Extend the existing snapshot-regression guard in            │
-│  ▓ 43   `poller.ts` to also reject a cross-period backward jump     │
-│    44   while the match is live.                                    │
-│                                                                     │
-│ 🔒 88   ## Rollout                                          [L2]    │
-│ 🔒 89   Deploy behind the `ff_clock_guard` flag, 10% → 50% …        │
-├─────────────────────────────────────────────────────────────────────┤
-│ ● a1  L42–43  "Wrong layer. Guard belongs in the R2 write path…"    │
-├─────────────────────────────────────────────────────────────────────┤
-│ v select · f feedback · l lock · s submit · a approve · x exit       │
-└─────────────────────────────────────────────────────────────────────┘
+╭─ planx v0.3.0  guard-clock-regression-a3f9  v1 ─────────────────────────────╮
+│                                                                             │
+│   │  42  Extend the existing snapshot-regression guard in `poller.ts`       │
+│   │  43  to also reject a cross-period backward jump.                       │
+│   ├────────────────────────────────────────────────────────────╮            │
+│   │ Wrong layer. This belongs in the R2 write path.            │            │
+│   ╰────────────────────────────────────────────────────────────╯            │
+│      44                                                                     │
+│   ⚿ 88  ## Rollout                                                          │
+│ ▸ ⚿ 89  Deploy behind the `ff_clock_guard` flag, 10% → 50% → 100% over 3 d… │
+│                                                                             │
+│                                                                             │
+│ v select · f feedback · l lock · n note · d diff · [ ] version · g/G ^d/^u… │
+╰────────────────────────────────────────────── ★ github.com/thisisnsh/planx ─╯
 ```
+
+A note hangs off a rail down the lines it is about, so it is never a comment
+floating near a passage — it is attached to one. The plan opens as it stands;
+`d` shows the diff against the previous version, and `[` and `]` walk the
+history.
 
 You press `s`. It prints a command to paste back to your agent, which picks the
 plan up with your

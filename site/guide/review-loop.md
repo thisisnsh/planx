@@ -5,10 +5,10 @@ agent                                     you
   |                                        |
   | planx capture --stdin --title "..."    |
   |   → writes v2.md, prints id + version  |
-  |   → says "run planx to review", stops  |
+  |   → says "run planx <id>", stops       |
   |                                        |
-  |                                      planx
-  |                                        → pick the plan
+  |                                      planx <id>
+  |                                        → the plan as it stands
   |                                        → select lines: feedback / lock
   |                                        → s to submit
   |                                        → prints: planx resume <id>
@@ -34,6 +34,21 @@ disk either way, and `planx resume` reads it.
 `planx` opens whether or not anything is waiting, because nothing ever is. Leave
 notes an hour later. Leave them in three sittings. They accumulate on the
 version, and whenever you hand the agent `planx resume`, it sees all of them.
+
+`planx <plan>` opens that plan directly — the id the agent printed is the
+argument, and prefixes work, so `planx guard-clock` is enough. Bare `planx`
+opens a picker instead.
+
+## The plan first, the diff on `d`
+
+A plan opens as it stands, not as a diff. The diff is the interesting view
+sometimes; the plan is what you came to read. `d` shows the changes against the
+previous version and `d` again puts them away, while `[` and `]` walk the
+history — the header is the indicator, reading `v3` or `v3 ← v2`.
+
+Notes belong to the version they were written on. Walking back to v1 and leaving
+a note there submits it against v1, in its own batch, alongside anything left on
+the version you started from.
 
 ## Which feedback is still live
 
