@@ -17,6 +17,7 @@ import {
   cmdLocks,
   cmdRename,
   cmdRestore,
+  cmdResume,
   cmdShow,
   cmdStatus,
   cmdSubmit,
@@ -73,6 +74,8 @@ async function dispatch(name: string, ctx: Ctx): Promise<number> {
       return cmdCapture(ctx);
     case 'await':
       return cmdAwait(ctx);
+    case 'resume':
+      return cmdResume(ctx);
     case 'submit':
       return cmdSubmit(ctx);
     case 'unlock-request':

@@ -58,6 +58,17 @@ export const COMMANDS: CommandSpec[] = [
     examples: ['planx await guard-clock-a3f9 v2'],
   },
   {
+    name: 'resume',
+    usage: 'planx resume <id> [version] [--json]',
+    summary: 'Pick a plan back up: the plan, the feedback on it, and its locks.',
+    description:
+      'One read with everything needed to revise, including the plan text, so it works in a ' +
+      'session that has never seen the plan. Comments left on an earlier version whose quoted ' +
+      'text is still present word for word are reported as probably never addressed. Safe to ' +
+      'run twice; it waits for nothing.',
+    examples: ['planx resume guard-clock-a3f9'],
+  },
+  {
     name: 'submit',
     usage: 'planx submit <id> [version] [--comment "42-47:text"] [--approve] [--stdin]',
     summary: 'Submit review feedback without the TUI.',

@@ -64,6 +64,20 @@ Writes a request the TUI can see, then waits. On timeout it prints a resumable m
 planx await guard-clock-a3f9 v2
 ```
 
+## `planx resume`
+
+Pick a plan back up: the plan, the feedback on it, and its locks.
+
+```
+planx resume <id> [version] [--json]
+```
+
+One read with everything needed to revise, including the plan text, so it works in a session that has never seen the plan. Comments left on an earlier version whose quoted text is still present word for word are reported as probably never addressed. Safe to run twice; it waits for nothing.
+
+```bash
+planx resume guard-clock-a3f9
+```
+
 ## `planx submit`
 
 Submit review feedback without the TUI.

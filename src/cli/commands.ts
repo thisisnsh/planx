@@ -19,7 +19,12 @@ import {
   timeoutMessage,
 } from '../protocol/await.js';
 import { capture, LockViolationError } from '../protocol/capture.js';
-import { presentFeedback, presentUnlockDecision } from '../protocol/present.js';
+import {
+  carriedOver,
+  presentFeedback,
+  presentResume,
+  presentUnlockDecision,
+} from '../protocol/present.js';
 import { buildAnnotation, respondToUnlock, submitFeedback } from '../protocol/submit.js';
 import { bold, cyan, dim, green, red, yellow } from '../render/ansi.js';
 import { renderDocument, renderStatLine, renderUnified, type RenderMode } from '../render/diff.js';
@@ -186,6 +191,47 @@ export async function cmdAwait(ctx: Ctx): Promise<number> {
       feedback: outcome.value,
       locks: readLocks(id),
       docLines: normalizedLines(requireVersionText(id, version)),
+    }),
+  );
+  return 0;
+}
+
+/* -------------------------------------------------------------- resume */
+
+/**
+ * Pick a plan back up: what it says now, what was asked of it, what is locked.
+ *
+ * This is what replaced `await`. The reviewer hands over a command instead of
+ * the agent blocking on a queue, so everything the agent needs is assembled
+ * from the store on demand — one read, no waiting, safe to run twice.
+ */
+export function cmdResume(ctx: Ctx): number {
+  const id = resolvePlanRef(requirePositional(ctx, 0, 'planx resume <id> [version]'));
+  const version = resolveVersionRef(id, ctx.args.positionals[1]);
+  const text = requireVersionText(id, version);
+
+  const history = listFeedback(id);
+  // Feedback on this version is what is actionable. Anything older was retired
+  // by the capture that produced a newer version.
+  const feedback = history.filter((f) => f.version === version);
+  const carried = carriedOver(history, version, text);
+
+  if (ctx.json) {
+    ctx.out(
+      JSON.stringify({ plan_id: id, version, feedback, carried, locks: readLocks(id) }, null, 2),
+    );
+    return 0;
+  }
+
+  ctx.out(
+    presentResume({
+      planId: id,
+      version,
+      feedback,
+      carried,
+      skeleton: renderSkeleton(text, readLocks(id)),
+      locks: readLocks(id),
+      docLines: normalizedLines(text),
     }),
   );
   return 0;
