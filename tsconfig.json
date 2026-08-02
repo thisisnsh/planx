@@ -17,8 +17,7 @@
 
     "declaration": false,
     "sourceMap": true,
-    "outDir": "dist",
-    "rootDir": "src",
+    "noEmit": true,
 
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
