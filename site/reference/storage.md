@@ -94,7 +94,7 @@ and `doctor` rebuilds it from the plan directories, which are the truth.
 
 Every stored file carries `format_version`. It is versioned **independently of
 the npm package**, because the CLI can be rolled back in seconds and a migrated
-store cannot. Every change gets a migration note in the
-[changelog](https://github.com/thisisnsh/planx/blob/main/CHANGELOG.md).
+store cannot. Any migration is documented in the relevant
+[GitHub Release](https://github.com/thisisnsh/planx/releases).
 
 Current on-disk format version: **1**.

@@ -47,6 +47,18 @@ if (base.includes('-')) {
   die(`package.json version (${base}) is already a prerelease. Set it to the next release target.`);
 }
 
+// npm reports a misleading 404 when a publish is unauthenticated. Check the
+// session before doing the version lookup, tests, and build so the most common
+// auth failure is obvious and inexpensive.
+let npmUser;
+try {
+  npmUser = capture('npm', ['whoami']);
+} catch {
+  die('not authenticated with npm. Run `npm login`, then verify it with `npm whoami`.');
+}
+
+console.log(`\n  Authenticated with npm as ${npmUser}.`);
+
 // Pick the next suffix from what is actually on npm rather than a local
 // counter: two maintainers, or a fresh clone, would otherwise collide on a
 // version number that npm refuses to overwrite.
@@ -98,7 +110,10 @@ try {
 }
 
 if (failure) {
-  die(`publish failed. package.json has been restored to ${base}.`);
+  die(
+    `publish failed as ${npmUser}. package.json has been restored to ${base}. ` +
+      `If npm reported 404, confirm this account can publish under the ${name.split('/')[0]} scope.`,
+  );
 }
 
 console.log(`\n  Published ${name}@${version}\n`);

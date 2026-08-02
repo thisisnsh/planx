@@ -146,7 +146,7 @@ planx submit <plan-id> --approve
 
 ```bash
 npm install -g @thisisnsh/planx           # latest — stable
-npm install -g @thisisnsh/planx@staging   # staging — every merge to main
+npm install -g @thisisnsh/planx@staging   # staging — maintainer test builds
 ```
 
 `planx --version` reports which one you are on, so a bug report says so too.

@@ -54,7 +54,7 @@ That writes into `./.claude/skills/` relative to the current directory.
 | Command | Channel | What it is |
 | --- | --- | --- |
 | `npm i -g @thisisnsh/planx` | `latest` | Stable. Published when a GitHub Release is created. |
-| `npm i -g @thisisnsh/planx@staging` | `staging` | Every merge to `main`, versioned `1.2.0-staging.47`. |
+| `npm i -g @thisisnsh/planx@staging` | `staging` | Maintainer-published test build, versioned `1.2.0-staging.47`. |
 
 `planx --version` reports which one you are on, suffix and all, so a bug report
 says so without you having to remember.
@@ -68,9 +68,8 @@ npm install -g @thisisnsh/planx@1.1.3
 Downgrading the CLI is instant and safe. The one caveat is the **on-disk format
 version** of `~/.planx`, which is versioned independently of the package: if a
 release migrated your store forward, an older CLI may not read it. Every such
-change gets a migration note in the
-[changelog](https://github.com/thisisnsh/planx/blob/main/CHANGELOG.md), and they
-are rare.
+change is described in the relevant
+[GitHub Release](https://github.com/thisisnsh/planx/releases), and they are rare.
 
 ## Verify it
 

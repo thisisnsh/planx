@@ -18,22 +18,24 @@ touches npm at all — npm trusted publishing pins one repository *and workflow
 filename*, so a second publishing workflow would need a second trusted
 publisher for the same package.
 
-Both channels synthesise the version at publish time as
-`<version-in-package.json>-staging.<n>`. **`package.json` is never rewritten in
-a commit.** Bot commits on the default branch cause push loops, force everyone
-to pull after every merge, and need `[skip ci]` guards — all avoidable by
-treating the committed version as "the next release target". The local script
-restores `package.json` on every exit path, including a failed publish.
+Staging synthesises `<version-in-package.json>-staging.<n>` at publish time;
+production uses the exact version committed in `package.json`. The staging
+version is never committed. The local script restores both `package.json` and
+the lockfile on every exit path, including a failed publish.
 
 ## 2. Cutting a staging build
 
 From a clean checkout of the commit you want to test:
 
 ```bash
+npm login
+npm whoami
 npm run release:staging
 ```
 
-It refuses a dirty tree, runs typecheck, tests and build, picks the next free
+The login must be an npm account allowed to publish under the `@thisisnsh`
+scope. The script checks that session before doing any expensive work. It then
+refuses a dirty tree, runs typecheck, tests and build, picks the next free
 `-staging.N` by asking npm what is already published, and publishes under the
 `staging` tag. It never moves `latest` — a plain `npm install @thisisnsh/planx`
 keeps resolving to the last real release. There is no provenance on a staging
@@ -43,10 +45,9 @@ release build.
 ## 3. Cutting a release
 
 1. Bump `version` in `package.json` to the release you are cutting.
-2. Move the `Unreleased` section of `CHANGELOG.md` into a dated section.
-3. Merge that PR, then cut a staging build from the merge commit — that is the
+2. Merge that PR, then cut a staging build from the merge commit — that is the
    exact tree the release will be cut from.
-4. Smoke-test it:
+3. Smoke-test it:
    ```bash
    npm install -g @thisisnsh/planx@staging
    planx --version                       # should print 1.2.0-staging.N
@@ -60,8 +61,8 @@ release build.
    one'
    planx --dir /tmp/planx-smoke submit <id> --comment "3:no" --approve
    ```
-5. Create a GitHub Release on tag `v1.2.0`, with the changelog section as the
-   body. `release.yml` does the rest.
+4. Create a GitHub Release on tag `v1.2.0`. Summarise notable changes and any
+   on-disk format migration in the release notes. `release.yml` does the rest.
 
 The tag must match `package.json` exactly — the workflow asserts this and fails
 loudly if not, because publishing `1.2.0` from a tag called `v1.3.0` is nearly
@@ -72,9 +73,9 @@ impossible to notice afterwards and impossible to undo.
 Semver. **Pre-1.0, breaking changes bump the minor.**
 
 The **`~/.planx` on-disk format is versioned independently** (`format_version`
-in every stored file) and gets its own migration note in the changelog whenever
-it changes. That is the thing users cannot roll back cleanly: downgrading the
-CLI is instant, but a store already migrated forward is not.
+in every stored file). Describe any migration in the relevant GitHub Release
+notes. That is the thing users cannot roll back cleanly: downgrading the CLI is
+instant, but a store already migrated forward is not.
 
 ## 5. Rollback
 
@@ -130,6 +131,6 @@ and Codex if you can.
 `npm dist-tag add` on the staging artifact would reuse the exact tested bytes,
 which is genuinely attractive. It is not what we do, because it would leave
 `latest` pointing at a version literally named `1.2.0-staging.47` — and that
-string then appears in every `planx --version`, every bug report and every
-changelog entry. A clean rebuild from the release tag is worth more than
-byte-identity here, and the tree is the same one `staging` already tested.
+string then appears in every `planx --version` and every bug report. A clean
+rebuild from the release tag is worth more than byte-identity here, and the tree
+is the same one `staging` already tested.

@@ -3,9 +3,9 @@ import { z } from 'zod';
 /**
  * On-disk format version for `~/.planx`.
  *
- * Versioned independently of the npm package (see RELEASING.md §3): a user can
+ * Versioned independently of the npm package (see RELEASING.md §4): a user can
  * roll back the CLI in seconds, but they cannot roll back their store, so every
- * bump here needs a migration note in the changelog.
+ * bump here must be called out in the GitHub Release notes.
  */
 export const FORMAT_VERSION = 1;
 

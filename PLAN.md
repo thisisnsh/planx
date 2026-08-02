@@ -429,7 +429,7 @@ Global: `--json` on every read command, `--dir` to override `~/.planx`, `NO_COLO
 
 ```bash
 npm install -g @thisisnsh/planx          # latest — stable
-npm install -g @thisisnsh/planx@staging  # staging — every merge to main
+npm install -g @thisisnsh/planx@staging  # staging — maintainer test builds
 ```
 
 Public npm registry, scoped package, published with `--access public` (scoped packages are private by default — this flag is not optional) and `--provenance` (free supply-chain attestation, requires `id-token: write` in the workflow). No `.npmrc` setup, no token, no friction for anyone installing it.
@@ -444,24 +444,22 @@ A **postinstall** runs `planx install` idempotently: writes skills to `~/.claude
 
 `planx install --skills --local` writes to a repo's `.claude/skills/` for someone who wants planx checked into a project.
 
-### Release — two channels, both automated
-
-Nothing is ever published by hand.
+### Release — two channels
 
 | Trigger | Publishes | Tag | Who gets it |
 |---|---|---|---|
-| Merge to `main` | `1.2.0-staging.47` | `staging` | `@staging` installers, you, dogfooding |
+| `npm run release:staging` | `1.2.0-staging.47` | `staging` | `@staging` installers, you, dogfooding |
 | GitHub Release published | `1.2.0` | `latest` | everyone |
 
 **`ci.yml`** — on PR: lint, typecheck, test, build. Required to merge.
 
-**`release-staging.yml`** — on push to `main`: test → build → publish `--tag staging`. The version is derived at build time as `<version-in-package.json>-staging.<run_number>`; **`package.json` is never rewritten and CI never commits back to `main`.** Bot commits on the default branch cause push loops, force everyone to pull after every merge, and need `[skip ci]` guards — all avoidable by treating the committed version as "the next release target" and synthesizing the prerelease suffix in the workflow.
+**`scripts/release-staging.js`** — from a clean local checkout: verify npm login → test → build → publish `--tag staging`. The version is derived at publish time as `<version-in-package.json>-staging.<n>`, where `n` is the next suffix available on npm. The script temporarily updates the package files and restores them on every exit path.
 
-**`release-latest.yml`** — on `release: published`: assert the release tag matches `package.json`'s version exactly (fail loudly if not), test → build → publish `--tag latest`. It builds from the release tag's source, so a `latest` publish is the same tree that was on `staging`, minus the prerelease suffix.
+**`release.yml`** — on `release: published`: assert the release tag matches `package.json`'s version exactly (fail loudly if not), test → build → publish `--tag latest`. It builds from the release tag's source, so a `latest` publish is the same tree that was on `staging`, minus the prerelease suffix.
 
-Promoting the staging artifact via `npm dist-tag add` instead would reuse the exact tested bytes, but it would leave `latest` pointing at a version literally named `1.2.0-staging.47` — every `planx --version`, bug report, and changelog entry would carry the suffix. A clean rebuild from the tag is worth more than byte-identity here.
+Promoting the staging artifact via `npm dist-tag add` instead would reuse the exact tested bytes, but it would leave `latest` pointing at a version literally named `1.2.0-staging.47` — every `planx --version` and bug report would carry the suffix. A clean rebuild from the tag is worth more than byte-identity here.
 
-Auth is an npm **granular automation token** in the repo secret `NPM_TOKEN`, scoped to this package only.
+Staging authenticates with the maintainer's local npm login. Production uses npm trusted publishing with GitHub Actions OIDC, without a long-lived token.
 
 Cutting a release is: bump `package.json`, merge, create a GitHub Release on the tag. `planx --version` reports its channel (`1.2.0` vs `1.2.0-staging.47`), so a bug report says which one you're on.
 
@@ -479,9 +477,8 @@ The things an OSS repo needs before anyone else can usefully touch it.
 | `CONTRIBUTING.md` | Dev setup, `npm run dev` against a scratch `--dir`, how to run the TUI without polluting your real `~/.planx`, test layout, commit conventions, and a walkthrough for the most likely outside contribution: **adding an agent adapter**. |
 | `CODE_OF_CONDUCT.md` | Contributor Covenant 2.1, verbatim. |
 | `SECURITY.md` | Private reporting via GitHub Security Advisories, supported versions, and one honest scope statement (below). |
-| `CHANGELOG.md` | Keep a Changelog format, `Unreleased` section maintained in PRs, cut on release. |
 | `.github/ISSUE_TEMPLATE/` | `bug.yml` (auto-collects `planx --version` + channel, agent, OS, terminal), `feature.yml`, `config.yml` pointing questions at Discussions. |
-| `.github/PULL_REQUEST_TEMPLATE.md` | Change summary, test evidence, changelog-updated checkbox. |
+| `.github/PULL_REQUEST_TEMPLATE.md` | Change summary, test evidence, and migration safety checks. |
 | `.github/dependabot.yml` | npm + github-actions, weekly, grouped minor/patch. |
 | `.github/CODEOWNERS` | `* @thisisnsh` |
 | `.editorconfig`, `.nvmrc`, `files` in package.json | Formatting, Node pin (24.x), and shipping `dist/` + `skills/` only — never `site/`, `src/`, or tests. |
@@ -492,11 +489,11 @@ The things an OSS repo needs before anyone else can usefully touch it.
 
 The runbook, written so a release is mechanical:
 
-1. **Channels** — the table from §13: merge to `main` → `staging`; GitHub Release → `latest`.
-2. **Cutting a release** — bump `version` in `package.json`, move `Unreleased` into a dated section in `CHANGELOG.md`, merge that PR (which publishes a final staging build), smoke-test `npm i -g @thisisnsh/planx@staging`, then create the GitHub Release on tag `v1.2.0` with the changelog section as the body. `release-latest.yml` does the rest.
-3. **Version policy** — semver. Pre-1.0, breaking changes bump minor. The **`~/.planx` on-disk format is versioned independently** and gets its own migration note in the changelog whenever it changes; that's the thing users can't roll back cleanly.
+1. **Channels** — the table from §13: a local staging command → `staging`; GitHub Release → `latest`.
+2. **Cutting a release** — bump `version` in `package.json`, merge that PR, smoke-test `npm i -g @thisisnsh/planx@staging`, then create the GitHub Release on tag `v1.2.0`. `release.yml` does the rest.
+3. **Version policy** — semver. Pre-1.0, breaking changes bump minor. The **`~/.planx` on-disk format is versioned independently** and any migration is described in the GitHub Release notes; that's the thing users can't roll back cleanly.
 4. **Rollback** — `npm dist-tag add @thisisnsh/planx@1.1.3 latest` repoints `latest` in seconds and is the first move, always. `npm deprecate` the bad version with a message pointing at the issue. **Unpublish only works within 72 hours** and breaks anyone who pinned the version, so it's a last resort, documented as such rather than left for someone to discover under pressure.
-5. **Prerequisites** — `NPM_TOKEN` (granular automation token, this package only), workflow `id-token: write` for provenance, and who can create releases.
+5. **Prerequisites** — a maintainer npm login for staging, trusted publishing plus workflow `id-token: write` for production, and who can create releases.
 6. **Post-release verification** — `npm view @thisisnsh/planx dist-tags`, `npx -y @thisisnsh/planx@latest --version`, and one real `/planx` round-trip against a scratch dir.
 
 ---
@@ -567,7 +564,7 @@ planx/
     install/            # skills, uninstall
   skills/               # source of the three SKILL.md files
   site/                 # VitePress docs
-  .github/workflows/    # ci.yml, release-staging.yml, release-latest.yml, pages.yml
+  .github/workflows/    # ci.yml, release.yml, pages.yml
 ```
 
 Dependencies kept minimal: `ink`, `react`, `diff`, `zod`. Mouse parsing, fuzzy matching, file locking, and markdown rendering hand-rolled.
@@ -585,7 +582,7 @@ Dependencies kept minimal: `ink`, `react`, `diff`, `zod`. Mouse parsing, fuzzy m
 ## 18. Phasing
 
 **Phase 1 — the loop**
-Package + postinstall + both release workflows (staging on merge, latest on release), `capture`, `await`, `show`, `list`, `versions`, `diff` (rich + plain, TUI + `--print`), review TUI with line-based mouse and keyboard selection and multi-annotation submit, `/planx` + `/planx-diff` skills for both agents, README + a minimal site, and the repo scaffolding (LICENSE, RELEASING.md, CONTRIBUTING.md, SECURITY.md, CHANGELOG.md, issue/PR templates, dependabot) — all of it lands with the first tagged release, not after it.
+Package + postinstall + the staging script and production release workflow, `capture`, `await`, `show`, `list`, `versions`, `diff` (rich + plain, TUI + `--print`), review TUI with line-based mouse and keyboard selection and multi-annotation submit, `/planx` + `/planx-diff` skills for both agents, README + a minimal site, and the repo scaffolding (LICENSE, RELEASING.md, CONTRIBUTING.md, SECURITY.md, issue/PR templates, dependabot) — all of it lands with the first tagged release, not after it.
 *Done when:* Claude writes a plan, you select three ranges in another tab, submit, and Claude revises.
 
 **Phase 2 — locks**

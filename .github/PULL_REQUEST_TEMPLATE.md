@@ -17,6 +17,5 @@
 
 - [ ] `npm test` passes
 - [ ] `npm run lint && npm run typecheck` pass
-- [ ] `CHANGELOG.md` has an entry under `Unreleased`, or this change is invisible to users
 - [ ] `npm run docs:cli` re-run and committed, if `src/cli/spec.ts` changed
-- [ ] The on-disk `~/.planx` format is unchanged, or the change is noted in the changelog with a migration note
+- [ ] The on-disk `~/.planx` format is unchanged, or the PR describes the migration

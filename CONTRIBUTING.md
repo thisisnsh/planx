@@ -137,9 +137,8 @@ npm run lint && npm run typecheck && npm test
 npm run docs:cli     # if you touched src/cli/spec.ts — CI checks this
 ```
 
-Add a `CHANGELOG.md` entry under `Unreleased` unless the change is invisible to
-users. If you changed anything in `~/.planx`'s layout, say so explicitly with a
-migration note — that is the one thing users cannot roll back.
+If you changed anything in `~/.planx`'s layout, call it out explicitly in the
+PR description — that is the one thing users cannot roll back.
 
 ## Code of conduct
 
