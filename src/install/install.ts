@@ -51,6 +51,8 @@ export interface InstallReport {
   wrote: string[];
   seeded: string[];
   skipped: string[];
+  /** Skills an older version installed that this one no longer ships. */
+  removed: string[];
 }
 
 /**
@@ -66,7 +68,7 @@ export interface InstallReport {
  * leaves a marker so `uninstall` removes only what it wrote.
  */
 export function runInstall(opts: InstallOptions = {}): InstallReport {
-  const report: InstallReport = { wrote: [], seeded: [], skipped: [] };
+  const report: InstallReport = { wrote: [], seeded: [], skipped: [], removed: [] };
   const source = skillsSource();
   const names = skillNames();
 
@@ -93,6 +95,8 @@ export function runInstall(opts: InstallOptions = {}): InstallReport {
       writeFileSync(join(dest, MARKER), `${new Date().toISOString()}\n`, 'utf8');
       report.wrote.push(dest);
     }
+
+    report.removed.push(...sweepRetired(base, names));
   }
 
   if (!opts.skillsOnly) {
@@ -102,6 +106,29 @@ export function runInstall(opts: InstallOptions = {}): InstallReport {
   }
 
   return report;
+}
+
+/**
+ * Delete skills a previous install wrote that this version no longer ships.
+ *
+ * Skills are copied in by name, so a renamed or merged one would otherwise sit
+ * in the user's agent directory forever, still listed and still loadable — and
+ * `planx-diff` telling an agent to run a command that no longer exists is worse
+ * than it not being there at all. Only marker-bearing directories are touched:
+ * anything the user wrote by hand keeps the same protection uninstall gives it.
+ */
+function sweepRetired(base: string, shipped: readonly string[]): string[] {
+  if (!existsSync(base)) return [];
+  const removed: string[] = [];
+  for (const entry of readdirSync(base, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.startsWith('planx')) continue;
+    if (shipped.includes(entry.name)) continue;
+    const dir = join(base, entry.name);
+    if (!existsSync(join(dir, MARKER))) continue;
+    rmSync(dir, { recursive: true, force: true });
+    removed.push(dir);
+  }
+  return removed;
 }
 
 export interface UninstallReport {

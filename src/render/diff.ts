@@ -131,7 +131,7 @@ export function renderRichLines(blocks: Block[], opts: DiffRenderOptions): Rende
 /**
  * A real unified diff — hunk headers and all.
  *
- * `/planx-diff` pipes this into an agent's context, and an agent already knows
+ * `planx diff` pipes this into an agent's context, and an agent already knows
  * how to read `@@ -42,6 +42,8 @@`. Inventing a prettier plain format would mean
  * teaching it something it already knows, worse.
  */

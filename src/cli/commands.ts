@@ -818,6 +818,7 @@ export function cmdInstall(ctx: Ctx): number {
     ctx.out(`  ${cyan(`/${name}`)}  ${dim(description.slice(0, 70))}`);
   }
   for (const dir of report.wrote) ctx.out(`${green('✓')} ${dir}`);
+  for (const dir of report.removed) ctx.out(`${yellow('−')} removed retired skill ${dir}`);
   for (const dir of report.seeded) ctx.out(`${green('✓')} seeded ${dir}`);
   for (const skipped of report.skipped) ctx.out(dim(`  skipped ${skipped}`));
   ctx.out(dim('  no agent settings files were modified'));

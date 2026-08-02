@@ -1,9 +1,4 @@
----
-name: planx-diff
-description: Show the diff between two versions of a planx plan, inline, with no commentary. Use when the user types /planx-diff or asks what changed between versions of a plan.
----
-
-# planx-diff
+# planx diff
 
 Return the diff between two versions of a plan. **Diff only. No commentary.**
 
