@@ -19,10 +19,10 @@ filename*, so a second publishing workflow would need a second trusted
 publisher for the same package.
 
 Staging synthesises `<version-in-package.json>-staging.<n>` at publish time.
-Production takes its version from the GitHub Release tag only inside the release
-runner. Neither channel predicts or commits a future version. The local staging
-script restores both `package.json` and the lockfile on every exit path,
-including a failed publish.
+Production takes its version from the GitHub Release tag, commits that exact
+version to `main`, and publishes it. Neither channel predicts or commits a
+future version. The local staging script restores both `package.json` and the
+lockfile on every exit path, including a failed publish.
 
 ## 2. Cutting a staging build
 
@@ -65,8 +65,8 @@ release build.
 3. Create a GitHub Release with the desired semver tag, such as `v1.2.0`, from
    the tip of `main`. Summarise notable changes and any on-disk format migration
    in the release notes. `release.yml` sets the package version from the tag,
-   runs the checks, and publishes that exact version without committing a
-   version change back to the repository.
+   runs the checks, commits that exact version to `main`, and publishes it. It
+   does not calculate a subsequent version.
 
 Release tags must be stable semver versions. Prerelease tags are rejected so a
 prerelease can never move npm's `latest` tag.
@@ -112,6 +112,8 @@ Then fix forward and cut a new release. Never re-publish a version number.
   publishing rather than via an explicit `--provenance` flag.
 - **`--access public`** on publish. Scoped packages are private by default, so
   this flag is not optional; omitting it fails the publish on a free account.
+- **`contents: write`** on the publishing job, so it can commit the exact
+  released version to `main` before publishing it.
 - **`npm login` on the maintainer's machine** for staging builds, which
   authenticate with your own credentials rather than OIDC. If the package is
   ever set to *require* trusted publishing on npmjs.com, that setting rejects
