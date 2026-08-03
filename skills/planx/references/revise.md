@@ -35,6 +35,17 @@ in the chat. A plan is what will be built, and an answer is not part of what
 will be built. And if revising turns up a decision the comments do not settle,
 ask before capturing rather than capturing a guess and explaining it.
 
+**A boundary you drew is a question you did not ask.** Scope is the user's to
+set. If you are about to narrow, widen or split what a comment asked for —
+anything you would write as *not in scope*, *I read X as Y*, *assuming*, or any
+line the comment did not draw — stop and ask. Batch every such question into one
+call, and ask **before** capturing. Stating the assumption in the plan and
+flagging it in chat is not asking: it puts a decision the user never made into a
+document that says what will be built, and the only way to undo it is another
+whole review round. **`## Out of scope` may only list what the user declined.**
+Anything there because *you* decided to leave it out is proof of a question you
+skipped.
+
 ## 3. Capture
 
 If any blocks are locked, do not re-emit their text. Reproduce each one as a
