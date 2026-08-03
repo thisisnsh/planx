@@ -24,7 +24,6 @@ export const paths = {
   config: () => join(storeRoot(), 'config.json'),
   index: () => join(storeRoot(), 'index.json'),
   plansDir: () => join(storeRoot(), 'plans'),
-  trashDir: () => join(storeRoot(), '.trash'),
   logsDir: () => join(storeRoot(), 'logs'),
 
   plan: (id: string) => join(storeRoot(), 'plans', id),
@@ -40,5 +39,4 @@ export const paths = {
     join(storeRoot(), 'plans', id, 'inbox', `req-${rid}.json`),
   responseFile: (id: string, rid: string) =>
     join(storeRoot(), 'plans', id, 'inbox', `resp-${rid}.json`),
-  trashed: (id: string) => join(storeRoot(), '.trash', id),
 };

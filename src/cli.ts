@@ -5,24 +5,15 @@ import { fileURLToPath } from 'node:url';
 import { ArgError, has, one, parseArgs, type CommandSpec } from './cli/args.js';
 import {
   cmdCapture,
-  cmdClean,
-  cmdConfig,
   cmdDiff,
   cmdDoctor,
-  cmdImport,
   cmdInstall,
   cmdList,
   cmdLocks,
-  cmdRename,
-  cmdRestore,
   cmdResume,
   cmdShow,
-  cmdStatus,
-  cmdSubmit,
-  cmdToggle,
   cmdUninstall,
   cmdUnlock,
-  cmdVersions,
   type Ctx,
 } from './cli/commands.js';
 import { commandHelp, generateReference, topLevelHelp } from './cli/help.js';
@@ -53,26 +44,12 @@ function packageVersion(): string {
   return '0.0.0';
 }
 
-/** Commands that run without a plan and must work with `planx off`. */
-const ALWAYS_ON = new Set([
-  'on',
-  'off',
-  'status',
-  'config',
-  'install',
-  'uninstall',
-  'doctor',
-  '__gen-cli-docs',
-]);
-
 async function dispatch(name: string, ctx: Ctx): Promise<number> {
   switch (name) {
     case 'capture':
       return cmdCapture(ctx);
     case 'resume':
       return cmdResume(ctx);
-    case 'submit':
-      return cmdSubmit(ctx);
     case 'unlock':
       return cmdUnlock(ctx);
     case 'diff':
@@ -81,26 +58,8 @@ async function dispatch(name: string, ctx: Ctx): Promise<number> {
       return cmdShow(ctx);
     case 'list':
       return cmdList(ctx);
-    case 'versions':
-      return cmdVersions(ctx);
     case 'locks':
       return cmdLocks(ctx);
-    case 'import':
-      return cmdImport(ctx);
-    case 'clean':
-      return cmdClean(ctx);
-    case 'restore':
-      return cmdRestore(ctx);
-    case 'rename':
-      return cmdRename(ctx);
-    case 'on':
-      return cmdToggle(ctx, true);
-    case 'off':
-      return cmdToggle(ctx, false);
-    case 'status':
-      return cmdStatus(ctx);
-    case 'config':
-      return cmdConfig(ctx);
     case 'install':
       return cmdInstall(ctx);
     case 'uninstall':
@@ -222,13 +181,6 @@ export async function main(argv: readonly string[]): Promise<number> {
       );
       return 2;
     }
-  }
-
-  // `planx off` should make the skills degrade quietly rather than fail loudly,
-  // so the write path reports it and returns success.
-  if (!ALWAYS_ON.has(command) && !readConfig().enabled) {
-    process.stdout.write('PLANX: disabled (`planx on` to re-enable) — skipping\n');
-    return 0;
   }
 
   const mode = has(args, '--plain') ? 'plain' : has(args, '--rich') ? 'rich' : readConfig().render;

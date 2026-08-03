@@ -1,50 +1,31 @@
 import { readFileSync } from 'node:fs';
-import { adapters, runImport } from '../adapters/index.js';
 import { diffVersions, rowsForSingleVersion } from '../diff/lines.js';
-import {
-  describeSkill,
-  installedSkills,
-  runInstall,
-  runUninstall,
-  skillNames,
-} from '../install/install.js';
+import { describeSkill, runInstall, runUninstall, skillNames } from '../install/install.js';
 import { normalizedLines } from '../locks/anchor.js';
 import { lockedLineMap } from '../locks/manage.js';
 import { renderSkeleton } from '../locks/markers.js';
 import { capture, LockViolationError } from '../protocol/capture.js';
 import { carriedOver, presentResume } from '../protocol/present.js';
-import { buildAnnotation, grantUnlock, submitFeedback } from '../protocol/submit.js';
-import { bold, cyan, dim, green, red, yellow } from '../render/ansi.js';
+import { grantUnlock, submitFeedback } from '../protocol/submit.js';
+import { bold, cyan, dim, green, yellow } from '../render/ansi.js';
 import { renderDocument, renderStatLine, renderUnified, type RenderMode } from '../render/diff.js';
-import { executeClean, planClean } from '../store/clean.js';
-import {
-  configKeys,
-  getConfigValue,
-  readConfig,
-  setConfigValue,
-  writeConfig,
-} from '../store/config.js';
+import { listFeedback } from '../store/feedback.js';
 import { paths } from '../store/paths.js';
 import {
   ensureStore,
   latestVersion,
   listPlans,
-  listTrash,
-  purgePlan,
   readLocks,
   readMeta,
   readVersions,
   readVersionText,
   rebuildIndex,
-  renamePlan,
   resolvePlanRef,
   resolveVersionRef,
-  restorePlan,
 } from '../store/plans.js';
-import { listFeedback } from '../store/feedback.js';
 import { brandTitle, frameBlock } from '../tui/frame.js';
 import { clearScreen, isInteractive, runPicker, runReview } from '../tui/run.js';
-import { all, has, one, parseDuration, type ParsedArgs } from './args.js';
+import { all, has, one, type ParsedArgs } from './args.js';
 
 export interface Ctx {
   args: ParsedArgs;
@@ -217,140 +198,6 @@ export function cmdResume(ctx: Ctx): number {
       docLines: normalizedLines(text),
     }),
   );
-  return 0;
-}
-
-/* -------------------------------------------------------------- submit */
-
-const RANGE = /^(\d+)(?:\s*-\s*(\d+))?$/;
-
-function parseRange(spec: string, flag: string): { start: number; end: number } {
-  const match = RANGE.exec(spec.trim());
-  if (!match) {
-    throw new Error(`planx: ${flag} takes a line range like 42-47 or 42, not "${spec}".`);
-  }
-  const start = Number.parseInt(match[1]!, 10);
-  const end = match[2] ? Number.parseInt(match[2], 10) : start;
-  if (end < start) throw new Error(`planx: ${flag} range ${spec} ends before it starts.`);
-  return { start, end };
-}
-
-/**
- * Submit feedback from a script.
- *
- * This exists because the wire format is the product's real interface: the TUI
- * writes exactly this payload, so anything that can spawn a process can review
- * a plan too, and the protocol can be tested end to end as real subprocesses.
- */
-export function cmdSubmit(ctx: Ctx): number {
-  const id = resolvePlanRef(requirePositional(ctx, 0, 'planx submit <id> [version]'));
-  const version = resolveVersionRef(id, ctx.args.positionals[1]);
-  const docLines = normalizedLines(requireVersionText(id, version));
-
-  if (has(ctx.args, '--stdin')) {
-    const payload = JSON.parse(readFileSync(0, 'utf8')) as {
-      verdict?: 'revise' | 'approve' | 'reject';
-      annotations?: Array<{
-        kind?: 'comment' | 'lock' | 'unlock';
-        anchor?: { start_line?: number; end_line?: number };
-        comment?: string;
-      }>;
-      general?: string;
-    };
-    const annotations = (payload.annotations ?? []).map((a, i) =>
-      buildAnnotation(
-        docLines,
-        a.kind ?? 'comment',
-        a.anchor?.start_line ?? 1,
-        a.anchor?.end_line ?? a.anchor?.start_line ?? 1,
-        a.comment ?? '',
-        `a${i + 1}`,
-      ),
-    );
-    return finishSubmit(
-      ctx,
-      id,
-      version,
-      payload.verdict ?? 'revise',
-      annotations,
-      payload.general ?? '',
-    );
-  }
-
-  const annotations = [];
-  let counter = 0;
-
-  for (const spec of all(ctx.args, '--comment')) {
-    const split = spec.indexOf(':');
-    if (split === -1) {
-      throw new Error(`planx: --comment takes "START-END:text", not "${spec}".`);
-    }
-    const range = parseRange(spec.slice(0, split), '--comment');
-    annotations.push(
-      buildAnnotation(
-        docLines,
-        'comment',
-        range.start,
-        range.end,
-        spec.slice(split + 1).trim(),
-        `a${++counter}`,
-      ),
-    );
-  }
-  for (const spec of all(ctx.args, '--lock')) {
-    const range = parseRange(spec, '--lock');
-    annotations.push(
-      buildAnnotation(docLines, 'lock', range.start, range.end, '', `L${++counter}`),
-    );
-  }
-  for (const spec of all(ctx.args, '--unlock')) {
-    const range = parseRange(spec, '--unlock');
-    annotations.push(
-      buildAnnotation(docLines, 'unlock', range.start, range.end, '', `u${++counter}`),
-    );
-  }
-
-  const verdict = has(ctx.args, '--approve')
-    ? 'approve'
-    : has(ctx.args, '--reject')
-      ? 'reject'
-      : 'revise';
-
-  if (!annotations.length && !one(ctx.args, '--general') && verdict === 'revise') {
-    throw new Error(
-      'planx: nothing to submit. Add --comment, --lock, --unlock, --general, --approve or --reject.',
-    );
-  }
-
-  return finishSubmit(ctx, id, version, verdict, annotations, one(ctx.args, '--general') ?? '');
-}
-
-function finishSubmit(
-  ctx: Ctx,
-  id: string,
-  version: number,
-  verdict: 'revise' | 'approve' | 'reject',
-  annotations: ReturnType<typeof buildAnnotation>[],
-  general: string,
-): number {
-  const result = submitFeedback({
-    planId: id,
-    version,
-    verdict,
-    annotations,
-    general,
-  });
-
-  if (ctx.json) {
-    ctx.out(JSON.stringify(result, null, 2));
-    return 0;
-  }
-  ctx.out(`${green('✓')} submitted on ${bold(id)} v${version} (${verdict})`);
-  if (result.locksCreated.length) ctx.out(dim(`  locked: ${result.locksCreated.join(', ')}`));
-  if (result.locksRemoved.length) ctx.out(dim(`  unlocked: ${result.locksRemoved.join(', ')}`));
-  if (result.sealedLocks.length) {
-    ctx.out(`${green('✓')} sealed — ${result.sealedLocks.length} sections locked`);
-  }
   return 0;
 }
 
@@ -640,24 +487,6 @@ export function cmdList(ctx: Ctx): number {
   return 0;
 }
 
-export function cmdVersions(ctx: Ctx): number {
-  const id = resolvePlanRef(requirePositional(ctx, 0, 'planx versions <id>'));
-  const versions = readVersions(id).versions.sort((a, b) => a.n - b.n);
-
-  if (ctx.json) {
-    ctx.out(JSON.stringify(versions, null, 2));
-    return 0;
-  }
-  framed(
-    ctx,
-    versions.map((v) => {
-      const stored = readVersionText(id, v.n) === null ? red(' (trimmed)') : '';
-      return `  ${cyan(`v${v.n}`.padEnd(5))} ${dim(v.sha256.slice(0, 8))} ${dim(ago(v.created).padEnd(8))} ${v.author}${v.agent ? `/${v.agent}` : ''}${v.note ? `  ${v.note}` : ''}${stored}`;
-    }),
-  );
-  return 0;
-}
-
 export function cmdLocks(ctx: Ctx): number {
   const id = resolvePlanRef(requirePositional(ctx, 0, 'planx locks <id>'));
   const locks = readLocks(id);
@@ -685,243 +514,6 @@ export function cmdLocks(ctx: Ctx): number {
   }
   framed(ctx, out);
   return 0;
-}
-
-/* --------------------------------------------------------------- import */
-
-export function cmdImport(ctx: Ctx): number {
-  ensureStore();
-  const from = one(ctx.args, '--from');
-  if (!from) {
-    throw new Error(`planx: --from is required. Available: ${Object.keys(adapters).join(', ')}.`);
-  }
-
-  const since = one(ctx.args, '--since');
-  const result = runImport(from, {
-    home: one(ctx.args, '--home'),
-    since: since ? parseDuration(since) : undefined,
-    latestOnly: has(ctx.args, '--latest'),
-  });
-
-  if (ctx.json) {
-    ctx.out(JSON.stringify(result, null, 2));
-    return 0;
-  }
-  if (!result.imported.length) {
-    ctx.out(
-      dim(`nothing to import from ${adapters[from]?.describe({ home: one(ctx.args, '--home') })}`),
-    );
-    return 0;
-  }
-  for (const plan of result.imported) {
-    ctx.out(`${green('✓')} ${cyan(plan.planId)}  ${plan.title}`);
-  }
-  if (result.skipped) ctx.out(dim(`  ${result.skipped} skipped`));
-  return 0;
-}
-
-/* ---------------------------------------------------------------- clean */
-
-export async function cmdClean(ctx: Ctx): Promise<number> {
-  if (has(ctx.args, '--empty-trash')) return emptyTrash(ctx);
-
-  const older = one(ctx.args, '--older-than');
-  const beyond = one(ctx.args, '--versions-beyond');
-  const ids = all(ctx.args, '--id');
-  const hasFilter =
-    Boolean(older) || Boolean(beyond) || ids.length > 0 || has(ctx.args, '--unapproved');
-
-  let target;
-  if (hasFilter) {
-    target = planClean(
-      {
-        olderThanMs: older ? parseDuration(older) : undefined,
-        unapproved: has(ctx.args, '--unapproved'),
-        here: has(ctx.args, '--here'),
-        ids: ids.length ? ids.map((ref) => resolvePlanRef(ref)) : undefined,
-      },
-      beyond ? Number.parseInt(beyond, 10) : undefined,
-    );
-  } else {
-    if (!isInteractive())
-      throw new Error('planx: give a filter, or run `planx clean` in a terminal.');
-    const plans = listPlans({ here: has(ctx.args, '--here') });
-    const chosen = await runPicker<string>({
-      title: 'Remove which plans?',
-      subtitle: 'Space marks a plan; they go to the trash, not away.',
-      version: ctx.version,
-      multi: true,
-      items: plans.map((p) => ({
-        value: p.id,
-        label: p.title,
-        hint: `${p.id}  v${p.latest}  ${ago(p.updated)}${p.approved ? '  ✓' : ''}`,
-        searchable: p.id,
-      })),
-    });
-    if (!chosen.length) {
-      ctx.out(dim('nothing selected'));
-      return 0;
-    }
-    target = planClean({ ids: chosen });
-  }
-
-  if (!target.plans.length && !target.trims.length) {
-    ctx.out(dim('nothing matched'));
-    return 0;
-  }
-
-  const purge = has(ctx.args, '--purge');
-  for (const plan of target.plans) {
-    ctx.out(`  ${purge ? red('destroy') : 'trash'}  ${cyan(plan.id)}  ${plan.title}`);
-  }
-  for (const trim of target.trims) {
-    ctx.out(`  trim    ${cyan(trim.id)}  versions ${trim.versions.join(', ')}`);
-  }
-
-  if (!has(ctx.args, '--yes')) {
-    const confirmed = await confirmDestructive(
-      purge
-        ? `Permanently destroy ${target.plans.length} plan(s)? This cannot be undone.`
-        : `Move ${target.plans.length} plan(s) to the trash?`,
-      ctx.version,
-    );
-    if (!confirmed) {
-      ctx.out(dim('cancelled'));
-      return 0;
-    }
-  }
-
-  const outcome = executeClean(target, purge);
-  ctx.out(
-    `${green('✓')} ${outcome.trashed.length} trashed, ${outcome.purged.length} destroyed, ${outcome.trimmed.length} trimmed`,
-  );
-  if (outcome.trashed.length) {
-    ctx.out(dim(`  restore with: planx restore ${outcome.trashed[0]}`));
-  }
-  return 0;
-}
-
-async function emptyTrash(ctx: Ctx): Promise<number> {
-  const older = one(ctx.args, '--older-than');
-  const cutoff = older ? Date.now() - parseDuration(older) : Number.POSITIVE_INFINITY;
-  const doomed = listTrash().filter((t) => Date.parse(t.deleted_at) < cutoff);
-
-  if (!doomed.length) {
-    ctx.out(dim('trash is empty'));
-    return 0;
-  }
-  for (const item of doomed) ctx.out(`  ${red('destroy')}  ${cyan(item.id)}  ${item.title}`);
-
-  if (!has(ctx.args, '--yes')) {
-    const confirmed = await confirmDestructive(
-      `Permanently destroy ${doomed.length} trashed plan(s)? This cannot be undone.`,
-      ctx.version,
-    );
-    if (!confirmed) {
-      ctx.out(dim('cancelled'));
-      return 0;
-    }
-  }
-  for (const item of doomed) purgePlan(item.id);
-  ctx.out(`${green('✓')} destroyed ${doomed.length}`);
-  return 0;
-}
-
-async function confirmDestructive(question: string, version?: string): Promise<boolean> {
-  if (!isInteractive()) {
-    throw new Error('planx: not a terminal — pass --yes to confirm in a script.');
-  }
-  const [answer] = await runPicker<boolean>({
-    title: question,
-    version,
-    items: [
-      { value: false, label: 'cancel' },
-      { value: true, label: 'yes, go ahead' },
-    ],
-  });
-  return answer === true;
-}
-
-export function cmdRestore(ctx: Ctx): number {
-  const id = requirePositional(ctx, 0, 'planx restore <id>');
-  restorePlan(id);
-  ctx.out(`${green('✓')} restored ${bold(id)}`);
-  return 0;
-}
-
-export function cmdRename(ctx: Ctx): number {
-  const id = resolvePlanRef(requirePositional(ctx, 0, 'planx rename <id> <new>'));
-  const next = requirePositional(ctx, 1, 'planx rename <id> <new>');
-  const renamed = renamePlan(id, next);
-  ctx.out(`${green('✓')} ${id} → ${bold(renamed)}`);
-  return 0;
-}
-
-/* --------------------------------------------------------------- config */
-
-export function cmdToggle(ctx: Ctx, enabled: boolean): number {
-  ensureStore();
-  const config = readConfig();
-  config.enabled = enabled;
-  writeConfig(config);
-  ctx.out(`${green('✓')} planx ${enabled ? 'on' : 'off'}`);
-  return 0;
-}
-
-export function cmdStatus(ctx: Ctx): number {
-  const config = readConfig();
-  const plans = listPlans();
-  const skills = installedSkills();
-
-  if (ctx.json) {
-    ctx.out(
-      JSON.stringify(
-        { enabled: config.enabled, store: paths.root(), plans: plans.length, skills, config },
-        null,
-        2,
-      ),
-    );
-    return 0;
-  }
-
-  framed(ctx, [
-    `${bold('planx')} ${config.enabled ? green('on') : red('off')}`,
-    `  store      ${paths.root()}`,
-    `  plans      ${plans.length} (${plans.filter((p) => p.approved).length} approved)`,
-    `  trash      ${listTrash().length}`,
-    `  render     ${config.render}`,
-    `  mouse      ${config.mouse}`,
-    `  skills     ${skills.length ? '' : dim('none installed — run `planx install`')}`,
-    ...skills.map((skill) => `             ${dim(skill)}`),
-  ]);
-  return 0;
-}
-
-export function cmdConfig(ctx: Ctx): number {
-  ensureStore();
-  const [action, key, ...rest] = ctx.args.positionals;
-  const config = readConfig();
-
-  if (!action || action === 'get') {
-    if (!key) {
-      ctx.out(JSON.stringify(config, null, 2));
-      return 0;
-    }
-    const value = getConfigValue(config, key);
-    ctx.out(typeof value === 'string' ? value : JSON.stringify(value, null, 2));
-    return 0;
-  }
-
-  if (action === 'set') {
-    if (!key) throw new Error(`planx: which key? Settable: ${configKeys().join(', ')}.`);
-    const value = rest.join(' ');
-    if (!value) throw new Error(`planx: config set ${key} needs a value.`);
-    writeConfig(setConfigValue(config, key, value));
-    ctx.out(`${green('✓')} ${key} = ${value}`);
-    return 0;
-  }
-
-  throw new Error('planx: config takes `get` or `set`.');
 }
 
 /* -------------------------------------------------------------- install */
@@ -963,6 +555,16 @@ export function cmdUninstall(ctx: Ctx): number {
 
 /* --------------------------------------------------------------- doctor */
 
+/**
+ * The only repair path in the tool.
+ *
+ * It walks every plan and reports three things: a plan with no versions
+ * recorded, a version listed in `versions.json` whose `v<n>.md` is missing, and
+ * a lock that can no longer be located in the latest version. Then it rebuilds
+ * `index.json` from the plan directories on disk — the index is a derived cache
+ * that `list` and the picker read instead of opening every plan, so an
+ * interrupted capture can leave it stale and nothing else puts it right.
+ */
 export function cmdDoctor(ctx: Ctx): number {
   ensureStore();
   const problems: string[] = [];
@@ -988,6 +590,10 @@ export function cmdDoctor(ctx: Ctx): number {
     }
   }
 
+  // The one line `status` was worth, absorbed: with `--dir` and `PLANX_DIR`
+  // both in play, which store you are actually talking to is worth saying out
+  // loud before anything else is reported about it.
+  ctx.out(dim(`  store  ${paths.root()}`));
   const count = rebuildIndex();
   ctx.out(`${green('✓')} reindexed ${count} plan(s)`);
   if (!problems.length) {

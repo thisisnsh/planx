@@ -1,4 +1,4 @@
-import { Box, Text, useApp, useInput, useStdin, useStdout } from 'ink';
+import { Box, Text, useApp, useInput, useStdout } from 'ink';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { contextSha } from '../locks/anchor.js';
 import { buildAnnotation } from '../protocol/submit.js';
@@ -57,8 +57,6 @@ export interface ReviewAppProps {
   version: string;
   /** Feedback already left on this plan, shown so you do not repeat yourself. */
   previous: Feedback[];
-  /** Opt-in wheel scrolling — off unless `planx config set mouse on`. */
-  mouse?: boolean;
   onDone: (result: ReviewResult) => void;
 }
 
@@ -92,7 +90,6 @@ const NO_ANNOTATIONS: Annotation[] = [];
 export function ReviewApp(props: ReviewAppProps) {
   const { exit } = useApp();
   const { stdout } = useStdout();
-  const { stdin } = useStdin();
 
   const [versionB, setVersionB] = useState(props.versionB);
   const [versionA, setVersionA] = useState<number | null>(props.versionA);
@@ -211,14 +208,6 @@ export function ReviewApp(props: ReviewAppProps) {
       });
     },
     [bodyHeight, rows],
-  );
-
-  /** Move the viewport without moving the cursor — what the wheel does. */
-  const scrollBy = useCallback(
-    (delta: number) => {
-      setOffset((o) => Math.max(0, Math.min(o + delta, Math.max(0, rows.length - bodyHeight))));
-    },
-    [bodyHeight, rows.length],
   );
 
   /* ------------------------------------------------------------- actions */
@@ -529,30 +518,6 @@ export function ReviewApp(props: ReviewAppProps) {
     },
     { isActive: mode.kind === 'help' || mode.kind === 'confirm' || mode.kind === 'leave' },
   );
-
-  /**
-   * Wheel scrolling, only if it was asked for.
-   *
-   * Capturing mouse events is what made the terminal stop letting you select
-   * and copy a line out of a plan, which is why it was removed. Only the wheel
-   * is acted on, and only under `planx config set mouse on`.
-   */
-  useEffect(() => {
-    if (!props.mouse || !stdout || !stdin) return;
-    stdout.write('\x1b[?1000h\x1b[?1006h');
-    const onData = (data: Buffer | string) => {
-      for (const match of String(data).matchAll(/\x1b\[<(\d+);\d+;\d+[Mm]/g)) {
-        const button = Number(match[1]);
-        if (button === 64) scrollBy(-3);
-        else if (button === 65) scrollBy(3);
-      }
-    };
-    stdin.on('data', onData);
-    return () => {
-      stdin.off('data', onData);
-      stdout.write('\x1b[?1006l\x1b[?1000l');
-    };
-  }, [props.mouse, stdout, stdin, scrollBy]);
 
   // Folding notes takes rows out from under the cursor — `h` can take dozens —
   // and a cursor past the end draws no arrow at all until the next keypress.

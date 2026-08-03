@@ -1,6 +1,5 @@
 import { render } from 'ink';
 import type { RenderMode } from '../render/diff.js';
-import { readConfig } from '../store/config.js';
 import type { Feedback } from '../store/types.js';
 import { Picker, type PickerItem } from './Picker.js';
 import { ReviewApp, type ReviewResult } from './ReviewApp.js';
@@ -60,11 +59,9 @@ export async function runReview(opts: RunReviewOptions): Promise<ReviewResult> {
         mode={opts.mode}
         version={opts.version}
         previous={opts.previous}
-        mouse={readConfig().mouse === 'on'}
         onDone={finish}
       />,
-      // ctrl-c should leave, the same as x. Wheel tracking, when it is on at
-      // all, is turned off by the effect that turned it on.
+      // ctrl-c should leave, the same as x.
       { exitOnCtrlC: true },
     );
 

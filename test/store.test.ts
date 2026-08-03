@@ -1,6 +1,9 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { previousStoredVersion } from '../src/cli/commands.js';
+import { normalizedLines } from '../src/locks/anchor.js';
+import { addLock } from '../src/locks/manage.js';
+import { protectedFor } from '../src/store/clean.js';
 import { StoreCorruptionError } from '../src/store/atomic.js';
 import { contentHash, planId, slugify, ulid } from '../src/store/ids.js';
 import { paths } from '../src/store/paths.js';
@@ -8,19 +11,18 @@ import {
   addVersion,
   createPlan,
   listPlans,
-  listTrash,
   PlanNotFoundError,
   readLocks,
   readMeta,
   readVersions,
+  purgePlan,
   rebuildIndex,
   reindex,
-  renamePlan,
+  removeVersions,
+  readVersionText,
   resolvePlanRef,
   resolveVersionRef,
-  restorePlan,
-  trashPlan,
-  trimVersions,
+  updateLocks,
   VersionNotFoundError,
   writeMeta,
 } from '../src/store/plans.js';
@@ -194,36 +196,36 @@ describe('listing and index', () => {
   });
 });
 
-describe('rename, trash and restore', () => {
-  it('renames the directory and reindexes', () => {
+describe('deleting', () => {
+  it('destroys a plan and its index row, with no trash to land in', () => {
     const id = seed();
-    const next = renamePlan(id, 'Clock guard, take two');
-    expect(next).toBe('clock-guard-take-two');
-    expect(readMeta(next)?.title).toBe('Clock guard, take two');
-    expect(listPlans().map((p) => p.id)).toEqual([next]);
-  });
-
-  it('soft deletes to trash and restores', () => {
-    const id = seed();
-    trashPlan(id);
+    purgePlan(id);
     expect(listPlans()).toHaveLength(0);
-    expect(listTrash().map((t) => t.id)).toEqual([id]);
-
-    restorePlan(id);
-    expect(listPlans().map((p) => p.id)).toEqual([id]);
-    expect(existsSync(paths.versionFile(id, 1))).toBe(true);
+    expect(existsSync(paths.plan(id))).toBe(false);
   });
-});
 
-describe('trimming history', () => {
-  it('keeps the newest N and never removes a protected version', () => {
+  // What stands between `d` in the picker and a plan whose locks can no longer
+  // be resolved: a lock is re-spliced from the version its text was recorded
+  // in, so that version has to outlive any deletion.
+  it('names the versions a lock still depends on', () => {
     const id = seed();
-    for (let i = 2; i <= 5; i++) addVersion(id, `${SAMPLE_PLAN}\nrev ${i}\n`);
-    const removed = trimVersions(id, 2, new Set([1]));
-    expect(removed).toEqual([2, 3]);
-    expect(readVersions(id).versions.map((v) => v.n)).toEqual([1, 4, 5]);
-    expect(existsSync(paths.versionFile(id, 1))).toBe(true);
+    const doc = normalizedLines(readVersionText(id, 1)!);
+    updateLocks(id, (locks) =>
+      addLock(locks, { docLines: doc, range: { start: 8, end: 9 }, origin: 'user', version: 1 }),
+    );
+    addVersion(id, `${SAMPLE_PLAN}\nrev 2\n`);
+
+    expect([...protectedFor(id)]).toContain(1);
+  });
+
+  it('removes named versions but never the latest', () => {
+    const id = seed();
+    for (let i = 2; i <= 4; i++) addVersion(id, `${SAMPLE_PLAN}\nrev ${i}\n`);
+
+    expect(removeVersions(id, [2, 4])).toEqual([2]);
+    expect(readVersions(id).versions.map((v) => v.n)).toEqual([1, 3, 4]);
     expect(existsSync(paths.versionFile(id, 2))).toBe(false);
+    expect(existsSync(paths.versionFile(id, 4))).toBe(true);
   });
 });
 

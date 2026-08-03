@@ -166,19 +166,6 @@ export function runUninstall(opts: InstallOptions = {}): UninstallReport {
   return report;
 }
 
-/** Where the installed copy of a skill lives, for `planx status`. */
-export function installedSkills(opts: InstallOptions = {}): string[] {
-  const found: string[] = [];
-  for (const target of TARGETS) {
-    const base = join(opts.home ?? homedir(), target.dir);
-    if (!existsSync(base)) continue;
-    for (const entry of readdirSync(base, { withFileTypes: true })) {
-      if (entry.isDirectory() && entry.name.startsWith('planx')) found.push(join(base, entry.name));
-    }
-  }
-  return found;
-}
-
 /** Read a packaged skill's front matter description, for the install summary. */
 export function describeSkill(name: string): string {
   try {

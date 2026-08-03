@@ -1,6 +1,4 @@
-import { readdirSync, renameSync, rmSync, statSync } from 'node:fs';
-import { join } from 'node:path';
-import { z } from 'zod';
+import { readdirSync, rmSync } from 'node:fs';
 import {
   ensureDir,
   pathExists,
@@ -38,7 +36,9 @@ export class VersionNotFoundError extends Error {
     readonly id: string,
     readonly ref: string,
   ) {
-    super(`planx: ${id} has no version "${ref}". Run \`planx versions ${id}\`.`);
+    super(
+      `planx: ${id} has no version "${ref}". Open \`planx ${id}\` and press → for its versions.`,
+    );
     this.name = 'VersionNotFoundError';
   }
 }
@@ -46,7 +46,6 @@ export class VersionNotFoundError extends Error {
 export function ensureStore(): void {
   ensureDir(paths.root());
   ensureDir(paths.plansDir());
-  ensureDir(paths.trashDir());
   ensureConfig();
 }
 
@@ -200,9 +199,7 @@ export function createPlan(opts: CreatePlanOptions): PlanMeta {
     const derived = planId(opts.title, opts.content);
     const existing = readMeta(derived);
     if (existing) return existing;
-    // A trashed plan still owns its directory name, so step around it rather
-    // than resurrecting something the user deleted.
-    id = pathExists(paths.trashed(derived)) ? uniqueId(derived) : derived;
+    id = derived;
   }
 
   const meta = PlanMetaSchema.parse({
@@ -231,10 +228,10 @@ export function createPlan(opts: CreatePlanOptions): PlanMeta {
  * collide.
  */
 function uniqueId(base: string): string {
-  if (!planExists(base) && !pathExists(paths.trashed(base))) return base;
+  if (!planExists(base)) return base;
   for (let i = 2; i < 1000; i++) {
     const candidate = `${base}-${i}`;
-    if (!planExists(candidate) && !pathExists(paths.trashed(candidate))) return candidate;
+    if (!planExists(candidate)) return candidate;
   }
   throw new Error(`planx: could not allocate an id for "${base}"`);
 }
@@ -431,107 +428,23 @@ export function listPlans(filter: ListFilter = {}): PlanSummary[] {
   return rows.sort((a, b) => b.updated.localeCompare(a.updated));
 }
 
-/* -------------------------------------------------------- rename / trash */
-
-export function renamePlan(id: string, newName: string): string {
-  const meta = readMeta(id);
-  if (!meta) throw new PlanNotFoundError(id);
-  const target = uniqueId(slugify(newName));
-  if (target === id) {
-    meta.title = newName;
-    writeMeta(meta);
-    reindex(id);
-    return id;
-  }
-
-  renameSync(paths.plan(id), paths.plan(target));
-  meta.id = target;
-  meta.title = newName;
-  writeMeta(meta);
-  updateIndex((index) => {
-    delete index.plans[id];
-  });
-  reindex(target);
-  return target;
-}
-
-export interface TrashedPlan {
-  id: string;
-  deleted_at: string;
-  title: string;
-}
+/* ------------------------------------------------------------- deletion */
 
 /**
- * Soft delete. Losing a plan you spent an hour reviewing is the one
- * unrecoverable failure in this system, so removal takes two deliberate steps:
- * `clean` moves it here, `clean --empty-trash` or `--purge` destroys it.
+ * Delete a plan and everything under it, permanently.
+ *
+ * There is no trash. Deleting used to be two steps — `clean` moved a plan to
+ * `~/.planx/.trash` and `clean --empty-trash` destroyed it — but nobody ever
+ * ran the second one, and a soft delete you never empty is a directory of
+ * plans you have already decided you do not want. The red confirmation in the
+ * picker is what stands in its place.
  */
-export function trashPlan(id: string): void {
-  if (!planExists(id)) throw new PlanNotFoundError(id);
-  ensureDir(paths.trashDir());
-  const dest = paths.trashed(id);
-  if (pathExists(dest)) rmSync(dest, { recursive: true, force: true });
-  renameSync(paths.plan(id), dest);
-  writeJson(join(dest, 'deleted.json'), { id, deleted_at: new Date().toISOString() });
-  updateIndex((index) => {
-    delete index.plans[id];
-  });
-}
-
-export function restorePlan(id: string): void {
-  const src = paths.trashed(id);
-  if (!pathExists(src)) throw new PlanNotFoundError(id);
-  if (planExists(id)) throw new Error(`planx: ${id} already exists — restore would overwrite it.`);
-  ensureDir(paths.plansDir());
-  renameSync(src, paths.plan(id));
-  rmSync(join(paths.plan(id), 'deleted.json'), { force: true });
-  reindex(id);
-}
-
 export function purgePlan(id: string): void {
   rmSync(paths.plan(id), { recursive: true, force: true });
-  rmSync(paths.trashed(id), { recursive: true, force: true });
   updateIndex((index) => {
     delete index.plans[id];
   });
 }
-
-export function listTrash(): TrashedPlan[] {
-  let entries: string[];
-  try {
-    entries = readdirSync(paths.trashDir(), { withFileTypes: true })
-      .filter((e) => e.isDirectory())
-      .map((e) => e.name);
-  } catch {
-    return [];
-  }
-  return entries
-    .map((id) => {
-      const marker = readJson(join(paths.trashed(id), 'deleted.json'), DeletedMarkerSchema, null);
-      const meta = readJson(join(paths.trashed(id), 'meta.json'), PlanMetaSchema, null);
-      return {
-        id,
-        deleted_at: marker?.deleted_at ?? statSafe(paths.trashed(id)),
-        title: meta?.title ?? id,
-      };
-    })
-    .sort((a, b) => b.deleted_at.localeCompare(a.deleted_at));
-}
-
-function statSafe(p: string): string {
-  try {
-    return new Date(statSync(p).mtimeMs).toISOString();
-  } catch {
-    return new Date(0).toISOString();
-  }
-}
-
-// Kept local: the trash marker is an implementation detail of soft delete, not
-// part of the plan format other tools read.
-const DeletedMarkerSchema = z.object({
-  id: z.string().optional(),
-  deleted_at: z.string(),
-});
 
 /**
  * Delete specific versions of a plan.
@@ -552,15 +465,4 @@ export function removeVersions(id: string, versions: number[]): number[] {
   writeVersions(id, file);
   reindex(id);
   return [...doomed].sort((a, b) => a - b);
-}
-
-/** Keep the `keep` most recent versions, preserving `protectedVersions`. */
-export function trimVersions(id: string, keep: number, protectedVersions: Set<number>): number[] {
-  const ordered = readVersions(id)
-    .versions.map((v) => v.n)
-    .sort((a, b) => a - b);
-  const doomed = ordered
-    .slice(0, Math.max(0, ordered.length - keep))
-    .filter((n) => !protectedVersions.has(n));
-  return removeVersions(id, doomed);
 }

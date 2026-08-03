@@ -2,6 +2,10 @@ import { mkdirSync, symlinkSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { normalizedLines } from '../src/locks/anchor.js';
+import { buildAnnotation, submitFeedback } from '../src/protocol/submit.js';
+import { setStoreRoot } from '../src/store/paths.js';
+import { readVersions, readVersionText } from '../src/store/plans.js';
 import { Cli, collect, ensureBuilt, PLAN_V1, PLAN_V2 } from './cli.js';
 
 let cli: Cli;
@@ -11,6 +15,63 @@ beforeEach(() => {
   cli = new Cli();
 });
 afterEach(() => cli.cleanup());
+
+/** Read part of the store the subprocesses are writing to. */
+function inStore<T>(fn: () => T): T {
+  setStoreRoot(cli.dir);
+  try {
+    return fn();
+  } finally {
+    setStoreRoot(null);
+  }
+}
+
+interface Review {
+  comments?: Array<[number, number, string]>;
+  locks?: Array<[number, number]>;
+  unlocks?: Array<[number, number]>;
+  verdict?: 'revise' | 'approve' | 'reject';
+  general?: string;
+}
+
+/**
+ * Review a version the way the TUI does: the same wire payload, written
+ * straight into the store the subprocesses are using.
+ *
+ * `planx submit` used to do this from a shell and went with the rest of the
+ * surface nobody typed. What these tests are about survives it — the payload
+ * still crosses a process boundary, written here and read back by a `planx
+ * resume` running somewhere else.
+ */
+function review(id: string, version: number, opts: Review) {
+  return inStore(() => {
+    const doc = normalizedLines(readVersionText(id, version)!);
+    let n = 0;
+    const annotations = [
+      ...(opts.comments ?? []).map(([from, to, text]) =>
+        buildAnnotation(doc, 'comment', from, to, text, `a${++n}`),
+      ),
+      ...(opts.locks ?? []).map(([from, to]) =>
+        buildAnnotation(doc, 'lock', from, to, '', `L${++n}`),
+      ),
+      ...(opts.unlocks ?? []).map(([from, to]) =>
+        buildAnnotation(doc, 'unlock', from, to, '', `u${++n}`),
+      ),
+    ];
+    return submitFeedback({
+      planId: id,
+      version,
+      verdict: opts.verdict ?? 'revise',
+      annotations,
+      general: opts.general ?? '',
+    });
+  });
+}
+
+/** Which versions a plan has on the books. */
+function versionsOf(id: string): number[] {
+  return inStore(() => readVersions(id).versions.map((v) => v.n));
+}
 
 async function seed(): Promise<string> {
   const result = await cli.run(['capture', '--stdin', '--source', 'test'], PLAN_V1);
@@ -76,7 +137,7 @@ describe('the CLI as a real process', () => {
 
   it('keeps box-drawing characters out of piped output', async () => {
     await seed();
-    for (const args of [['--help'], ['list'], ['status']]) {
+    for (const args of [['--help'], ['list'], ['doctor']]) {
       const result = await cli.run(args);
       expect(result.stdout, args.join(' ')).not.toMatch(/[╭╮╰╯│]/);
     }
@@ -100,8 +161,7 @@ describe('the CLI as a real process', () => {
     const id = await seed();
     const again = await cli.run(['capture', '--plan-id', id, '--stdin'], PLAN_V1);
     expect(again.stdout).toContain('unchanged — nothing written');
-    const versions = await cli.run(['versions', id, '--json']);
-    expect(JSON.parse(versions.stdout)).toHaveLength(1);
+    expect(versionsOf(id)).toEqual([1]);
   });
 
   it('prints a real unified diff for --print --plain', async () => {
@@ -119,16 +179,10 @@ describe('the review hand-off across two processes', () => {
   it('hands feedback from the reviewing process to the resuming one', async () => {
     const id = await seed();
 
-    const submitted = await cli.run([
-      'submit',
-      id,
-      'v1',
-      '--comment',
-      '7-7:Wrong layer. Guard belongs in the R2 write path.',
-      '--general',
-      'Direction is fine.',
-    ]);
-    expect(submitted.code).toBe(0);
+    review(id, 1, {
+      comments: [[7, 7, 'Wrong layer. Guard belongs in the R2 write path.']],
+      general: 'Direction is fine.',
+    });
 
     const result = await cli.run(['resume', id, 'v1']);
     expect(result.code).toBe(0);
@@ -140,7 +194,7 @@ describe('the review hand-off across two processes', () => {
 
   it('carries the feedback and the lines it quotes, but not the plan', async () => {
     const id = await seed();
-    await cli.run(['submit', id, 'v1', '--comment', '3-3:Say more here.']);
+    review(id, 1, { comments: [[3, 3, 'Say more here.']] });
 
     const result = await cli.run(['resume', id, 'v1']);
     expect(result.stdout).toContain('Say more here.');
@@ -159,7 +213,7 @@ describe('the review hand-off across two processes', () => {
 
   it('stops re-delivering feedback once the next version lands', async () => {
     const id = await seed();
-    await cli.run(['submit', id, 'v1', '--comment', '7-7:Rework this.']);
+    review(id, 1, { comments: [[7, 7, 'Rework this.']] });
     expect((await cli.run(['resume', id, 'v1'])).stdout).toContain('Rework this.');
 
     await cli.run(['capture', '--plan-id', id, '--parent', 'v1', '--stdin'], PLAN_V2);
@@ -171,7 +225,7 @@ describe('the review hand-off across two processes', () => {
 describe('lock enforcement through the binary', () => {
   it('refuses the write, exits non-zero, and leaves the store untouched', async () => {
     const id = await seed();
-    await cli.run(['submit', id, 'v1', '--lock', '9-10']);
+    review(id, 1, { locks: [[9, 10]] });
 
     const tampered = PLAN_V1.replace(
       'Deploy behind the `ff_clock_guard` flag, 10% then 50% then 100%.',
@@ -186,13 +240,12 @@ describe('lock enforcement through the binary', () => {
     expect(rejected.stderr).toContain(`planx unlock ${id} L1 --reason`);
     expect(rejected.stderr).toContain('Nothing was written.');
 
-    const versions = await cli.run(['versions', id, '--json']);
-    expect(JSON.parse(versions.stdout)).toHaveLength(1);
+    expect(versionsOf(id)).toEqual([1]);
   });
 
   it('accepts the same revision when the locked block arrives as a marker', async () => {
     const id = await seed();
-    await cli.run(['submit', id, 'v1', '--lock', '9-10']);
+    review(id, 1, { locks: [[9, 10]] });
 
     const skeleton = await cli.run(['show', id, '--skeleton']);
     expect(skeleton.stdout).toContain('[[planx:keep L1]]');
@@ -215,7 +268,7 @@ describe('lock enforcement through the binary', () => {
 
   it('grants one capture through the binary, then burns', async () => {
     const id = await seed();
-    await cli.run(['submit', id, 'v1', '--lock', '9-10']);
+    review(id, 1, { locks: [[9, 10]] });
 
     const granted = await cli.run(['unlock', id, 'L1', '--reason', 'the flag adds no value here']);
     expect(granted.code).toBe(0);
@@ -238,7 +291,7 @@ describe('lock enforcement through the binary', () => {
 
   it('refuses without a reason, so the audit trail cannot be empty', async () => {
     const id = await seed();
-    await cli.run(['submit', id, 'v1', '--lock', '9-10']);
+    review(id, 1, { locks: [[9, 10]] });
 
     const result = await cli.run(['unlock', id, 'L1']);
     expect(result.code).not.toBe(0);
@@ -249,8 +302,7 @@ describe('lock enforcement through the binary', () => {
 describe('approval and sealing', () => {
   it('seals every section and blocks further edits', async () => {
     const id = await seed();
-    const approved = await cli.run(['submit', id, 'v1', '--approve']);
-    expect(approved.stdout).toContain('sealed');
+    expect(review(id, 1, { verdict: 'approve' }).sealedLocks.length).toBeGreaterThanOrEqual(3);
 
     const locks = JSON.parse((await cli.run(['locks', id, '--json'])).stdout);
     expect(locks.sealed_at).not.toBeNull();
@@ -262,58 +314,8 @@ describe('approval and sealing', () => {
 
   it('lets the reviewer carve a hole in a sealed plan', async () => {
     const id = await seed();
-    await cli.run(['submit', id, 'v1', '--approve']);
-    await cli.run(['submit', id, 'v1', '--unlock', '6-7']);
-    expect((await cli.run(['capture', '--plan-id', id, '--stdin'], PLAN_V2)).code).toBe(0);
-  });
-});
-
-describe('retention', () => {
-  it('soft deletes and restores', async () => {
-    const id = await seed();
-    const cleaned = await cli.run(['clean', '--id', id, '--yes']);
-    expect(cleaned.stdout).toContain('1 trashed');
-    expect(JSON.parse((await cli.run(['list', '--json'])).stdout)).toHaveLength(0);
-
-    await cli.run(['restore', id]);
-    expect(JSON.parse((await cli.run(['list', '--json'])).stdout)).toHaveLength(1);
-    expect((await cli.run(['show', id, '--plain'])).stdout).toContain('## Approach');
-  });
-
-  it('refuses to act destructively without a terminal or --yes', async () => {
-    const id = await seed();
-    const result = await cli.run(['clean', '--id', id]);
-    expect(result.code).not.toBe(0);
-    expect(result.stderr).toContain('--yes');
-  });
-
-  it('keeps a version a lock still points at when trimming history', async () => {
-    const id = await seed();
-    await cli.run(['submit', id, 'v1', '--lock', '9-10']);
-    for (const suffix of ['a', 'b', 'c']) {
-      await cli.run(['capture', '--plan-id', id, '--stdin'], `${PLAN_V2}\n<!-- ${suffix} -->\n`);
-    }
-
-    await cli.run(['clean', '--id', id, '--versions-beyond', '1', '--yes']);
-    const versions = JSON.parse((await cli.run(['versions', id, '--json'])).stdout);
-    const kept = versions.map((v: { n: number }) => v.n);
-    expect(kept).toContain(1); // the version the lock was first taken against
-    expect(kept).toContain(4);
-  });
-});
-
-describe('the disabled switch', () => {
-  it('degrades quietly rather than failing', async () => {
-    const id = await seed();
-    await cli.run(['off']);
-
-    const result = await cli.run(['capture', '--plan-id', id, '--stdin'], PLAN_V2);
-    expect(result.code).toBe(0);
-    expect(result.stdout).toContain('PLANX: disabled');
-
-    // status and config keep working, or you could never turn it back on.
-    expect((await cli.run(['status'])).code).toBe(0);
-    await cli.run(['on']);
+    review(id, 1, { verdict: 'approve' });
+    review(id, 1, { unlocks: [[6, 7]] });
     expect((await cli.run(['capture', '--plan-id', id, '--stdin'], PLAN_V2)).code).toBe(0);
   });
 });
@@ -322,11 +324,27 @@ describe('the generated reference', () => {
   it('documents every non-hidden command', async () => {
     const docs = await cli.run(['__gen-cli-docs']);
     expect(docs.code).toBe(0);
-    for (const command of ['capture', 'resume', 'submit', 'diff', 'locks', 'clean', 'doctor']) {
+    for (const command of [
+      'capture',
+      'resume',
+      'unlock',
+      'diff',
+      'show',
+      'list',
+      'locks',
+      'doctor',
+    ]) {
       expect(docs.stdout).toContain(`## \`planx ${command}\``);
     }
     expect(docs.stdout).toContain('Do not edit by hand');
     // The generator names itself in the header, but hidden commands get no section.
     expect(docs.stdout).not.toContain('## `planx __gen-cli-docs`');
+
+    // Ten sections — eleven commands, one of them hidden — and the ten that
+    // were cut are not among them.
+    expect(docs.stdout.match(/^## `planx /gm)).toHaveLength(10);
+    for (const gone of ['submit', 'versions', 'restore', 'clean', 'rename', 'import', 'config']) {
+      expect(docs.stdout, gone).not.toContain(`## \`planx ${gone}\``);
+    }
   });
 });

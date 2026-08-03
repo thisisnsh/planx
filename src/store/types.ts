@@ -162,18 +162,16 @@ export type Feedback = z.infer<typeof FeedbackSchema>;
 
 /* ---------------------------------------------------------------- config */
 
+/**
+ * What is left of configuration: how to render, and nothing else.
+ *
+ * `enabled` went with `planx on`/`off` — enabling planx is the skill's business
+ * now, not a flag in the store. `mouse` went with wheel scrolling: an
+ * append-only render cannot host a moving cursor, boxes that grow as you type,
+ * or folds, so there was nothing on the other side of the trade it offered.
+ */
 export const ConfigSchema = z.object({
   format_version: formatVersion,
-  /** `planx off` makes capture a no-op so the skills degrade quietly. */
-  enabled: z.boolean().default(true),
   render: z.enum(['rich', 'plain']).default('rich'),
-  /**
-   * Wheel scrolling in the review, off by default.
-   *
-   * Capturing mouse events is what stopped the terminal letting you select and
-   * copy a line out of a plan, so it is a trade the user makes deliberately
-   * rather than one planx makes for them.
-   */
-  mouse: z.enum(['off', 'on']).default('off'),
 });
 export type Config = z.infer<typeof ConfigSchema>;

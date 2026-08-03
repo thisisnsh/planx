@@ -48,41 +48,14 @@ export const COMMANDS: CommandSpec[] = [
     name: 'resume',
     group: 'agent',
     usage: 'planx resume <id> [version] [--json]',
-    summary: 'Pick a plan back up: the plan, the feedback on it, and its locks.',
+    summary: 'Pick a plan back up: the feedback on it, and its locks.',
     description:
-      'One read with everything needed to revise, including the plan text, so it works in a ' +
-      'session that has never seen the plan. Comments left on an earlier version whose quoted ' +
-      'text is still present word for word are reported as probably never addressed. Safe to ' +
-      'run twice; it waits for nothing.',
+      'One read with everything asked of the plan: each comment against the lines it quotes, ' +
+      'and the locked blocks. It does not return the plan itself — the agent that wrote it ' +
+      'already has it, and `planx show <id> --plain` is there for a session that does not. ' +
+      'Comments left on an earlier version whose quoted text is still present word for word ' +
+      'are reported as probably never addressed. Safe to run twice; it waits for nothing.',
     examples: ['planx resume guard-clock-a3f9'],
-  },
-  {
-    name: 'submit',
-    group: 'agent',
-    usage: 'planx submit <id> [version] [--comment "42-47:text"] [--approve] [--stdin]',
-    summary: 'Submit review feedback without the TUI.',
-    description:
-      'The TUI is one front-end to a documented wire format, not the only way in. This posts ' +
-      'the same feedback payload from a script, a hook, or another editor. With --stdin it ' +
-      'reads the full JSON payload; the flags cover the common one-liners. Line ranges are ' +
-      '1-based and inclusive, in the reviewed version’s coordinates.',
-    flags: [
-      {
-        name: '--comment',
-        arg: 'SPEC',
-        summary: 'A comment as "START-END:text" or "LINE:text". Repeatable.',
-      },
-      { name: '--lock', arg: 'RANGE', summary: 'Lock "START-END" or "LINE". Repeatable.' },
-      { name: '--unlock', arg: 'RANGE', summary: 'Unlock a range, splitting a lock if partial.' },
-      { name: '--general', arg: 'TEXT', summary: 'A note about the plan as a whole.' },
-      { name: '--approve', summary: 'Verdict approve — seals the plan.' },
-      { name: '--reject', summary: 'Verdict reject — the agent stops and asks.' },
-      { name: '--stdin', summary: 'Read a full feedback payload as JSON from stdin.' },
-    ],
-    examples: [
-      'planx submit guard-clock-a3f9 v2 --comment "42-47:Wrong layer, use the R2 write path."',
-      'planx submit guard-clock-a3f9 --lock 88-104 --approve',
-    ],
   },
   {
     name: 'unlock',
@@ -103,8 +76,9 @@ export const COMMANDS: CommandSpec[] = [
     usage: 'planx [diff] [id] [vA] [vB] [--print] [--plain|--rich] [--stat]',
     summary: 'Review a plan, or print a diff between two versions.',
     description:
-      'In a terminal this opens the review TUI on the plan as it stands: select lines and ' +
-      'comment, lock or unlock them, press d for the diff against the previous version, then ' +
+      'In a terminal this opens the review TUI on the diff against the previous version — ' +
+      'you opened v4 because v4 is new, and what is new about it is the diff. Press d to see ' +
+      'the plan on its own instead. Select lines and comment, lock or unlock them, then ' +
       'submit or approve. The command name is optional in front of a plan — `planx <id>` is ' +
       'the same thing. Piped or with --print it writes the diff to stdout and exits. With no ' +
       'arguments it opens a picker.',
@@ -118,7 +92,7 @@ export const COMMANDS: CommandSpec[] = [
   },
   {
     name: 'show',
-    group: 'common',
+    group: 'agent',
     usage: 'planx show <id> [version] [--plain|--rich] [--skeleton]',
     summary: 'Print a stored version of a plan.',
     flags: [
@@ -129,7 +103,7 @@ export const COMMANDS: CommandSpec[] = [
   },
   {
     name: 'list',
-    group: 'common',
+    group: 'agent',
     usage: 'planx list [--here] [--approved] [--json]',
     summary: 'List stored plans, newest first.',
     flags: [
@@ -139,86 +113,14 @@ export const COMMANDS: CommandSpec[] = [
     ],
   },
   {
-    name: 'versions',
-    usage: 'planx versions <id>',
-    summary: 'List a plan’s version history.',
-    group: 'maintenance',
-  },
-  {
     name: 'locks',
-    group: 'maintenance',
+    group: 'common',
     usage: 'planx locks <id> [--json]',
     summary: 'Show a plan’s locks and any outstanding unlock grants.',
-  },
-  {
-    name: 'import',
-    group: 'maintenance',
-    usage: 'planx import --from claude|codex [--latest|--all] [--since 7d]',
-    summary: 'Backfill plans from an agent’s own history.',
     description:
-      'Explicit and user-run. Nothing watches your agent directories in the background. ' +
-      'Re-importing is safe: identical content collapses to a no-op rather than a duplicate.',
-    flags: [
-      { name: '--from', arg: 'NAME', summary: 'Source adapter: claude or codex.' },
-      { name: '--all', summary: 'Import everything found.' },
-      { name: '--latest', summary: 'Import only the most recent plan.' },
-      { name: '--since', arg: 'DUR', summary: 'Only plans newer than this (e.g. 7d).' },
-      { name: '--home', arg: 'PATH', summary: 'Read from a different home directory.' },
-    ],
-  },
-  {
-    name: 'clean',
-    group: 'maintenance',
-    usage: 'planx clean [filters] [--purge] [--yes]',
-    summary: 'Remove plans, soft-deleting to the trash.',
-    description:
-      'With no filters this opens a multi-select picker. Deletion is soft: plans move to ' +
-      '~/.planx/.trash and `planx restore` brings them back. --purge deletes for real. The ' +
-      'trash is never emptied automatically.',
-    flags: [
-      { name: '--older-than', arg: 'DUR', summary: 'Plans not updated within this window.' },
-      { name: '--unapproved', summary: 'Plans that never reached approve.' },
-      { name: '--here', summary: 'Only plans captured in the current directory.' },
-      { name: '--id', arg: 'ID', summary: 'A specific plan. Repeatable.' },
-      { name: '--versions-beyond', arg: 'N', summary: 'Trim history to the newest N versions.' },
-      { name: '--purge', summary: 'Delete permanently instead of moving to the trash.' },
-      { name: '--empty-trash', summary: 'Destroy trashed plans.' },
-      { name: '--yes', summary: 'Skip the confirmation, for scripts.' },
-    ],
-  },
-  {
-    name: 'restore',
-    usage: 'planx restore <id>',
-    summary: 'Bring a plan back from the trash.',
-    group: 'maintenance',
-  },
-  {
-    name: 'rename',
-    usage: 'planx rename <id> <new>',
-    summary: 'Rename a plan and its id.',
-    group: 'maintenance',
-  },
-  { name: 'on', usage: 'planx on', summary: 'Enable planx.', group: 'common' },
-  {
-    name: 'off',
-    usage: 'planx off',
-    summary: 'Disable planx, so the skills degrade quietly.',
-    group: 'common',
-  },
-  {
-    name: 'status',
-    group: 'common',
-    usage: 'planx status',
-    summary: 'Show the store, config and installed skills.',
-  },
-  {
-    name: 'config',
-    group: 'maintenance',
-    usage: 'planx config get|set <key> [value]',
-    summary: 'Read or write configuration.',
-    description:
-      'Settable keys: enabled, render, mouse. `mouse on` turns on wheel scrolling in the ' +
-      'review, at the cost of the terminal’s own click-and-drag text selection.',
+      'The one command besides the review a person runs by hand. It is the only way to see ' +
+      'that an agent issued itself an unlock and what reason it recorded, and the unlock ' +
+      'handshake is worth nothing if that record cannot be read.',
   },
   {
     name: 'install',

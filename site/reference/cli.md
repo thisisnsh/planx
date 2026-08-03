@@ -48,41 +48,16 @@ planx capture --plan-id guard-clock-a3f9 --parent v2 --splice --stdin
 
 ## `planx resume`
 
-Pick a plan back up: the plan, the feedback on it, and its locks.
+Pick a plan back up: the feedback on it, and its locks.
 
 ```
 planx resume <id> [version] [--json]
 ```
 
-One read with everything needed to revise, including the plan text, so it works in a session that has never seen the plan. Comments left on an earlier version whose quoted text is still present word for word are reported as probably never addressed. Safe to run twice; it waits for nothing.
+One read with everything asked of the plan: each comment against the lines it quotes, and the locked blocks. It does not return the plan itself — the agent that wrote it already has it, and `planx show <id> --plain` is there for a session that does not. Comments left on an earlier version whose quoted text is still present word for word are reported as probably never addressed. Safe to run twice; it waits for nothing.
 
 ```bash
 planx resume guard-clock-a3f9
-```
-
-## `planx submit`
-
-Submit review feedback without the TUI.
-
-```
-planx submit <id> [version] [--comment "42-47:text"] [--approve] [--stdin]
-```
-
-The TUI is one front-end to a documented wire format, not the only way in. This posts the same feedback payload from a script, a hook, or another editor. With --stdin it reads the full JSON payload; the flags cover the common one-liners. Line ranges are 1-based and inclusive, in the reviewed version’s coordinates.
-
-| Flag | Meaning |
-| --- | --- |
-| `--comment <SPEC>` | A comment as "START-END:text" or "LINE:text". Repeatable. |
-| `--lock <RANGE>` | Lock "START-END" or "LINE". Repeatable. |
-| `--unlock <RANGE>` | Unlock a range, splitting a lock if partial. |
-| `--general <TEXT>` | A note about the plan as a whole. |
-| `--approve` | Verdict approve — seals the plan. |
-| `--reject` | Verdict reject — the agent stops and asks. |
-| `--stdin` | Read a full feedback payload as JSON from stdin. |
-
-```bash
-planx submit guard-clock-a3f9 v2 --comment "42-47:Wrong layer, use the R2 write path."
-planx submit guard-clock-a3f9 --lock 88-104 --approve
 ```
 
 ## `planx unlock`
@@ -111,7 +86,7 @@ Review a plan, or print a diff between two versions.
 planx [diff] [id] [vA] [vB] [--print] [--plain|--rich] [--stat]
 ```
 
-In a terminal this opens the review TUI on the plan as it stands: select lines and comment, lock or unlock them, press d for the diff against the previous version, then submit or approve. The command name is optional in front of a plan — `planx <id>` is the same thing. Piped or with --print it writes the diff to stdout and exits. With no arguments it opens a picker.
+In a terminal this opens the review TUI on the diff against the previous version — you opened v4 because v4 is new, and what is new about it is the diff. Press d to see the plan on its own instead. Select lines and comment, lock or unlock them, then submit or approve. The command name is optional in front of a plan — `planx <id>` is the same thing. Piped or with --print it writes the diff to stdout and exits. With no arguments it opens a picker.
 
 | Flag | Meaning |
 | --- | --- |
@@ -153,14 +128,6 @@ planx list [--here] [--approved] [--json]
 | `--approved` | Only approved plans. |
 | `--unapproved` | Only plans that never reached approve. |
 
-## `planx versions`
-
-List a plan’s version history.
-
-```
-planx versions <id>
-```
-
 ## `planx locks`
 
 Show a plan’s locks and any outstanding unlock grants.
@@ -169,94 +136,7 @@ Show a plan’s locks and any outstanding unlock grants.
 planx locks <id> [--json]
 ```
 
-## `planx import`
-
-Backfill plans from an agent’s own history.
-
-```
-planx import --from claude|codex [--latest|--all] [--since 7d]
-```
-
-Explicit and user-run. Nothing watches your agent directories in the background. Re-importing is safe: identical content collapses to a no-op rather than a duplicate.
-
-| Flag | Meaning |
-| --- | --- |
-| `--from <NAME>` | Source adapter: claude or codex. |
-| `--all` | Import everything found. |
-| `--latest` | Import only the most recent plan. |
-| `--since <DUR>` | Only plans newer than this (e.g. 7d). |
-| `--home <PATH>` | Read from a different home directory. |
-
-## `planx clean`
-
-Remove plans, soft-deleting to the trash.
-
-```
-planx clean [filters] [--purge] [--yes]
-```
-
-With no filters this opens a multi-select picker. Deletion is soft: plans move to ~/.planx/.trash and `planx restore` brings them back. --purge deletes for real. The trash is never emptied automatically.
-
-| Flag | Meaning |
-| --- | --- |
-| `--older-than <DUR>` | Plans not updated within this window. |
-| `--unapproved` | Plans that never reached approve. |
-| `--here` | Only plans captured in the current directory. |
-| `--id <ID>` | A specific plan. Repeatable. |
-| `--versions-beyond <N>` | Trim history to the newest N versions. |
-| `--purge` | Delete permanently instead of moving to the trash. |
-| `--empty-trash` | Destroy trashed plans. |
-| `--yes` | Skip the confirmation, for scripts. |
-
-## `planx restore`
-
-Bring a plan back from the trash.
-
-```
-planx restore <id>
-```
-
-## `planx rename`
-
-Rename a plan and its id.
-
-```
-planx rename <id> <new>
-```
-
-## `planx on`
-
-Enable planx.
-
-```
-planx on
-```
-
-## `planx off`
-
-Disable planx, so the skills degrade quietly.
-
-```
-planx off
-```
-
-## `planx status`
-
-Show the store, config and installed skills.
-
-```
-planx status
-```
-
-## `planx config`
-
-Read or write configuration.
-
-```
-planx config get|set <key> [value]
-```
-
-Settable keys: enabled, render, mouse. `mouse on` turns on wheel scrolling in the review, at the cost of the terminal’s own click-and-drag text selection.
+The one command besides the review a person runs by hand. It is the only way to see that an agent issued itself an unlock and what reason it recorded, and the unlock handshake is worth nothing if that record cannot be read.
 
 ## `planx install`
 
