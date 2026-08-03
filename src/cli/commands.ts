@@ -383,6 +383,20 @@ export function cmdUnlock(ctx: Ctx): number {
   return 0;
 }
 
+/**
+ * The newest version before `n` that can still be read.
+ *
+ * Not `n - 1`: history has holes. A version whose text was trimmed is listed in
+ * `versions.json` but has no file, so subtracting one lands on something that
+ * cannot be opened.
+ */
+export function previousStoredVersion(id: string, n: number): number | null {
+  const earlier = readVersions(id)
+    .versions.map((v) => v.n)
+    .filter((v) => v < n && readVersionText(id, v) !== null);
+  return earlier.length ? Math.max(...earlier) : null;
+}
+
 export async function cmdDiff(ctx: Ctx): Promise<number> {
   const id = await resolvePlan(
     ctx,
@@ -402,10 +416,10 @@ export async function cmdDiff(ctx: Ctx): Promise<number> {
     versionB = resolveVersionRef(id, refB);
   } else if (refA) {
     versionB = resolveVersionRef(id, refA);
-    versionA = versionB > 1 ? versionB - 1 : null;
+    versionA = previousStoredVersion(id, versionB);
   } else {
     versionB = latest;
-    versionA = latest > 1 ? latest - 1 : null;
+    versionA = previousStoredVersion(id, latest);
   }
 
   const printOnly = has(ctx.args, '--print') || !isInteractive();
@@ -435,10 +449,11 @@ export async function cmdDiff(ctx: Ctx): Promise<number> {
     return 0;
   }
 
-  // The review opens on the plan as it stands. A diff is the interesting view
-  // sometimes; the plan is what you came to read, and `d` is right there. Two
-  // explicit versions are a request for that diff, so they are honoured.
-  return runInteractiveReview(ctx, id, refA && refB ? versionA : null, versionB);
+  // A version with a predecessor opens against it. You open v4 because v4 is
+  // new, and what is new about it is the diff — opening flat and making you
+  // press `d` had it backwards for the common case. v1 has nothing to diff
+  // against and opens as itself; `d` toggles either way.
+  return runInteractiveReview(ctx, id, versionA, versionB);
 }
 
 async function runInteractiveReview(

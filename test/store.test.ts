@@ -1,5 +1,6 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { previousStoredVersion } from '../src/cli/commands.js';
 import { StoreCorruptionError } from '../src/store/atomic.js';
 import { contentHash, planId, slugify, ulid } from '../src/store/ids.js';
 import { paths } from '../src/store/paths.js';
@@ -223,6 +224,31 @@ describe('trimming history', () => {
     expect(readVersions(id).versions.map((v) => v.n)).toEqual([1, 4, 5]);
     expect(existsSync(paths.versionFile(id, 1))).toBe(true);
     expect(existsSync(paths.versionFile(id, 2))).toBe(false);
+  });
+});
+
+/**
+ * What a plan opens as. A version with a predecessor opens against it — you
+ * opened v4 because v4 is new, and what is new about it is the diff.
+ */
+describe('the version a review opens against', () => {
+  it('is nothing for the first version, and the one before for the rest', () => {
+    const id = seed();
+    expect(previousStoredVersion(id, 1)).toBeNull();
+
+    addVersion(id, `${SAMPLE_PLAN}\nrev 2\n`);
+    addVersion(id, `${SAMPLE_PLAN}\nrev 3\n`);
+    expect(previousStoredVersion(id, 2)).toBe(1);
+    expect(previousStoredVersion(id, 3)).toBe(2);
+  });
+
+  it('skips a version that is on the books but has no text on disk', () => {
+    const id = seed();
+    for (let i = 2; i <= 4; i++) addVersion(id, `${SAMPLE_PLAN}\nrev ${i}\n`);
+    rmSync(paths.versionFile(id, 3));
+    // v4 opens against v2 rather than against a file that is not there — this
+    // is the state `doctor` reports, and the review has to survive it.
+    expect(previousStoredVersion(id, 4)).toBe(2);
   });
 });
 

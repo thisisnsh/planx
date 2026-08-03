@@ -690,7 +690,7 @@ describe('the whole-plan note', () => {
 });
 
 describe('the plan, the diff and the versions', () => {
-  it('opens on the plan itself, with no sign column to pay for', async () => {
+  it('shows the plan alone, with no sign column to pay for, once the diff is off', async () => {
     const app = mount(seedTwoVersions(), null, 2, [1, 2]);
     await app.ready();
 
@@ -702,12 +702,10 @@ describe('the plan, the diff and the versions', () => {
     app.unmount();
   });
 
-  it('d brings the diff and d again takes it away', async () => {
-    const app = mount(seedTwoVersions(), null, 2, [1, 2]);
+  it('d takes the diff away and d again brings it back', async () => {
+    // How `planx <id>` opens a version that has a predecessor.
+    const app = mount(seedTwoVersions(), 1, 2, [1, 2]);
     await app.ready();
-    expect(app.stdout.lastFrame).toContain('d diff');
-
-    await app.press('d');
     await app.frame('← v1');
     // The removed line is only visible in a diff.
     expect(app.stdout.lastFrame).toContain('10% then 50% then 100%');
@@ -715,6 +713,10 @@ describe('the plan, the diff and the versions', () => {
     await app.press('d');
     await new Promise((r) => setTimeout(r, 120));
     expect(app.stdout.lastFrame).not.toContain('← v1');
+    expect(app.stdout.lastFrame).not.toContain('10% then 50% then 100%');
+
+    await app.press('d');
+    await app.frame('← v1');
     app.unmount();
   });
 
