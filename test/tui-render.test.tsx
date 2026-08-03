@@ -217,13 +217,14 @@ function bodyRows(frame: string): string[] {
 }
 
 /**
- * The rail's own column: `│ ` of the frame, then the arrow and its space.
+ * Where a note box opens — the tee is in the rail's column by construction.
  *
- * It is a column of the gutter rather than of the cursor, which is the point —
- * a rail pressed against the arrow reads as part of it, and the arrow moves.
+ * Taken from the drawn frame rather than hard-coded, so the assertions below
+ * are about the rail and the box sharing a column rather than about which
+ * column that happens to be for this plan's line-number width.
  */
-function railColumn(row: string): string {
-  return row[4] ?? '';
+function boxColumn(rows: string[]): number {
+  return rows.find((line) => line.includes('├─'))!.indexOf('├');
 }
 
 describe('the review frame', () => {
@@ -454,16 +455,38 @@ describe('feedback lives in the document', () => {
 
     const rows = bodyRows(app.stdout.lastFrame);
     const first = rows.findIndex((l) => l.includes('# Guard the clock regression'));
+    const rail = boxColumn(rows);
 
     // Lines 1 and 2 are both covered, so the rail runs down both of them, then
     // the box opens off it with `├` — a `╭` there would read as two separate
     // objects that happen to be adjacent.
-    expect(railColumn(rows[first]!)).toBe('│');
-    expect(railColumn(rows[first + 1]!)).toBe('│');
+    expect(rows[first]![rail]).toBe('│');
+    expect(rows[first + 1]![rail]).toBe('│');
     expect(rows[first + 2]).toContain('├─');
 
     // …and nowhere else: an unannotated line keeps its blank rail column.
-    expect(railColumn(rows.find((l) => l.includes('## Context'))!)).toBe(' ');
+    expect(rows.find((l) => l.includes('## Context'))![rail]).toBe(' ');
+    app.unmount();
+  });
+
+  it('puts the rail between the line number and the text, not out in the margin', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('f');
+    await app.press('beside it');
+    await app.press(ENTER);
+    await app.frame('beside it');
+
+    const rows = bodyRows(app.stdout.lastFrame);
+    const rail = boxColumn(rows);
+    const annotated = rows[rows.findIndex((l) => l.includes('# Guard the clock regression'))]!;
+
+    // The line number is behind the rail and the text is in front of it, so the
+    // note's words and the plan's words start on the same column.
+    expect(annotated.slice(0, rail)).toMatch(/1\s*$/);
+    expect(annotated.indexOf('# Guard')).toBe(rail + 2);
+    expect(rows.find((l) => l.includes('beside it'))!.indexOf('beside it')).toBe(rail + 2);
     app.unmount();
   });
 

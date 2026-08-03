@@ -547,6 +547,7 @@ export function ReviewApp(props: ReviewAppProps) {
             selected: isRowSelected(selection, offset + i),
             editing: row.kind === 'feedback' && row.annotationId === draftId,
             width: textWidth,
+            indent: model.railColumn,
           }),
         );
 
@@ -567,7 +568,13 @@ export function ReviewApp(props: ReviewAppProps) {
       {noteRows.map((row, i) => (
         <Text key={`note-${i}`}>
           {frameLine(
-            renderRow(row, { cursor: false, selected: false, editing: true, width: textWidth }),
+            renderRow(row, {
+              cursor: false,
+              selected: false,
+              editing: true,
+              width: textWidth,
+              indent: model.railColumn,
+            }),
             inner,
           )}
         </Text>
@@ -621,36 +628,41 @@ interface RowOptions {
   cursor: boolean;
   selected: boolean;
   editing: boolean;
-  /** Columns available to the row's text, after the rail and the gutter. */
+  /** Columns available to the row's text, after the gutter and the rail. */
   width: number;
+  /** The rail's column, which is where a note box opens. */
+  indent: number;
 }
 
 /**
  * One drawn line, with the cursor arrow in a gutter of its own.
  *
  * The arrow lives here rather than in the row text so moving it costs a
- * re-render of the visible slice, not a rebuild of the whole document. The rail
- * sits *behind* the arrow, at the head of the line numbers, because a rail
- * pressed against the cursor reads as part of the cursor — and the cursor moves
- * while the rail does not.
+ * re-render of the visible slice, not a rebuild of the whole document.
+ *
+ * The rail runs *between* the line number and the text, in a column of its own,
+ * and a note box opens off it there. Out in the left margin — behind the
+ * numbers, where it used to be — the box was indented past nothing and the
+ * note's words shared no left edge with the words they were about.
  */
 function renderRow(row: ViewRow, opts: RowOptions): string {
   const arrow = opts.cursor ? signal('▸') : ' ';
+  const pad = ' '.repeat(opts.indent);
 
   if (row.kind === 'feedback') {
-    if (row.part !== 'body') return `${arrow} ${signal(row.text)}`;
+    if (row.part !== 'body') return `${arrow} ${pad}${signal(row.text)}`;
 
     const box = row.boxWidth - BOX_PADDING;
     const caret = opts.editing && row.last;
     const text = truncate(row.text, box);
     const filled = padEnd(caret ? `${text}${inverse(' ')}` : text, box);
-    return `${arrow} ${signal('│')} ${filled} ${signal('│')}`;
+    return `${arrow} ${pad}${signal('│')} ${filled} ${signal('│')}`;
   }
 
   const rail = row.rail ? signal('│') : ' ';
   const gutter = opts.cursor ? row.gutterActive : row.gutter;
   const text = truncate(opts.selected ? inverse(stripAnsi(row.text)) : row.text, opts.width);
-  return `${arrow} ${rail}${gutter}${text}`;
+  return `${arrow} ${gutter}${rail} ${text}`;
 }
 
 /* --------------------------------------------------------------- chrome */

@@ -14,7 +14,7 @@ import type { Annotation, LocksFile } from '../store/types.js';
  * Feedback is rendered inline rather than in an overlay, so it has to be in the
  * same list the body is sliced from. Every row is exactly one terminal line,
  * which keeps scrolling a matter of slicing an array rather than measuring
- * heights. The cursor does not walk these rows — see `move` in ./selection.ts.
+ * heights.
  */
 export type ViewRow = DocRow | FeedbackRow;
 
@@ -22,7 +22,7 @@ export interface DocRow extends RenderedLine {
   kind: 'doc';
   /** Index of the block this row came from, for expanding gaps. */
   blockIndex: number;
-  /** A note covers this line, so the rail runs down beside its number. */
+  /** A note covers this line, so the rail runs down between number and text. */
   rail: boolean;
 }
 
@@ -57,7 +57,9 @@ export interface ReviewModel {
   rows: ViewRow[];
   /** Columns a note box occupies, rail column included. */
   boxWidth: number;
-  /** Columns before the text column — the rail and the gutter together. */
+  /** The column the rail runs down, and the one a note box opens in. */
+  railColumn: number;
+  /** Columns before the text column — the gutter and the rail together. */
   gutterWidth: number;
 }
 
@@ -107,10 +109,12 @@ export function buildModel(opts: BuildModelOptions): ReviewModel {
   const lockedLines = lockedLineMap(docLines, locks);
   const rendered = renderRichLines(shown, { mode: opts.mode, lockedLines });
 
-  // The box hangs off the rail rather than under the text column: the indent is
-  // what made a note float free of the passage it is about. Still capped,
-  // because a note stretched across a very wide terminal is harder to read.
-  const boxWidth = boxWidthFor(opts.width);
+  // The rail runs between the line number and the text, so the box opens off it
+  // in the same column and its text starts on the same left edge the plan's
+  // does. Hanging it out in the left margin instead is what made a note and the
+  // passage it is about share no edge at all. Still capped, because a note
+  // stretched across a very wide terminal is harder to read.
+  const boxWidth = boxWidthFor(opts.width - rendered.gutterWidth);
   const railed = railedLines(opts.annotations);
 
   // renderRichLines emits one line per row and one per collapsed gap, in block
@@ -153,7 +157,8 @@ export function buildModel(opts: BuildModelOptions): ReviewModel {
     blocks,
     rows,
     boxWidth,
-    gutterWidth: RAIL_WIDTH + rendered.gutterWidth,
+    railColumn: rendered.gutterWidth,
+    gutterWidth: rendered.gutterWidth + RAIL_WIDTH,
   };
 }
 
@@ -183,8 +188,8 @@ function endingAt(annotations: readonly Annotation[], line: number): Annotation[
 const MAX_BOX_WIDTH = 72;
 /** `│ ` and ` │` — what the frame costs the text inside it. */
 export const BOX_PADDING = 4;
-/** The rail lives at the head of the gutter, in a column of its own. */
-export const RAIL_WIDTH = 1;
+/** The rail's own column, and the space between it and the text. */
+export const RAIL_WIDTH = 2;
 
 export interface BoxOptions {
   blockIndex: number;

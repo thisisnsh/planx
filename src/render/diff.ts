@@ -55,7 +55,7 @@ export interface GutterOptions {
 
 /** Columns a gutter built with these options occupies. */
 export function gutterWidth(opts: { numberWidth: number; signs?: boolean }): number {
-  return 2 + (opts.signs === false ? 0 : 1) + opts.numberWidth + 2;
+  return 2 + (opts.signs === false ? 0 : 1) + opts.numberWidth + 1;
 }
 
 /**
@@ -87,8 +87,10 @@ export function renderGutter(row: DiffRow, opts: GutterOptions): string {
   // view. Under the cursor it goes yellow instead — finding where you are beats
   // knowing what changed on the one line you are looking at.
   const paint = opts.active ? signal : row.kind === 'add' ? green : row.kind === 'del' ? red : dim;
-  // One space after the marker, so `⚿10` does not read as one token.
-  return `${lock} ${sign}${paint(num)}  `;
+  // One space after the marker, so `⚿10` does not read as one token, and one
+  // after the number. The second space the number used to get belongs to the
+  // annotation rail, which sits between this and the text.
+  return `${lock} ${sign}${paint(num)} `;
 }
 
 /**
