@@ -509,9 +509,29 @@ describe('feedback lives in the document', () => {
     await app.press(DOWN);
     await new Promise((r) => setTimeout(r, 120));
 
-    const arrowed = bodyRows(app.stdout.lastFrame).filter((l) => l.includes(ARROW));
-    expect(arrowed).toHaveLength(1);
-    expect(arrowed[0]).toContain('on line one');
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('on line one');
+    app.unmount();
+  });
+
+  it('walks over a folded note in one press, and back out again', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('f');
+    await app.press('folded');
+    await app.press(ENTER);
+    await app.frame('folded');
+    await app.press('h'); // fold every note — the box is one row now
+    await app.frame('▸ folded');
+
+    // Line 1, the folded rail, line 2.
+    await app.press(DOWN);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('folded');
+
+    await app.press(DOWN);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).not.toContain('folded');
     app.unmount();
   });
 
@@ -536,7 +556,7 @@ describe('feedback lives in the document', () => {
     const folded = rows.find((l) => l.includes('fold from within'))!;
     expect(folded).toContain('├─ ▸ fold from within');
     // Still under the cursor, so space puts it straight back.
-    expect(folded).toContain(ARROW);
+    expect(cursorRow(rows)).toBe(folded);
     app.unmount();
   });
 });
@@ -668,7 +688,17 @@ describe('submitting and approving', () => {
 
 /** The text between the frame's two edges. */
 function inner(row: string): string {
-  return row.replace(/^│\s?/, '').replace(/\s*│$/, '').trimEnd();
+  return row.replace(/^│\s*/, '').replace(/\s*│$/, '').trimEnd();
+}
+
+/**
+ * The row the cursor is on.
+ *
+ * By column, not by searching for the glyph: a folded note draws `▸` inside its
+ * own title, so `includes(ARROW)` finds a row the cursor is nowhere near.
+ */
+function cursorRow(rows: string[]): string | undefined {
+  return rows.find((row) => row[2] === ARROW);
 }
 
 // Wide enough that nothing is cut, so these are about the order rather than
@@ -1044,6 +1074,17 @@ describe('the picker as a version tree', () => {
     expect(row).toContain('1h ago   guard-clock');
     expect(row).not.toContain('v3');
     expect(row).not.toContain('✓');
+    app.unmount();
+  });
+
+  it('obeys the same key order the review does', async () => {
+    const app = mountPicker(planRows(), () => []);
+    await app.ready();
+
+    const keys = inner(bodyRows(app.stdout.lastFrame).at(-1)!)
+      .split(' · ')
+      .map((part) => part.split(' ')[0]!);
+    expect(keys).toEqual(['↑↓', 'd', 'enter', 'esc']);
     app.unmount();
   });
 
