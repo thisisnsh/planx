@@ -325,9 +325,11 @@ export function ReviewApp(props: ReviewAppProps) {
     } else {
       const result = lockLines(props.planId, model.docLines, versionB, span);
       // Say what happened rather than claiming the whole span: half of it may
-      // already have been frozen by an earlier press.
+      // already have been frozen by an earlier press. Not which lock it became:
+      // the id is an internal handle, `planx locks` prints it, and the ⚿ in the
+      // gutter has already said the line is frozen.
       const parts = result.locked.map(
-        (l) => `locked line${l.start === l.end ? '' : 's'} ${describeSpan(l)} as ${l.id}`,
+        (l) => `locked line${l.start === l.end ? '' : 's'} ${describeSpan(l)}`,
       );
       if (result.skipped.length) {
         const single =
