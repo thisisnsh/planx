@@ -52,9 +52,16 @@ export class Cli {
     return collect(this.spawn(args, input));
   }
 
-  /** Start planx without waiting — for `await`, which is supposed to block. */
+  /**
+   * Start planx without waiting — for `await`, which is supposed to block.
+   *
+   * It runs in the temp store's own directory, so `install --local` and
+   * `uninstall --local` write their `.claude/skills` there rather than into
+   * the checkout the suite is running from.
+   */
   spawn(args: string[], input?: string): ChildProcess {
     const child = spawn('node', [ENTRY, '--dir', this.dir, '--no-color', ...args], {
+      cwd: this.dir,
       env: { ...process.env, NO_COLOR: '1', PLANX_NO_POSTINSTALL: '1' },
       stdio: ['pipe', 'pipe', 'pipe'],
     });

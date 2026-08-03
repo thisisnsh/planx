@@ -75,7 +75,7 @@ function versionsOf(id: string): number[] {
 
 async function seed(): Promise<string> {
   const result = await cli.run(['capture', '--stdin', '--source', 'test'], PLAN_V1);
-  const id = /captured (\S+) v1/.exec(result.stdout)?.[1];
+  const id = /Captured (\S+) v1\./.exec(result.stdout)?.[1];
   expect(id, result.stdout + result.stderr).toBeTruthy();
   return id!;
 }
@@ -272,7 +272,7 @@ describe('lock enforcement through the binary', () => {
 
     const granted = await cli.run(['unlock', id, 'L1', '--reason', 'the flag adds no value here']);
     expect(granted.code).toBe(0);
-    expect(granted.stdout).toContain('unlocked L1');
+    expect(granted.stdout).toContain('Unlocked L1 for one capture.');
     expect(granted.stdout).toContain('the flag adds no value here');
 
     const edited = PLAN_V1.replace(
@@ -317,6 +317,55 @@ describe('approval and sealing', () => {
     review(id, 1, { verdict: 'approve' });
     review(id, 1, { unlocks: [[6, 7]] });
     expect((await cli.run(['capture', '--plan-id', id, '--stdin'], PLAN_V2)).code).toBe(0);
+  });
+});
+
+/**
+ * A line whose content *is* a path or a plan id, which cannot be recased
+ * without breaking it. Everything else planx prints is a sentence.
+ */
+const MECHANICAL = [
+  /^(store\s+)?[/~]/, // `✓ /Users/…/skills/planx`, `store  ~/.planx`
+  /^\/planx\b/, //      the skill row install prints, name then description
+  /^[a-z0-9-]+ v\d+\b/, // `= guard-clock v3 unchanged — …`
+  /^[a-z0-9-]+: /, //   a doctor problem, which leads with the plan it is about
+];
+
+/** Assert the rule over everything a command printed, on both streams. */
+function expectSentences({ stdout, stderr }: { stdout: string; stderr: string }): void {
+  const lines = `${stdout}\n${stderr}`
+    .split('\n')
+    .map((line) => line.trim())
+    // A glyph in the margin is punctuation, not the start of the sentence.
+    .map((line) => line.replace(/^[✓=−!⚑]\s*/u, ''))
+    .filter((line) => line.length > 0 && !MECHANICAL.some((exempt) => exempt.test(line)));
+
+  expect(lines.length).toBeGreaterThan(0);
+  for (const line of lines) {
+    expect(line, line).toMatch(/^[A-Z]/);
+    expect(line, line).toMatch(/[.?]$/);
+  }
+}
+
+describe('every line planx prints is a sentence', () => {
+  it('holds through capture, unlock, doctor, install and uninstall', async () => {
+    const id = await seed();
+    expectSentences(await cli.run(['capture', '--plan-id', id, '--stdin'], PLAN_V2));
+
+    review(id, 1, { verdict: 'approve' });
+    const lockId = Object.keys(
+      JSON.parse((await cli.run(['locks', id, '--json'])).stdout).locks,
+    )[0];
+    expectSentences(
+      await cli.run(['unlock', id, lockId!, '--reason', 'the R2 path replaced this']),
+    );
+    expectSentences(await cli.run(['doctor']));
+
+    // `--local`, and the harness runs planx in the temp store's directory, so
+    // these write nowhere near the checkout or the real ~/.claude.
+    expectSentences(await cli.run(['install', '--local']));
+    expectSentences(await cli.run(['uninstall', '--local']));
+    expectSentences(await cli.run(['uninstall', '--local']));
   });
 });
 

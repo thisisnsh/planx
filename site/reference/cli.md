@@ -159,8 +159,12 @@ Touches no agent settings files. Idempotent, and it marks what it wrote so unins
 Remove what install wrote.
 
 ```
-planx uninstall
+planx uninstall [--local]
 ```
+
+| Flag | Meaning |
+| --- | --- |
+| `--local` | Remove from ./.claude/skills instead of $HOME. |
 
 ## `planx doctor`
 

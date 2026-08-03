@@ -138,9 +138,12 @@ export const COMMANDS: CommandSpec[] = [
   },
   {
     name: 'uninstall',
-    usage: 'planx uninstall',
+    usage: 'planx uninstall [--local]',
     summary: 'Remove what install wrote.',
     group: 'maintenance',
+    // `cmdUninstall` has always read this; it was simply never declared, so
+    // the parser rejected it as unknown before the command ever ran.
+    flags: [{ name: '--local', summary: 'Remove from ./.claude/skills instead of $HOME.' }],
   },
   {
     name: 'doctor',

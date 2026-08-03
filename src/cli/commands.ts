@@ -148,6 +148,21 @@ function framed(ctx: Ctx, lines: string[]): void {
   ctx.out(frameBlock(lines, { title: brandTitle(ctx.version) }));
 }
 
+/**
+ * Every line planx prints is a sentence: a leading capital and a closing stop.
+ *
+ * The exemption is mechanical, not stylistic — a line whose content *is* a path
+ * or a plan id cannot be recased without breaking it, so those are left as they
+ * are and take a stop only where one reads naturally. Prose wrapped around them
+ * still follows the rule.
+ *
+ * This is for the tail end of a line that already carries user text or a shell
+ * fragment, where a blind `${x}.` would double up an existing stop.
+ */
+function stop(text: string): string {
+  return /[.!?…]$/.test(text.trimEnd()) ? text : `${text}.`;
+}
+
 function requireVersionText(id: string, version: number): string {
   const text = readVersionText(id, version);
   if (text === null) {
@@ -192,26 +207,26 @@ export function cmdCapture(ctx: Ctx): number {
 
   ctx.out(
     result.created
-      ? `${green('✓')} captured ${bold(result.planId)} v${result.version}`
-      : `${dim('=')} ${result.planId} v${result.version} unchanged — nothing written`,
+      ? `${green('✓')} Captured ${bold(result.planId)} v${result.version}.`
+      : `${dim('=')} ${result.planId} v${result.version} unchanged — nothing written.`,
   );
   if (result.expandedLocks.length) {
-    ctx.out(dim(`  expanded ${result.expandedLocks.length} locked block(s) from markers`));
+    ctx.out(dim(`  Expanded ${result.expandedLocks.length} locked block(s) from markers.`));
   }
   if (result.literalMarkersInFence.length) {
     ctx.err(
       yellow(
-        `  note: marker(s) on line ${result.literalMarkersInFence.join(', ')} are inside a code fence and were left literal`,
+        `  Note: marker(s) on line ${result.literalMarkersInFence.join(', ')} are inside a code fence and were left literal.`,
       ),
     );
   }
   for (const id of result.droppedLocks) {
     ctx.err(
-      yellow(`  warning: lock ${id} could not be re-anchored in the new version and was dropped`),
+      yellow(`  Warning: lock ${id} could not be re-anchored in the new version and was dropped.`),
     );
   }
   if (result.closedFeedback) {
-    ctx.out(dim(`  closed ${result.closedFeedback} feedback record(s)`));
+    ctx.out(dim(`  Closed ${result.closedFeedback} feedback record(s).`));
   }
   return 0;
 }
@@ -279,8 +294,8 @@ export function cmdUnlock(ctx: Ctx): number {
     ctx.out(JSON.stringify({ plan_id: id, lock_id: lockId, grant_id: grantId, reason }, null, 2));
     return 0;
   }
-  ctx.out(`${green('✓')} unlocked ${lockId} for one capture`);
-  ctx.out(dim(`  recorded: ${reason}`));
+  ctx.out(`${green('✓')} Unlocked ${lockId} for one capture.`);
+  ctx.out(dim(`  Recorded: ${stop(reason)}`));
   return 0;
 }
 
@@ -434,15 +449,15 @@ async function runInteractiveReview(
 
     const comments = batch.annotations.filter((a) => a.kind === 'comment').length;
     ctx.out(
-      `${green('✓')} submitted ${comments} comment(s) on ${bold(id)} v${batch.version} (${
+      `${green('✓')} Submitted ${comments} comment(s) on ${bold(id)} v${batch.version} (${
         current ? verdict : 'revise'
-      })`,
+      }).`,
     );
     if (submitted.locksCreated.length) {
-      ctx.out(dim(`  locked: ${submitted.locksCreated.join(', ')}`));
+      ctx.out(dim(`  Locked: ${submitted.locksCreated.join(', ')}.`));
     }
     if (submitted.locksRemoved.length) {
-      ctx.out(dim(`  unlocked: ${submitted.locksRemoved.join(', ')}`));
+      ctx.out(dim(`  Unlocked: ${submitted.locksRemoved.join(', ')}.`));
     }
     sealed += submitted.sealedLocks.length;
   }
@@ -542,7 +557,7 @@ export function cmdList(ctx: Ctx): number {
     return 0;
   }
   if (!plans.length) {
-    ctx.out(dim('no plans stored'));
+    ctx.out(dim('No plans stored.'));
     return 0;
   }
 
@@ -570,11 +585,11 @@ export function cmdLocks(ctx: Ctx): number {
   }
   const out: string[] = [];
   if (locks.sealed_at) {
-    out.push(green(`sealed at ${locks.sealed_at} (v${locks.sealed_version})`));
+    out.push(green(`Sealed at ${locks.sealed_at} (v${locks.sealed_version}).`));
   }
   const entries = Object.values(locks.locks);
   if (!entries.length) {
-    out.push(dim('no locks'));
+    out.push(dim('No locks.'));
   }
   for (const lock of entries) {
     const lines = lock.text.split('\n').length;
@@ -583,7 +598,7 @@ export function cmdLocks(ctx: Ctx): number {
     );
   }
   for (const grant of Object.values(locks.grants).filter((g) => g.used_at === null)) {
-    out.push(yellow(`  ⚑ grant open for ${grant.lock_id} — one capture may modify it`));
+    out.push(yellow(`  ⚑ Grant open for ${grant.lock_id} — one capture may modify it.`));
   }
   framed(ctx, out);
   return 0;
@@ -608,21 +623,21 @@ export function cmdInstall(ctx: Ctx): number {
     ctx.out(`  ${cyan(`/${name}`)}  ${dim(description.slice(0, 70))}`);
   }
   for (const dir of report.wrote) ctx.out(`${green('✓')} ${dir}`);
-  for (const dir of report.removed) ctx.out(`${yellow('−')} removed retired skill ${dir}`);
-  for (const dir of report.seeded) ctx.out(`${green('✓')} seeded ${dir}`);
-  for (const skipped of report.skipped) ctx.out(dim(`  skipped ${skipped}`));
-  ctx.out(dim('  no agent settings files were modified'));
+  for (const dir of report.removed) ctx.out(`${yellow('−')} Removed retired skill ${dir}.`);
+  for (const dir of report.seeded) ctx.out(`${green('✓')} Seeded ${dir}.`);
+  for (const skipped of report.skipped) ctx.out(dim(`  Skipped ${stop(skipped)}`));
+  ctx.out(dim('  No agent settings files were modified.'));
   return 0;
 }
 
 export function cmdUninstall(ctx: Ctx): number {
   const report = runUninstall({ local: has(ctx.args, '--local') });
-  for (const dir of report.removed) ctx.out(`${green('✓')} removed ${dir}`);
+  for (const dir of report.removed) ctx.out(`${green('✓')} Removed ${dir}.`);
   for (const dir of report.kept) {
-    ctx.out(yellow(`  kept ${dir} — planx did not write it`));
+    ctx.out(yellow(`  Kept ${dir} — planx did not write it.`));
   }
-  if (!report.removed.length && !report.kept.length) ctx.out(dim('nothing installed'));
-  ctx.out(dim(`  ${paths.root()} was left alone — delete it yourself if you want the plans gone`));
+  if (!report.removed.length && !report.kept.length) ctx.out(dim('Nothing installed.'));
+  ctx.out(dim(`  ${paths.root()} was left alone — delete it yourself if you want the plans gone.`));
   return 0;
 }
 
@@ -645,10 +660,10 @@ export function cmdDoctor(ctx: Ctx): number {
 
   for (const plan of plans) {
     const versions = readVersions(plan.id).versions;
-    if (!versions.length) problems.push(`${plan.id}: no versions recorded`);
+    if (!versions.length) problems.push(`${plan.id}: no versions recorded.`);
     for (const v of versions) {
       if (readVersionText(plan.id, v.n) === null) {
-        problems.push(`${plan.id}: v${v.n} is in versions.json but its file is missing`);
+        problems.push(`${plan.id}: v${v.n} is in versions.json but its file is missing.`);
       }
     }
     const locks = readLocks(plan.id);
@@ -657,7 +672,7 @@ export function cmdDoctor(ctx: Ctx): number {
       const map = lockedLineMap(normalizedLines(latest), locks);
       for (const lock of Object.values(locks.locks)) {
         if (![...map.values()].includes(lock.id)) {
-          problems.push(`${plan.id}: lock ${lock.id} cannot be located in the latest version`);
+          problems.push(`${plan.id}: lock ${lock.id} cannot be located in the latest version.`);
         }
       }
     }
@@ -668,9 +683,9 @@ export function cmdDoctor(ctx: Ctx): number {
   // loud before anything else is reported about it.
   ctx.out(dim(`  store  ${paths.root()}`));
   const count = rebuildIndex();
-  ctx.out(`${green('✓')} reindexed ${count} plan(s)`);
+  ctx.out(`${green('✓')} Reindexed ${count} plan(s).`);
   if (!problems.length) {
-    ctx.out(`${green('✓')} no problems found`);
+    ctx.out(`${green('✓')} No problems found.`);
     return 0;
   }
   for (const problem of problems) ctx.out(yellow(`  ! ${problem}`));
