@@ -41,9 +41,10 @@ export interface ReviewResult {
   /** `back` means the reviewer wants the list again, with nothing submitted. */
   action: 'submit' | 'approve' | 'reject' | 'quit' | 'back';
   /**
-   * Every version the reviewer touched or left something on, including the
-   * empty ones: a batch with no annotations and no note is how deleting the
-   * last comment on a version lands.
+   * Every version the reviewer edited, plus the one they finished on — and the
+   * empty ones belong here: a batch with no annotations and no note is how
+   * deleting the last comment on a version lands. A version they only stepped
+   * through carries no batch, however much feedback is already on it.
    */
   batches: FeedbackBatch[];
   /** The version on screen when the reviewer finished. */
@@ -185,12 +186,10 @@ export function ReviewApp(props: ReviewAppProps) {
   const textWidth = contentWidth - model.gutterWidth;
   /** What this version carries — which is what `a` is gated on, and what `s` sends. */
   const carries = annotations.length > 0 || general.trim().length > 0;
-  // Feedback on any version, or a version emptied this session: all of it is a
-  // submit, because an empty version is how a deletion lands.
-  const anythingToSubmit =
-    touched.size > 0 ||
-    Object.values(byVersion).some((list) => list.length > 0) ||
-    Object.values(generalByVersion).some((note) => note.trim().length > 0);
+  // What this version carries, or anything edited this session — the same set
+  // `s` sends. A version emptied this session counts, because an empty version
+  // is how a deletion lands.
+  const anythingToSubmit = carries || touched.size > 0;
 
   const previousVersion = useMemo(() => {
     const earlier = props.versions.filter((v) => v < versionB);
@@ -537,16 +536,15 @@ export function ReviewApp(props: ReviewAppProps) {
     if (action === 'submit' && !anythingToSubmit) {
       return setStatus('nothing to submit — press f to leave feedback, or x to leave');
     }
-    // Every version that carries something or was emptied, plus the one you are
-    // on. An empty batch is not noise: it is the record that has to be rewritten
-    // for a deleted comment to stay deleted.
+    // What you edited this session, plus the one you are on. An empty batch is
+    // not noise: it is the record that has to be rewritten for a deleted comment
+    // to stay deleted, which is why `touched` and not "carries something".
+    //
+    // A version you only read past is not in here. Every version's feedback is
+    // loaded into `byVersion` so you can step to it and see it, and submitting
+    // all of that back would rewrite records you never opened — announcing
+    // versions you did not touch, and re-dating them.
     const versions = new Set<number>([versionB, ...touched]);
-    for (const [version, list] of Object.entries(byVersion)) {
-      if (list.length) versions.add(Number(version));
-    }
-    for (const [version, note] of Object.entries(generalByVersion)) {
-      if (note.trim()) versions.add(Number(version));
-    }
 
     const batches = [...versions]
       .sort((a, b) => a - b)

@@ -156,6 +156,33 @@ describe('one feedback record per version', () => {
     expect(listFeedback(planId)[0]!.annotations).toEqual([]);
   });
 
+  /**
+   * Rewriting the record must not reopen it. A later version answered this
+   * feedback, which stays true however the reviewer edits the words — and a
+   * rewrite that dropped `addressed_by` would put closed feedback back on the
+   * outstanding pile every time the version was submitted again.
+   */
+  it('keeps feedback closed when its record is rewritten', () => {
+    const { planId } = seed();
+    submitFeedback({
+      planId,
+      version: 1,
+      verdict: 'revise',
+      annotations: [comment(planId, 1, 6, 6, 'Rework this.')],
+    });
+    capture({ planId, text: `${SAMPLE_PLAN}\n## Risks\nNone.\n`, parent: 'v1' });
+    expect(listFeedback(planId)[0]!.addressed_by).toBe(2);
+
+    submitFeedback({
+      planId,
+      version: 1,
+      verdict: 'revise',
+      annotations: [comment(planId, 1, 6, 6, 'Rework this, properly.')],
+    });
+
+    expect(listFeedback(planId)[0]!.addressed_by).toBe(2);
+  });
+
   /** A store an older planx wrote collapses on read, losing nothing. */
   it('merges a version left with several records by an older planx', () => {
     const { planId } = seed();

@@ -57,6 +57,11 @@ submitted-versus-pending distinction to keep track of. Change a comment and
 submit again and the store matches what is on screen; empty one and the deletion
 lands the same way.
 
+Reading a version is not editing it. Step through v1 to see what is on it,
+change nothing, and it stays out of the submission — what you already left
+there is untouched, and the summary names only the versions you actually wrote
+on.
+
 ## Submit, or approve — never both
 
 A version carrying feedback or a note offers `s submit`. A version carrying

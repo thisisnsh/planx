@@ -3,7 +3,7 @@ import { addLock, issueGrant, sealPlan, unlockRange } from '../locks/manage.js';
 import { sectionOf } from '../render/markdown.js';
 import { ulid } from '../store/ids.js';
 import { readMeta, readVersionText, reindex, updateLocks, writeMeta } from '../store/plans.js';
-import { feedbackIdFor, writeFeedback } from '../store/feedback.js';
+import { feedbackFor, writeFeedback } from '../store/feedback.js';
 import { FeedbackSchema, type Annotation, type Feedback } from '../store/types.js';
 
 export interface SubmitInput {
@@ -84,14 +84,20 @@ export function submitFeedback(input: SubmitInput): SubmitResult {
   // One record per version, rewritten in place — so the id is the one already
   // on it. Minting a new one every submit would leave a version's feedback with
   // a different identity each time the reviewer touched it.
+  //
+  // `addressed_by` survives too. It says a later version answered this one,
+  // which stays true however the reviewer edits the words; dropping it on a
+  // rewrite would reopen feedback that a captured version had already closed.
+  const stored = feedbackFor(input.planId, input.version);
   const feedback = FeedbackSchema.parse({
-    id: feedbackIdFor(input.planId, input.version) ?? ulid(),
+    id: stored?.id ?? ulid(),
     plan_id: input.planId,
     version: input.version,
     verdict: input.verdict,
     annotations: input.annotations,
     general: input.general ?? '',
     created: new Date().toISOString(),
+    addressed_by: stored?.addressed_by ?? null,
   });
   writeFeedback(feedback);
 

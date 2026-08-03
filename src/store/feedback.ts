@@ -50,9 +50,9 @@ export function writeFeedback(feedback: Feedback): void {
   }
 }
 
-/** The id already on this version's record, so a rewrite keeps it. */
-export function feedbackIdFor(id: string, version: number): string | null {
-  return listFeedback(id).find((f) => f.version === version)?.id ?? null;
+/** This version's stored record, so a rewrite can keep what it already carries. */
+export function feedbackFor(id: string, version: number): Feedback | null {
+  return listFeedback(id).find((f) => f.version === version) ?? null;
 }
 
 /**

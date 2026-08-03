@@ -1264,6 +1264,39 @@ describe('the plan, the diff and the versions', () => {
     expect(result.version).toBe(1);
     app.unmount();
   });
+
+  /**
+   * Loading every version's feedback in is what lets you step to a version and
+   * see what is on it. It is not a claim that you are resubmitting all of it:
+   * a version you only read past has to stay out of the batches, or one submit
+   * on v2 announces v1 as well and re-dates a record nobody opened.
+   */
+  it('leaves an untouched version out of the submission', async () => {
+    const id = seedTwoVersions();
+    const doc = readVersionText(id, 1)!.split('\n');
+    submitFeedback({
+      planId: id,
+      version: 1,
+      verdict: 'revise',
+      annotations: [
+        buildAnnotation(doc, 'comment', 4, 4, 'left on v1 last time', 'a1'),
+        buildAnnotation(doc, 'comment', 5, 5, 'and another', 'a2'),
+      ],
+    });
+
+    const app = mount(id, null, 2, [1, 2], 100, 30, listFeedback(id));
+    await app.ready();
+
+    await app.press('f');
+    await app.press('only about v2');
+    await app.press(ENTER);
+    await app.frame('only about v2');
+
+    await app.press('s');
+    const result = await app.result;
+    expect(result.batches.map((b) => b.version)).toEqual([2]);
+    app.unmount();
+  });
 });
 
 describe('getting around a long plan', () => {
