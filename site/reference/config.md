@@ -18,9 +18,6 @@ job, and a command to set it would be a bigger surface than the thing it sets.
 
 ## What used to be here
 
-- **`enabled`**, written by `planx on` / `planx off`. Whether planx is available
-  is the skill's business now, not a flag in the store — see
-  [Claude Code](/guide/claude-code).
 - **`mouse`**, which turned on wheel scrolling in the review at the cost of the
   terminal's own click-and-drag text selection. Wheel scrolling is gone: an
   append-only render cannot host a moving cursor, boxes that grow as you type,

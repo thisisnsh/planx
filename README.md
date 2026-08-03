@@ -168,12 +168,11 @@ what you want:
 
 | Say | What happens |
 | --- | --- |
-| `/planx` | Print the branches, then ask what to plan |
+| `/planx` | Say it is ready, then ask what to plan |
 | `/planx <anything>` | Clarify, check, research, write a plan, capture it |
 | `/planx revise <id>` | Pick up the feedback and revise |
 | `/planx execute <id>` | Build the approved plan in this session |
 | `/planx diff <id>` | Print a diff between two versions, no commentary |
-| `/planx off` | Say how to disable the skill by hand; change nothing |
 
 ### Channels
 

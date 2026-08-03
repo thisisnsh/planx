@@ -15,9 +15,7 @@ Match on what followed `/planx`:
 
 | the user said | do this |
 | --- | --- |
-| `/planx` alone | print the hint line below, then ask what to plan |
-| `/planx on` | the same as bare `/planx` — it is always available |
-| `/planx off` | say it is disabled by hand, and how; change nothing |
+| `/planx` alone | say you are ready, and ask what to plan |
 | `/planx revise <id>` | read `references/revise.md` |
 | `/planx execute <id>` | read `references/execute.md` |
 | `/planx diff <id>` | read `references/diff.md` |
@@ -25,13 +23,10 @@ Match on what followed `/planx`:
 
 Read only the file for the branch you took.
 
-The hint line, verbatim:
-
-> `/planx <task>` · `/planx revise <id>` · `/planx execute <id>` · `/planx diff <id>` · `/planx off`
-
-For `/planx off`: there is no switch to throw. Tell them to disable the skill
-itself — remove or rename `~/.claude/skills/planx`, or turn it off wherever
-their agent lists skills — and do not touch any settings file yourself.
+Bare `/planx` does not print a menu of the branches. The `argument-hint` in the
+front matter already showed them, in the slash menu, before enter was pressed —
+repeating them after is a wall of text in answer to someone who is ready to
+talk about their task.
 
 If `planx` is not installed, say so and stop. Do not fall back to writing the
 plan into chat: the user asked for something they can annotate.
