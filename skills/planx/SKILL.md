@@ -10,17 +10,27 @@ they approved.
 
 ## Pick the branch
 
-Match on what followed `planx`:
+Match on what followed `/planx`:
 
 | the user said | do this |
 | --- | --- |
-| `planx resume <id>` | read `references/resume.md` |
-| `planx execute <id>` | read `references/execute.md` |
-| `planx diff <id>` | read `references/diff.md` |
-| `planx on` / `planx off` | run `planx on` / `planx off`, say one line, stop |
-| anything else | plan it — carry on below |
+| `/planx` alone | print the hint line below, then ask what to plan |
+| `/planx on` | the same as bare `/planx` — it is always available |
+| `/planx off` | say it is disabled by hand, and how; change nothing |
+| `/planx resume <id>` | read `references/resume.md` |
+| `/planx execute <id>` | read `references/execute.md` |
+| `/planx diff <id>` | read `references/diff.md` |
+| `/planx <anything else>` | clarify, check, research, plan, capture |
 
 Read only the file for the branch you took.
+
+The hint line, verbatim:
+
+> `/planx <task>` · `/planx resume <id>` · `/planx execute <id>` · `/planx diff <id>` · `/planx off`
+
+For `/planx off`: there is no switch to throw. Tell them to disable the skill
+itself — remove or rename `~/.claude/skills/planx`, or turn it off wherever
+their agent lists skills — and do not touch any settings file yourself.
 
 If `planx` is not installed, say so and stop. Do not fall back to writing the
 plan into chat: the user asked for something they can annotate.
@@ -46,17 +56,35 @@ If you have no such tool, print this and stop until the user answers:
 
 Do not skip this. Do not write the plan into `ExitPlanMode`.
 
-## 1. Research and write it
+## 1. Clarify, then check
 
-Do the actual work: read the code, understand the problem, make the decisions.
-Write the plan as markdown with an H1 title and `##` sections. The `##` sections
-matter — they are the unit the user locks, and the unit you will later collapse
-to save tokens.
+Two steps before any research, both mandatory, both ending in a wait.
+
+**First, ask what is ambiguous.** Scope, approach, the trade-offs that decide
+what actually gets built. Use the question tool, and wait for the answers.
+
+**Then ask, in the chat:**
+
+> Anything else before I write it?
+
+and wait again.
+
+The second question is the one that catches what the first did not think to ask
+about. Skipping it is how a plan arrives missing a requirement the user assumed
+was obvious — and a missing requirement costs a whole review round, because the
+only way to tell you about it is to annotate a plan built without it.
+
+## 2. Research and write it
+
+Now do the actual work: read the code, understand the problem, make the
+decisions. Write the plan as markdown with an H1 title and `##` sections. The
+`##` sections matter — they are the unit the user locks, and the unit you will
+later collapse to save tokens.
 
 If the user already has an approved plan and is asking for a different one, this
 is a new plan. Do not resume the old one.
 
-## 2. Capture it
+## 3. Capture it
 
 ```bash
 planx capture --stdin --source claude <<'PLAN'
@@ -75,18 +103,41 @@ file on its way. Do not write it out and pass `--file` — that is a hand-off
 buffer, read once and never referenced again, and it leaves a copy of the plan
 somewhere nothing is going to clean up.
 
-## 3. Hand it over, then stop
+## 4. Hand it over, then stop
 
-Tell the user, in one line:
+One line, verbatim, with no preamble and nothing after it:
 
-> Plan captured as `<plan-id>` v1. Run `planx <plan-id>` to review it.
+> Plan created. Open `planx <plan-id> v<n>` in new tab.
 
 **Then stop and end your turn.** Nothing blocks and nothing polls. They review
 it, and the reviewer prints a command they paste back to you — usually
-`planx resume <plan-id>`. That is what starts the next round.
+`/planx resume <plan-id>`. That is what starts the next round.
 
 Do not revise, do not re-capture, and do not ask whether they are done. There is
 nothing to act on until they come back.
+
+## A question is answered where it was asked
+
+When a review comment asks something — *what does `doctor` do?*, *why can't I
+type two spaces?* — the answer goes in your **chat reply**, not into the plan.
+And when revising turns up a decision the comments do not settle, ask in the
+chat before capturing. Do not capture a version that guesses and then explains
+the guess.
+
+A plan is what will be built. An answer to a question is not part of what will
+be built, so putting it there both bloats the plan and buries the reply where it
+has to be read as a diff.
+
+## What a follow-up message means
+
+Once a plan is captured, a further message is one of three things. Decide which,
+and ask when it is not obvious:
+
+- **a change to the plan on the table** → revise and capture a new version
+- **a different piece of work** → ask whether to start a new plan
+- **an instruction to build it** → ask whether to execute the plan as it stands
+
+Never silently start a second plan, and never silently start implementing.
 
 ## Rules
 

@@ -29,6 +29,12 @@ That means the text they quoted survived a version unchanged, so it was probably
 skipped rather than handled. Either act on it or say plainly why it no longer
 applies.
 
+**Answer questions in your reply; put only work in the plan.** A comment that
+asks something — *what does this command do?*, *why can't I do X?* — is answered
+in the chat. A plan is what will be built, and an answer is not part of what
+will be built. And if revising turns up a decision the comments do not settle,
+ask before capturing rather than capturing a guess and explaining it.
+
 ## 3. Capture
 
 If any blocks are locked, do not re-emit their text. Reproduce each one as a
@@ -48,7 +54,9 @@ PLAN
 
 ## 4. Hand back and stop
 
-> Captured `<plan-id>` v<n+1>. Run `planx <plan-id>` to review it.
+One line, verbatim, with no preamble and nothing after it:
+
+> Plan created. Open `planx <plan-id> v<n>` in new tab.
 
 Then end your turn. The next round starts when they paste a command back.
 
