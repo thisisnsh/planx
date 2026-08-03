@@ -632,29 +632,59 @@ describe('submitting and approving', () => {
 });
 
 describe('the whole-plan note', () => {
-  it('points at f for line feedback while it is open', async () => {
+  it('is one labelled row, not a box, and shows what is being typed', async () => {
     const app = mount(seed(), null, 1);
     await app.ready();
-
-    await app.press('n');
-    await app.frame('press f instead');
-    app.unmount();
-  });
-
-  it('shows what is being typed, before enter and not only after it', async () => {
-    const app = mount(seed(), null, 1);
-    await app.ready();
+    const before = bodyRows(app.stdout.lastFrame).length;
 
     await app.press('n');
     await app.press('halfway through');
-    await app.frame('halfway through');
+    await app.frame('Global Note: halfway through');
 
-    // In the same box the inline notes get, hanging off nothing rather than
-    // off a rail, and pinned at the foot of the frame above the status line.
+    // Written and read on the same row, directly above the hints, and the frame
+    // is exactly as tall as it was — the three-row box used to eat the plan.
     const rows = bodyRows(app.stdout.lastFrame);
-    const box = rows.findIndex((l) => l.includes('halfway through'));
-    expect(rows[box - 1]).toContain('╭─');
-    expect(rows[box + 1]).toContain('╰─');
+    expect(rows).toHaveLength(before);
+    expect(rows.at(-2)).toContain('Global Note: halfway through');
+    expect(rows.at(-1)).toContain('enter save · esc cancel');
+    expect(rows.some((l) => l.includes(BOX_CLOSE))).toBe(false);
+    app.unmount();
+  });
+
+  it('keeps the note on that row after enter, and takes esc as a discard', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('n');
+    await app.press('ship it behind the flag');
+    await app.press(ENTER);
+    await app.frame('Global Note: ship it behind the flag');
+
+    await app.press('n');
+    await app.press(' and then some');
+    await app.press(ESC);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(app.stdout.lastFrame).toContain('Global Note: ship it behind the flag');
+    expect(app.stdout.lastFrame).not.toContain('and then some');
+    app.unmount();
+  });
+
+  it('yields the row to a status message, and takes it back when that clears', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('n');
+    await app.press('a standing note');
+    await app.press(ENTER);
+    await app.frame('Global Note: a standing note');
+
+    // A plan on v1 has nothing to step back to — the cheapest real status.
+    await app.press('[');
+    await app.frame('this is the first version');
+    expect(app.stdout.lastFrame).not.toContain('Global Note:');
+
+    await app.press(DOWN);
+    await app.frame('Global Note: a standing note');
     app.unmount();
   });
 });

@@ -197,8 +197,6 @@ export interface BoxOptions {
   collapsed: boolean;
   /** The note being typed: leave the caret a column, and it gets one. */
   editing?: boolean;
-  /** A note hangs off the rail with `├`; the whole-plan note hangs off nothing. */
-  attached?: boolean;
 }
 
 /**
@@ -211,7 +209,6 @@ export interface BoxOptions {
  */
 export function feedbackRows(id: string, comment: string, opts: BoxOptions): FeedbackRow[] {
   const { boxWidth, blockIndex } = opts;
-  const attached = opts.attached !== false;
   const base = {
     kind: 'feedback' as const,
     annotationId: id,
@@ -238,7 +235,7 @@ export function feedbackRows(id: string, comment: string, opts: BoxOptions): Fee
   const width = boxWidth - BOX_PADDING - (opts.editing ? 1 : 0);
   const body = comment.length ? wrapComment(comment, width) : [''];
   return [
-    { ...base, part: 'top', text: `${attached ? '├' : '╭'}${rule}╮` },
+    { ...base, part: 'top', text: `├${rule}╮` },
     ...body.map((text, i) => ({
       ...base,
       part: 'body' as const,

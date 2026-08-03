@@ -2,12 +2,12 @@ import { Box, Text, useApp, useInput, useStdin, useStdout } from 'ink';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { contextSha } from '../locks/anchor.js';
 import { buildAnnotation } from '../protocol/submit.js';
-import { bold, dim, inverse, padEnd, signal, stripAnsi, truncate } from '../render/ansi.js';
+import { bold, dim, inverse, padEnd, signal, stripAnsi, truncate, yellow } from '../render/ansi.js';
 import type { RenderMode } from '../render/diff.js';
 import type { Annotation, Feedback } from '../store/types.js';
 import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO, topRule } from './frame.js';
 import { lockLines, unlockLines } from './locking.js';
-import { BOX_PADDING, buildModel, feedbackRows, type ViewRow } from './model.js';
+import { BOX_PADDING, buildModel, type ViewRow } from './model.js';
 import {
   initialSelection,
   isRowSelected,
@@ -543,28 +543,12 @@ export function ReviewApp(props: ReviewAppProps) {
 
   /* ------------------------------------------------------------ render */
 
-  // The whole-plan note gets the same box the inline notes get, pinned at the
-  // foot of the frame. It used to be typed blind: the draft went into a
-  // variable and onto no row of the screen until enter committed it.
-  const noteRows =
-    mode.kind === 'note'
-      ? feedbackRows('general', mode.draft, {
-          blockIndex: 0,
-          boxWidth: model.boxWidth,
-          collapsed: false,
-          editing: true,
-          attached: false,
-        })
-      : [];
-
-  const visibleHeight = Math.max(1, bodyHeight - noteRows.length);
-
   // Help replaces the document rather than sitting on top of it, so a long key
   // list can never push the frame past the bottom of the terminal.
   const body =
     mode.kind === 'help'
       ? helpLines(inner, previousVersion !== null)
-      : rows.slice(offset, offset + visibleHeight).map((row, i) =>
+      : rows.slice(offset, offset + bodyHeight).map((row, i) =>
           renderRow(row, {
             cursor: offset + i === selection.cursor,
             selected: isRowSelected(selection, offset + i),
@@ -577,7 +561,13 @@ export function ReviewApp(props: ReviewAppProps) {
   const message =
     mode.kind === 'confirm'
       ? bold(signal(`Approve v${versionB}? This seals the plan — every section becomes locked.`))
-      : statusLine(status, general, previousOn(props.previous, versionB), inner);
+      : statusLine({
+          status,
+          note: mode.kind === 'note' ? mode.draft : general,
+          typing: mode.kind === 'note',
+          previous: previousOn(props.previous, versionB),
+          width: inner,
+        });
 
   return (
     <Box flexDirection="column">
@@ -587,20 +577,6 @@ export function ReviewApp(props: ReviewAppProps) {
       <Text>{frameLine('', inner)}</Text>
       {body.map((line, i) => (
         <Text key={i}>{frameLine(line, inner)}</Text>
-      ))}
-      {noteRows.map((row, i) => (
-        <Text key={`note-${i}`}>
-          {frameLine(
-            renderRow(row, {
-              cursor: false,
-              selected: false,
-              editing: true,
-              width: textWidth,
-              indent: model.railColumn,
-            }),
-            inner,
-          )}
-        </Text>
       ))}
       <Text>{frameLine('', inner)}</Text>
       <Text>{frameLine(message, inner)}</Text>
@@ -695,22 +671,47 @@ function renderRow(row: ViewRow, opts: RowOptions): string {
 
 /* --------------------------------------------------------------- chrome */
 
+/** The yellow label that says which of the two notes this row is. */
+const NOTE_LABEL = 'Global Note: ';
+
+interface StatusOptions {
+  status: string | null;
+  /** The whole-plan note: the committed one, or the draft while `n` is open. */
+  note: string;
+  typing: boolean;
+  previous: number;
+  width: number;
+}
+
 /**
  * One line for everything transient, in the order it matters.
  *
  * Stacking status, note and history on separate rows made the frame breathe in
  * and out as they came and went, which moves the document under the cursor.
+ *
+ * The whole-plan note lives here too, written and read on the same row. It used
+ * to get the box an inline comment gets and then collapse into a dim line on
+ * this one — two presentations of one thing, and three rows spent saying what a
+ * spare row was already there to say. The yellow label is what tells the two
+ * kinds of note apart, so the sentence explaining it is gone with the box.
+ *
+ * Status wins while it is showing, because it is the thing that just happened;
+ * the note comes back underneath when it clears.
  */
-function statusLine(
-  status: string | null,
-  general: string,
-  previous: number,
-  width: number,
-): string {
-  if (status) return signal(truncate(status, width));
-  if (general.trim()) return dim(`note: ${truncate(general, width - 8)}`);
-  if (previous) {
-    return dim(`${previous} earlier note${previous === 1 ? '' : 's'} already left on this version`);
+function statusLine(opts: StatusOptions): string {
+  if (opts.typing) {
+    // The tail, not the head: the caret has to stay beside the words being
+    // typed, and a note long enough to overflow is one you are still writing.
+    const room = Math.max(8, opts.width - NOTE_LABEL.length - 1);
+    return `${yellow(`${NOTE_LABEL}${opts.note.slice(-room)}`)}${inverse(' ')}`;
+  }
+  if (opts.status) return signal(truncate(opts.status, opts.width));
+  if (opts.note.trim()) {
+    return yellow(`${NOTE_LABEL}${truncate(opts.note, opts.width - NOTE_LABEL.length)}`);
+  }
+  if (opts.previous) {
+    const n = opts.previous;
+    return dim(`${n} earlier note${n === 1 ? '' : 's'} already left on this version`);
   }
   return '';
 }
@@ -733,11 +734,11 @@ interface HintContext {
  * Showing keys that refuse to work teaches the wrong thing.
  */
 function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): string {
-  if (mode.kind === 'editing') return 'type your note · enter to save · esc to discard';
-  if (mode.kind === 'note') {
-    return 'a note about the whole plan · enter to save · esc to cancel · press f instead to comment on selected lines';
-  }
-  if (mode.kind === 'confirm') return 'enter to approve and seal · esc to cancel';
+  if (mode.kind === 'editing') return 'enter save · esc discard';
+  // The yellow `Global Note:` label on the row above says what is being typed,
+  // so the hint has nothing left to explain.
+  if (mode.kind === 'note') return 'enter save · esc cancel';
+  if (mode.kind === 'confirm') return 'enter approve · esc cancel';
   if (mode.kind === 'help') return 'any key to close';
 
   const parts: string[] = [];
