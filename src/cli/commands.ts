@@ -511,6 +511,7 @@ async function runInteractiveReview(
   if (result.action === 'back') return BACK;
   if (result.action === 'quit') {
     ctx.out(dim('nothing submitted'));
+    handOff(ctx, 'terminal', `planx ${id} v${result.version}`);
     return 0;
   }
 
@@ -549,27 +550,44 @@ async function runInteractiveReview(
     sealed += submitted.sealedLocks.length;
   }
 
-  if (verdict === 'approve') afterApproval(ctx, id, result.version, sealed);
+  if (verdict === 'approve') {
+    afterApproval(ctx, id, result.version, sealed);
+    handOff(ctx, 'agent', `/planx execute ${id} v${result.version}`);
+  } else {
+    handOff(ctx, 'agent', `/planx resume ${id}`);
+  }
   return 0;
 }
 
 /**
- * The approve → execute hand-off.
+ * The one line the reviewer carries out of the review.
  *
- * One line, no questions. planx cannot switch a running session's model and no
- * agent CLI exposes a way to, so the old picker only ever printed a suggestion
- * to paste — two prompts to arrive at a string. The string is the whole value,
- * so print it.
+ * The whole loop depends on the reviewer handing a command back, and after a
+ * submit the review used to print none at all — which is where the round
+ * dead-ended, one step short of continuing.
+ *
+ * A slash command is for your agent, a bare command is for your terminal.
+ * Nothing else distinguished them before, which is most of why the old strings
+ * read as noise: `planx execute <id>` looked like something to run in a shell,
+ * and there has never been such a command. `/planx execute` is a branch of the
+ * skill, and in slash form it is unmistakably something you paste into a chat.
  */
-function afterApproval(ctx: Ctx, id: string, version: number, sections: number): number {
+export function handOffLine(to: 'agent' | 'terminal', command: string): string {
+  const lead = to === 'agent' ? 'Paste to your agent:' : 'Reopen it with:';
+  return `  ${lead}  ${yellow(command)}`;
+}
+
+function handOff(ctx: Ctx, to: 'agent' | 'terminal', command: string): void {
+  ctx.out('');
+  ctx.out(handOffLine(to, command));
+}
+
+/** The approve → seal summary. The command to build it follows separately. */
+function afterApproval(ctx: Ctx, id: string, version: number, sections: number): void {
   ctx.out('');
   ctx.out(
     `${green('✓')} Approved & sealed — ${bold(id)} v${version} (${sections} sections locked)`,
   );
-  ctx.out('');
-  ctx.out('  To build it, tell your agent — this session or a new one:');
-  ctx.out(yellow(`      planx execute ${id} v${version}`));
-  return 0;
 }
 
 /* ---------------------------------------------------------------- show */
@@ -669,8 +687,6 @@ export function cmdLocks(ctx: Ctx): number {
   framed(ctx, out);
   return 0;
 }
-
-/* ------------------------------------------------------------- execute */
 
 /* --------------------------------------------------------------- import */
 

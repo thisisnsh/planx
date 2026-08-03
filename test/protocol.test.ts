@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { handOffLine } from '../src/cli/commands.js';
 import { normalizedLines } from '../src/locks/anchor.js';
 import { addLock } from '../src/locks/manage.js';
 import { renderSkeleton } from '../src/locks/markers.js';
@@ -243,5 +244,25 @@ describe('what the agent sees', () => {
     expect(text).toContain('(verdict: approve)');
     expect(text).toContain('Approved and sealed');
     expect(text).not.toContain('planx capture --plan-id');
+  });
+});
+
+/**
+ * The command the reviewer carries back out. Without one the round dead-ends
+ * exactly where it is meant to continue, which is what used to happen after a
+ * submit — so these are pinned verbatim.
+ */
+describe('the review hand-off', () => {
+  it('sends a slash command to the agent and a bare command to the terminal', () => {
+    setColorEnabled(false);
+    expect(handOffLine('agent', '/planx resume guard-clock-a3f9').trim()).toBe(
+      'Paste to your agent:  /planx resume guard-clock-a3f9',
+    );
+    expect(handOffLine('agent', '/planx execute guard-clock-a3f9 v3').trim()).toBe(
+      'Paste to your agent:  /planx execute guard-clock-a3f9 v3',
+    );
+    expect(handOffLine('terminal', 'planx guard-clock-a3f9 v3').trim()).toBe(
+      'Reopen it with:  planx guard-clock-a3f9 v3',
+    );
   });
 });

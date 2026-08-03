@@ -130,16 +130,3 @@ export function parseDuration(input: string): number {
   }
   return Number.parseFloat(match[1]!) * UNIT_MS[match[2]!.toLowerCase()]!;
 }
-
-/**
- * Split `--args "a b c"` into argv the way a shell would, honouring quotes.
- * Used only for the passthrough args on `planx execute`.
- */
-export function splitArgs(input: string): string[] {
-  const out: string[] = [];
-  const pattern = /"([^"]*)"|'([^']*)'|(\S+)/g;
-  for (let m = pattern.exec(input); m !== null; m = pattern.exec(input)) {
-    out.push(m[1] ?? m[2] ?? m[3] ?? '');
-  }
-  return out;
-}
