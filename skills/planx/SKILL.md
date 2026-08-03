@@ -101,7 +101,8 @@ somewhere nothing is going to clean up.
 
 ## 4. Hand it over, then stop
 
-One line, verbatim, with no preamble and nothing after it:
+If the user declined something, say so here in one short line — in the chat, not
+in the plan. Then, verbatim, with nothing after it:
 
 > Plan created. Open `planx <plan-id> v<n>` in new tab.
 
@@ -135,8 +136,13 @@ Stating the assumption in the plan and flagging it in chat is not asking. It
 puts a decision the user never made into a document that says what will be
 built, and the only way to undo it is a whole review round.
 
-**`## Out of scope` may only list what the user declined.** Anything there
-because *you* decided to leave it out is proof of a question you skipped.
+**A plan never contains an out-of-scope section.** The plan is what will be
+built; a list of what will not be built is not part of it. Anything the user
+declined goes in the **chat**, immediately before the hand-off line — see §4.
+
+That is about where the answer is recorded. It is not a licence to decide the
+boundary yourself and then mention it: the rule above still stands, and a
+boundary you are about to draw is a question to ask before capturing.
 
 ## What a follow-up message means
 

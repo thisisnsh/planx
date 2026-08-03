@@ -4,15 +4,15 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ArgError, has, one, parseArgs, type CommandSpec } from './cli/args.js';
 import {
+  cmdAddSkills,
   cmdCapture,
   cmdDiff,
   cmdDoctor,
-  cmdInstall,
   cmdList,
   cmdLocks,
+  cmdRemoveSkills,
   cmdRevise,
   cmdShow,
-  cmdUninstall,
   cmdUnlock,
   type Ctx,
 } from './cli/commands.js';
@@ -60,10 +60,10 @@ async function dispatch(name: string, ctx: Ctx): Promise<number> {
       return cmdList(ctx);
     case 'locks':
       return cmdLocks(ctx);
-    case 'install':
-      return cmdInstall(ctx);
-    case 'uninstall':
-      return cmdUninstall(ctx);
+    case 'add-skills':
+      return cmdAddSkills(ctx);
+    case 'remove-skills':
+      return cmdRemoveSkills(ctx);
     case 'doctor':
       return cmdDoctor(ctx);
     case '__gen-cli-docs':

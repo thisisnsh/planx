@@ -123,26 +123,31 @@ export const COMMANDS: CommandSpec[] = [
       'handshake is worth nothing if that record cannot be read.',
   },
   {
-    name: 'install',
+    name: 'add-skills',
     group: 'maintenance',
-    usage: 'planx install [--skills] [--local]',
-    summary: 'Write the skills and seed the store.',
+    usage: 'planx add-skills [--no-store] [--local]',
+    summary: 'Add the planx skills to your agents, and seed the store.',
     description:
-      'Touches no agent settings files. Idempotent, and it marks what it wrote so uninstall ' +
-      'removes only that.',
+      'Detects which agents are on this machine, writes a skill into each, and seeds ~/.planx, ' +
+      'showing each step as it happens. Touches no agent settings files. Idempotent, and it ' +
+      'marks what it wrote so `remove-skills` removes only that. npm does not run this for ' +
+      'you: an install that refreshed your skills behind your back would be doing the one ' +
+      'thing this command exists to be asked for.',
     flags: [
-      { name: '--skills', summary: 'Only write skills; do not seed the store.' },
+      { name: '--no-store', summary: 'Write skills only; leave ~/.planx alone.' },
       { name: '--local', summary: 'Write into ./.claude/skills for a repo-local install.' },
       { name: '--agent', arg: 'NAME', summary: 'Only this agent. Repeatable.' },
     ],
   },
   {
-    name: 'uninstall',
-    usage: 'planx uninstall [--local]',
-    summary: 'Remove what install wrote.',
+    name: 'remove-skills',
+    usage: 'planx remove-skills [--local]',
+    summary: 'Remove what add-skills wrote, and offer to delete the store.',
     group: 'maintenance',
-    // `cmdUninstall` has always read this; it was simply never declared, so
-    // the parser rejected it as unknown before the command ever ran.
+    description:
+      'Removes only the skill directories planx wrote — one you edited by hand is left alone ' +
+      'and reported. Then it asks whether to delete ~/.planx, naming the path and how many ' +
+      'plans are in it. A non-interactive run never deletes and never asks.',
     flags: [{ name: '--local', summary: 'Remove from ./.claude/skills instead of $HOME.' }],
   },
   {

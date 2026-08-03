@@ -230,8 +230,9 @@ export function Picker<T>({
     }),
     ...(rows.length ? [] : [dim('  no matches')]),
     // The only thing between you and a permanent delete, so it names the target
-    // in full rather than asking about "this".
-    confirming === null ? '' : `  ${bold(red(`delete ${confirming}? this cannot be undone`))}`,
+    // in full rather than asking about "this". Red, not bold: the colour is
+    // what says destructive, and every confirmation planx draws reads the same.
+    confirming === null ? '' : `  ${red(`delete ${confirming}? this cannot be undone`)}`,
     ...hintLines(
       confirming === null
         ? hints

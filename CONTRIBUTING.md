@@ -5,14 +5,14 @@
 ```bash
 git clone https://github.com/thisisnsh/planx
 cd planx
-npm install          # postinstall no-ops inside a planx checkout
+npm install          # postinstall is silent inside a planx checkout
 npm run build
 npm test
 ```
 
-Node 24 (see `.nvmrc`). The `postinstall` that writes skills into `~/.claude`
-detects a planx checkout and does nothing, so `npm install` here never touches
-your real agent config.
+Node 24 (see `.nvmrc`). The `postinstall` writes nothing anywhere — it prints
+one line pointing at `planx add-skills` — and detects a planx checkout and stays
+quiet, so `npm install` here never touches your real agent config.
 
 ## Never develop against your real store
 

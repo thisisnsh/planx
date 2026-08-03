@@ -51,6 +51,40 @@ Notes belong to the version they were written on. Walking back to v1 and leaving
 a note there submits it against v1, in its own batch, alongside anything left on
 the version you started from.
 
+Feedback you have already submitted is loaded back in. Open a version and you
+see what you left on it, in the document, editable — there is no
+submitted-versus-pending distinction to keep track of. Change a comment and
+submit again and the store matches what is on screen; empty one and the deletion
+lands the same way.
+
+## Submit, or approve — never both
+
+A version carrying feedback or a note offers `s submit`. A version carrying
+neither offers `a approve`. **A plan can be approved only when it carries no
+feedback and no note**, which is why the two are never on the bar at once:
+approving seals the plan, and sealing the very lines a comment is asking to
+change would be a contradiction the tool should not let you write.
+
+Press `a` anyway and it says what is in the way:
+
+```
+This version has 3 feedbacks. Delete them or press s to submit.
+```
+
+## Getting around a plan you have read before
+
+`space` on a heading folds its section away, subsections included, and the
+heading says what went with it:
+
+```
+▸  3 │ ## Approach              ⋯ 12 lines · 2 feedback
+   16   ## Rollout
+```
+
+The rail beside a folded heading means there is feedback inside it, so nothing
+you left can hide behind a fold. `j` steps to the next feedback on the version,
+in document order, wrapping at the end — and unfolds a section to get there.
+
 ## Which feedback is still live
 
 Feedback is **outstanding until a newer version exists**. That is derived from
@@ -74,7 +108,9 @@ changing something else entirely.
 ## The feedback payload
 
 This is the wire format — what the review writes into
-`~/.planx/plans/<id>/feedback/` and what `planx revise` reads back out.
+`~/.planx/plans/<id>/feedback/v<n>.json` and what `planx revise` reads back out.
+One file per version, rewritten in place with exactly what the review holds, so
+what is on disk is what you last saw on screen.
 
 ```jsonc
 {
@@ -130,7 +166,7 @@ plan, and nothing else:
 
 **Feedback:** Wrong layer. Guard belongs in the R2 write path, not the poller.
 
-### 🔒 Locked
+### Locked
 - **L1** "## Context" (lines 1–28) — do not modify
 - **L2** "## Rollout" (lines 88–104) — do not modify
 

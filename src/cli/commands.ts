@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { diffVersions, rowsForSingleVersion } from '../diff/lines.js';
-import { describeSkill, runInstall, runUninstall, skillNames } from '../install/install.js';
+import { runInstall, runUninstall } from '../install/install.js';
 import { normalizedLines } from '../locks/anchor.js';
 import { lockedLineMap } from '../locks/manage.js';
 import { renderSkeleton } from '../locks/markers.js';
@@ -17,6 +17,7 @@ import {
   latestVersion,
   listPlans,
   purgePlan,
+  purgeStore,
   readLocks,
   readMeta,
   readVersions,
@@ -29,7 +30,7 @@ import {
 import type { VersionRecord } from '../store/types.js';
 import { brandTitle, frameBlock } from '../tui/frame.js';
 import type { PickerItem } from '../tui/Picker.js';
-import { clearScreen, isInteractive, runPicker, runReview } from '../tui/run.js';
+import { clearScreen, isInteractive, runPicker, runReview, runSteps } from '../tui/run.js';
 import { all, has, one, type ParsedArgs } from './args.js';
 
 export interface Ctx {
@@ -207,26 +208,26 @@ export function cmdCapture(ctx: Ctx): number {
 
   ctx.out(
     result.created
-      ? `${green('✓')} Captured ${bold(result.planId)} v${result.version}.`
-      : `${dim('=')} ${result.planId} v${result.version} unchanged — nothing written.`,
+      ? green(`Captured ${bold(result.planId)} v${result.version}.`)
+      : dim(`${result.planId} v${result.version} unchanged — nothing written.`),
   );
   if (result.expandedLocks.length) {
-    ctx.out(dim(`  Expanded ${result.expandedLocks.length} locked block(s) from markers.`));
+    ctx.out(dim(`Expanded ${result.expandedLocks.length} locked block(s) from markers.`));
   }
   if (result.literalMarkersInFence.length) {
     ctx.err(
       yellow(
-        `  Note: marker(s) on line ${result.literalMarkersInFence.join(', ')} are inside a code fence and were left literal.`,
+        `Note: marker(s) on line ${result.literalMarkersInFence.join(', ')} are inside a code fence and were left literal.`,
       ),
     );
   }
   for (const id of result.droppedLocks) {
     ctx.err(
-      yellow(`  Warning: lock ${id} could not be re-anchored in the new version and was dropped.`),
+      yellow(`Warning: lock ${id} could not be re-anchored in the new version and was dropped.`),
     );
   }
   if (result.closedFeedback) {
-    ctx.out(dim(`  Closed ${result.closedFeedback} feedback record(s).`));
+    ctx.out(dim(`Closed ${result.closedFeedback} feedback record(s).`));
   }
   return 0;
 }
@@ -294,8 +295,8 @@ export function cmdUnlock(ctx: Ctx): number {
     ctx.out(JSON.stringify({ plan_id: id, lock_id: lockId, grant_id: grantId, reason }, null, 2));
     return 0;
   }
-  ctx.out(`${green('✓')} Unlocked ${lockId} for one capture.`);
-  ctx.out(dim(`  Recorded: ${stop(reason)}`));
+  ctx.out(green(`Unlocked ${lockId} for one capture.`));
+  ctx.out(dim(`Recorded: ${stop(reason)}`));
   return 0;
 }
 
@@ -429,41 +430,37 @@ async function runInteractiveReview(
 
   const verdict = result.action === 'submit' ? 'revise' : result.action;
 
-  // A note belongs to the version it was written on, so a session that walked
-  // back through the history leaves one submission per version it wrote on.
-  const batches = [...result.batches];
-  if (!batches.some((b) => b.version === result.version)) {
-    batches.push({ version: result.version, annotations: [] });
-  }
-
-  let sealed = 0;
-  for (const batch of batches) {
+  // Every version the reviewer touched comes back, the one on screen included,
+  // so there is no batch to invent here — and a version they emptied comes back
+  // empty, which is what makes a deleted comment stay deleted.
+  for (const batch of result.batches) {
     const current = batch.version === result.version;
     const submitted = submitFeedback({
       planId: id,
       version: batch.version,
       verdict: current ? verdict : 'revise',
       annotations: batch.annotations,
-      general: current ? result.general : '',
+      general: batch.general,
     });
 
     const comments = batch.annotations.filter((a) => a.kind === 'comment').length;
-    ctx.out(
-      `${green('✓')} Submitted ${comments} comment(s) on ${bold(id)} v${batch.version} (${
-        current ? verdict : 'revise'
-      }).`,
-    );
+    ctx.out(green(`Submitted ${countFeedback(comments)} on ${bold(id)} v${batch.version}.`));
     if (submitted.locksCreated.length) {
-      ctx.out(dim(`  Locked: ${submitted.locksCreated.join(', ')}.`));
+      ctx.out(dim(`Locked: ${submitted.locksCreated.join(', ')}.`));
     }
     if (submitted.locksRemoved.length) {
-      ctx.out(dim(`  Unlocked: ${submitted.locksRemoved.join(', ')}.`));
+      ctx.out(dim(`Unlocked: ${submitted.locksRemoved.join(', ')}.`));
     }
-    sealed += submitted.sealedLocks.length;
   }
 
-  for (const line of closingBlock(verdict, id, result.version, sealed)) ctx.out(line);
+  for (const line of closingBlock(verdict, id, result.version)) ctx.out(line);
   return 0;
+}
+
+/** `no feedback`, `1 feedback`, `2 feedbacks` — the review's own word for it. */
+function countFeedback(n: number): string {
+  if (!n) return 'no feedback';
+  return `${n} feedback${n === 1 ? '' : 's'}`;
 }
 
 /**
@@ -481,7 +478,7 @@ async function runInteractiveReview(
  */
 export function handOffLine(to: 'agent' | 'terminal', command: string): string {
   const lead = to === 'agent' ? 'Paste to your agent:' : 'Reopen it with:';
-  return `  ${lead}  ${yellow(command)}`;
+  return `${lead}  ${yellow(command)}`;
 }
 
 /**
@@ -501,13 +498,12 @@ export function closingBlock(
   action: 'quit' | 'revise' | 'reject' | 'approve',
   planId: string,
   version: number,
-  sealed = 0,
 ): string[] {
   const lines: string[] = [];
   if (action === 'approve') {
-    lines.push(
-      `${green('✓')} Approved & sealed — ${bold(planId)} v${version} (${sealed} sections locked).`,
-    );
+    // Not how many sections it locked. Approving seals the plan whole, so the
+    // count was a number that is always "all of them" dressed up as news.
+    lines.push(green(`Approved & sealed — ${bold(planId)} v${version}.`));
   }
   if (action !== 'quit') {
     lines.push(
@@ -583,22 +579,24 @@ export function cmdLocks(ctx: Ctx): number {
     ctx.out(JSON.stringify(locks, null, 2));
     return 0;
   }
+  // Two spaces on every row, because these are drawn inside the frame: that is
+  // the frame's interior padding, not an indent hanging off the left margin.
   const out: string[] = [];
   if (locks.sealed_at) {
-    out.push(green(`Sealed at ${locks.sealed_at} (v${locks.sealed_version}).`));
+    out.push(green(`  Sealed at ${locks.sealed_at} (v${locks.sealed_version}).`));
   }
   const entries = Object.values(locks.locks);
   if (!entries.length) {
-    out.push(dim('No locks.'));
+    out.push(dim('  No locks.'));
   }
   for (const lock of entries) {
     const lines = lock.text.split('\n').length;
     out.push(
-      `  🔒 ${cyan(lock.id.padEnd(5))} ${lock.section ?? dim('(preamble)')} ${dim(`— ${lines} lines, ${lock.origin}`)}`,
+      `  ${cyan(lock.id.padEnd(5))} ${lock.section ?? dim('(preamble)')} ${dim(`— ${lines} lines, ${lock.origin}`)}`,
     );
   }
   for (const grant of Object.values(locks.grants).filter((g) => g.used_at === null)) {
-    out.push(yellow(`  ⚑ Grant open for ${grant.lock_id} — one capture may modify it.`));
+    out.push(yellow(`  Grant open for ${grant.lock_id} — one capture may modify it.`));
   }
   framed(ctx, out);
   return 0;
@@ -606,38 +604,97 @@ export function cmdLocks(ctx: Ctx): number {
 
 /* -------------------------------------------------------------- install */
 
-export function cmdInstall(ctx: Ctx): number {
-  const report = runInstall({
-    local: has(ctx.args, '--local'),
-    skillsOnly: has(ctx.args, '--skills'),
-    agents: all(ctx.args, '--agent'),
-  });
+/**
+ * Write the skills, drawn step by step.
+ *
+ * It is called `add-skills` rather than `install` because npm already owns that
+ * word: `npm install -g @thisisnsh/planx` installs planx, and a second command
+ * called install invited the reading that the first one had not finished. What
+ * this does is add skills to your agents, which is what it is now called.
+ */
+export async function cmdAddSkills(ctx: Ctx): Promise<number> {
+  const report = await runSteps(
+    {
+      command: 'add-skills',
+      version: ctx.version,
+      // `--json` asked for one document on stdout, so the steps are swallowed
+      // rather than printed above it — the report says everything they would.
+      out: ctx.json ? () => {} : ctx.out,
+      plain: ctx.json || !isInteractive(),
+    },
+    async (screen) => {
+      const result = await runInstall({
+        local: has(ctx.args, '--local'),
+        noStore: has(ctx.args, '--no-store'),
+        agents: all(ctx.args, '--agent'),
+        onStep: screen.onStep,
+      });
+      if (!ctx.json) await screen.close(closingFor(result.agents));
+      return result;
+    },
+  );
 
   if (ctx.json) {
     ctx.out(JSON.stringify(report, null, 2));
     return 0;
   }
-
-  for (const name of skillNames()) {
-    const description = describeSkill(name);
-    ctx.out(`  ${cyan(`/${name}`)}  ${dim(description.slice(0, 70))}`);
-  }
-  for (const dir of report.wrote) ctx.out(`${green('✓')} ${dir}`);
-  for (const dir of report.removed) ctx.out(`${yellow('−')} Removed retired skill ${dir}.`);
-  for (const dir of report.seeded) ctx.out(`${green('✓')} Seeded ${dir}.`);
-  for (const skipped of report.skipped) ctx.out(dim(`  Skipped ${stop(skipped)}`));
-  ctx.out(dim('  No agent settings files were modified.'));
+  for (const skipped of report.skipped) ctx.err(dim(`Skipped ${stop(skipped)}`));
   return 0;
 }
 
-export function cmdUninstall(ctx: Ctx): number {
-  const report = runUninstall({ local: has(ctx.args, '--local') });
-  for (const dir of report.removed) ctx.out(`${green('✓')} Removed ${dir}.`);
-  for (const dir of report.kept) {
-    ctx.out(yellow(`  Kept ${dir} — planx did not write it.`));
-  }
-  if (!report.removed.length && !report.kept.length) ctx.out(dim('Nothing installed.'));
-  ctx.out(dim(`  ${paths.root()} was left alone — delete it yourself if you want the plans gone.`));
+/** What you are left with: the skill, and where you can now type it. */
+function closingFor(agents: readonly string[]): string {
+  if (!agents.length) return 'Nothing to write — no agent directory was found.';
+  const where =
+    agents.length === 1 ? agents[0]! : `${agents.slice(0, -1).join(', ')} and ${agents.at(-1)}`;
+  return `Done. /planx is available in ${where}.`;
+}
+
+/**
+ * Remove the skills, and offer to take the plans with them.
+ *
+ * The store is asked about rather than assumed either way. Deleting it silently
+ * would destroy every plan the user ever wrote over a command about skills;
+ * keeping it silently leaves a directory behind that nothing else will ever
+ * mention again.
+ */
+export async function cmdRemoveSkills(ctx: Ctx): Promise<number> {
+  const plain = ctx.json || !isInteractive();
+
+  const report = await runSteps(
+    {
+      command: 'remove-skills',
+      version: ctx.version,
+      out: ctx.json ? () => {} : ctx.out,
+      plain,
+    },
+    async (screen) => {
+      const report = await runUninstall({
+        local: has(ctx.args, '--local'),
+        onStep: screen.onStep,
+      });
+      if (!report.removed.length && !report.kept.length) {
+        await screen.close('Nothing to remove — no planx skills were installed.');
+        return { ...report, storeDeleted: false };
+      }
+
+      // A non-interactive run never deletes and never asks: there is nobody
+      // there to answer, and the answer this would assume is unrecoverable.
+      const count = listPlans().length;
+      const question = `Delete the store too? ${paths.root()} holds ${count} plan${
+        count === 1 ? '' : 's'
+      }. This cannot be undone.`;
+      if (!plain && (await screen.confirm(question))) {
+        purgeStore();
+        await screen.close(`Done. ${paths.root()} is gone.`);
+        return { ...report, storeDeleted: true };
+      }
+      await screen.close(`Done. ${paths.root()} was left alone — delete it yourself later.`);
+      return { ...report, storeDeleted: false };
+    },
+  );
+
+  if (ctx.json) ctx.out(JSON.stringify(report, null, 2));
   return 0;
 }
 
@@ -681,14 +738,14 @@ export function cmdDoctor(ctx: Ctx): number {
   // The one line `status` was worth, absorbed: with `--dir` and `PLANX_DIR`
   // both in play, which store you are actually talking to is worth saying out
   // loud before anything else is reported about it.
-  ctx.out(dim(`  store  ${paths.root()}`));
+  ctx.out(dim(`Store  ${paths.root()}`));
   const count = rebuildIndex();
-  ctx.out(`${green('✓')} Reindexed ${count} plan(s).`);
+  ctx.out(green(`Reindexed ${count} plan(s).`));
   if (!problems.length) {
-    ctx.out(`${green('✓')} No problems found.`);
+    ctx.out(green('No problems found.'));
     return 0;
   }
-  for (const problem of problems) ctx.out(yellow(`  ! ${problem}`));
+  for (const problem of problems) ctx.out(yellow(problem));
   return 1;
 }
 

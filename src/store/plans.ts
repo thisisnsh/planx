@@ -447,6 +447,16 @@ export function purgePlan(id: string): void {
 }
 
 /**
+ * Delete the whole store — every plan, every version, every lock.
+ *
+ * Only `remove-skills` calls this, and only after asking out loud with the path
+ * and the plan count on screen. There is nothing behind it.
+ */
+export function purgeStore(): void {
+  rmSync(paths.root(), { recursive: true, force: true });
+}
+
+/**
  * Delete specific versions of a plan.
  *
  * The latest version is never removed whatever the caller asks: a plan with no

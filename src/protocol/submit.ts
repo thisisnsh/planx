@@ -3,7 +3,7 @@ import { addLock, issueGrant, sealPlan, unlockRange } from '../locks/manage.js';
 import { sectionOf } from '../render/markdown.js';
 import { ulid } from '../store/ids.js';
 import { readMeta, readVersionText, reindex, updateLocks, writeMeta } from '../store/plans.js';
-import { writeFeedback } from '../store/feedback.js';
+import { feedbackIdFor, writeFeedback } from '../store/feedback.js';
 import { FeedbackSchema, type Annotation, type Feedback } from '../store/types.js';
 
 export interface SubmitInput {
@@ -28,6 +28,10 @@ export interface SubmitResult {
  * One submit rather than a call per annotation is the point of the TUI — you
  * select three ranges, lock two sections, and it all arrives in the agent's
  * context together.
+ *
+ * It replaces the version's record rather than adding to it, so an empty set of
+ * annotations is a meaningful submit: it is how deleting the last comment on a
+ * version lands.
  */
 export function submitFeedback(input: SubmitInput): SubmitResult {
   const text = readVersionText(input.planId, input.version);
@@ -77,8 +81,11 @@ export function submitFeedback(input: SubmitInput): SubmitResult {
   }
   reindex(input.planId);
 
+  // One record per version, rewritten in place — so the id is the one already
+  // on it. Minting a new one every submit would leave a version's feedback with
+  // a different identity each time the reviewer touched it.
   const feedback = FeedbackSchema.parse({
-    id: ulid(),
+    id: feedbackIdFor(input.planId, input.version) ?? ulid(),
     plan_id: input.planId,
     version: input.version,
     verdict: input.verdict,

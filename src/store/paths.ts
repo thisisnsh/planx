@@ -32,8 +32,9 @@ export const paths = {
   locks: (id: string) => join(storeRoot(), 'plans', id, 'locks.json'),
   versionFile: (id: string, n: number) => join(storeRoot(), 'plans', id, `v${n}.md`),
   feedbackDir: (id: string) => join(storeRoot(), 'plans', id, 'feedback'),
-  feedbackFile: (id: string, version: number, fid: string) =>
-    join(storeRoot(), 'plans', id, 'feedback', `v${version}-${fid}.json`),
+  /** One file per version: the review holds a version's feedback, whole. */
+  feedbackFile: (id: string, version: number) =>
+    join(storeRoot(), 'plans', id, 'feedback', `v${version}.json`),
   inboxDir: (id: string) => join(storeRoot(), 'plans', id, 'inbox'),
   requestFile: (id: string, rid: string) =>
     join(storeRoot(), 'plans', id, 'inbox', `req-${rid}.json`),

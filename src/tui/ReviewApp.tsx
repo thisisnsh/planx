@@ -18,7 +18,7 @@ import type { Annotation, Feedback } from '../store/types.js';
 import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO, topRule } from './frame.js';
 import { hintLines, orderHints, type Hint } from './hints.js';
 import { lockLines, unlockLines } from './locking.js';
-import { BOX_PADDING, buildModel, type ViewRow } from './model.js';
+import { BOX_PADDING, buildModel, foldEnd, wrapComment, type ViewRow } from './model.js';
 import {
   initialSelection,
   isRowSelected,
@@ -29,20 +29,25 @@ import {
   type SelectionState,
 } from './selection.js';
 
-/** One version's worth of pending notes, submitted together. */
+/** One version's feedback, whole — what that version's record becomes. */
 export interface FeedbackBatch {
   version: number;
   annotations: Annotation[];
+  /** The note about the whole plan, written on this version. */
+  general: string;
 }
 
 export interface ReviewResult {
   /** `back` means the reviewer wants the list again, with nothing submitted. */
   action: 'submit' | 'approve' | 'reject' | 'quit' | 'back';
-  /** Notes belong to the version they were written on, so they leave in groups. */
+  /**
+   * Every version the reviewer touched or left something on, including the
+   * empty ones: a batch with no annotations and no note is how deleting the
+   * last comment on a version lands.
+   */
   batches: FeedbackBatch[];
   /** The version on screen when the reviewer finished. */
   version: number;
-  general: string;
 }
 
 export interface ReviewAppProps {
@@ -55,7 +60,11 @@ export interface ReviewAppProps {
   mode: RenderMode;
   /** planx's own version, for the frame. */
   version: string;
-  /** Feedback already left on this plan, shown so you do not repeat yourself. */
+  /**
+   * The feedback stored on this plan. It is loaded into the review, per version
+   * and editable — open a version and you see what you left on it, exactly as
+   * you left it. There is no such thing as submitted-versus-pending feedback.
+   */
   previous: Feedback[];
   onDone: (result: ReviewResult) => void;
 }
@@ -103,17 +112,28 @@ export function ReviewApp(props: ReviewAppProps) {
   const [selection, setSelection] = useState<SelectionState>(initialSelection);
   const [offset, setOffset] = useState(0);
   // Keyed by version: a note is about the words it was written beside, and
-  // those words are a property of the version you were looking at.
-  const [byVersion, setByVersion] = useState<Record<number, Annotation[]>>({});
+  // those words are a property of the version you were looking at. Seeded from
+  // the store, so stepping to a version shows what is on it.
+  const [byVersion, setByVersion] = useState<Record<number, Annotation[]>>(() =>
+    storedAnnotations(props.previous),
+  );
+  const [generalByVersion, setGeneralByVersion] = useState<Record<number, string>>(() =>
+    storedNotes(props.previous),
+  );
+  // Which versions were edited this session. Leaving loses these and only
+  // these — everything else is already on disk, unchanged.
+  const [touched, setTouched] = useState<ReadonlySet<number>>(() => new Set<number>());
   const [expandedGaps, setExpandedGaps] = useState<ReadonlySet<number>>(() => new Set());
+  const [foldedSections, setFoldedSections] = useState<ReadonlySet<number>>(() => new Set());
   const [collapsedFeedback, setCollapsedFeedback] = useState<ReadonlySet<string>>(() => new Set());
   const [hiddenFeedback, setHiddenFeedback] = useState(false);
   // Locks are written the moment they are made, so the model has to be told to
   // read them back. Nothing else in this component changes what is on disk.
   const [lockRevision, setLockRevision] = useState(0);
   const [mode, setMode] = useState<Mode>({ kind: 'browse' });
-  const [general, setGeneral] = useState('');
   const [status, setStatus] = useState<string | null>(null);
+  /** An annotation `j` is on its way to, once the rows have caught up. */
+  const [pendingJump, setPendingJump] = useState<string | null>(null);
 
   const frameWidth = Math.max(MIN_WIDTH, (stdout?.columns ?? 100) - 1);
   /** Columns between the two frame edges. */
@@ -122,6 +142,7 @@ export function ReviewApp(props: ReviewAppProps) {
   const contentWidth = inner - CURSOR_GUTTER;
 
   const annotations = byVersion[versionB] ?? NO_ANNOTATIONS;
+  const general = generalByVersion[versionB] ?? '';
   const draftId = mode.kind === 'editing' ? mode.annotationId : null;
   const draftText = mode.kind === 'editing' ? mode.draft : '';
 
@@ -134,6 +155,7 @@ export function ReviewApp(props: ReviewAppProps) {
         mode: props.mode,
         width: contentWidth,
         expandedGaps,
+        foldedSections,
         annotations,
         hiddenFeedback,
         collapsedFeedback,
@@ -149,6 +171,7 @@ export function ReviewApp(props: ReviewAppProps) {
       props.mode,
       contentWidth,
       expandedGaps,
+      foldedSections,
       annotations,
       hiddenFeedback,
       collapsedFeedback,
@@ -160,8 +183,14 @@ export function ReviewApp(props: ReviewAppProps) {
 
   const rows = model.rows;
   const textWidth = contentWidth - model.gutterWidth;
-  const hasFeedback =
-    Object.values(byVersion).some((list) => list.length > 0) || general.trim().length > 0;
+  /** What this version carries — which is what `a` is gated on, and what `s` sends. */
+  const carries = annotations.length > 0 || general.trim().length > 0;
+  // Feedback on any version, or a version emptied this session: all of it is a
+  // submit, because an empty version is how a deletion lands.
+  const anythingToSubmit =
+    touched.size > 0 ||
+    Object.values(byVersion).some((list) => list.length > 0) ||
+    Object.values(generalByVersion).some((note) => note.trim().length > 0);
 
   const previousVersion = useMemo(() => {
     const earlier = props.versions.filter((v) => v < versionB);
@@ -179,7 +208,19 @@ export function ReviewApp(props: ReviewAppProps) {
     }),
     inner,
   ).length;
-  const bodyHeight = Math.max(MIN_BODY, (stdout?.rows ?? 24) - CHROME_WITHOUT_HINTS - reserveRows);
+
+  // What the version has to say about itself, drawn between the status line and
+  // the hints. A function of the version and not of the cursor, so the body does
+  // not breathe as you move around inside it.
+  const summary = useMemo(
+    () => summaryLines({ count: annotations.length, note: general, width: inner }),
+    [annotations.length, general, inner],
+  );
+
+  const bodyHeight = Math.max(
+    MIN_BODY,
+    (stdout?.rows ?? 24) - CHROME_WITHOUT_HINTS - reserveRows - summary.length,
+  );
 
   const move = useCallback(
     (delta: number) => {
@@ -254,6 +295,11 @@ export function ReviewApp(props: ReviewAppProps) {
     setByVersion((map) => ({ ...map, [versionB]: fn(map[versionB] ?? []) }));
   }
 
+  /** This version now differs from what is stored, so a submit has to say so. */
+  function touch(version: number) {
+    setTouched((set) => new Set(set).add(version));
+  }
+
   /** Does a lock cover any line of this span? */
   function isLocked(span: LineSpan): boolean {
     for (let line = span.start; line <= span.end; line++) {
@@ -287,7 +333,10 @@ export function ReviewApp(props: ReviewAppProps) {
       return setStatus('those lines are locked — press l to unlock them before commenting');
     }
 
-    const id = `a${annotations.filter((a) => a.kind === 'comment').length + 1}`;
+    // Past the highest id already on this version, not past the count: the
+    // stored ones are `a1`, `a2`, … and a new note beside them must not land on
+    // an id one of them already answers to.
+    const id = nextAnnotationId(annotations);
     updateAnnotations((current) => [
       ...current,
       buildAnnotation(
@@ -313,6 +362,7 @@ export function ReviewApp(props: ReviewAppProps) {
    */
   function commitFeedback(annotationId: string, draft: string) {
     const text = draft.trim();
+    const before = annotations.find((a) => a.id === annotationId);
     if (!text) {
       updateAnnotations((current) => current.filter((a) => a.id !== annotationId));
     } else {
@@ -320,6 +370,9 @@ export function ReviewApp(props: ReviewAppProps) {
         current.map((a) => (a.id === annotationId ? { ...a, comment: text } : a)),
       );
     }
+    // Opening a note and closing it unchanged is not an edit — and neither is
+    // abandoning a new one, which leaves the version exactly as it was found.
+    if ((before?.comment ?? '') !== text) touch(versionB);
     setMode({ kind: 'browse' });
   }
 
@@ -371,13 +424,27 @@ export function ReviewApp(props: ReviewAppProps) {
   }
 
   /**
-   * Space folds what is under the cursor: a note into its rail, a gap open.
+   * Space folds what is under the cursor: a section away, a note into its rail,
+   * a gap open.
+   *
+   * The heading wins over a note that happens to cover it. A heading is the row
+   * you press space on to move past a whole section, and that reading has to
+   * hold whether or not somebody left a comment on the heading line — the note
+   * still has its own box, one row down, where space folds the note.
    *
    * Any row of the box does it, not only the line it hangs off — the cursor can
    * reach the box now, and a key that works on the thing you are pointing at is
    * the one that needs no explaining.
    */
   function toggleFold() {
+    const row = rows[selection.cursor];
+    const heading = row?.kind === 'doc' ? foldableHeading(row) : null;
+    if (heading !== null) {
+      return setFoldedSections((set) =>
+        set.has(heading) ? withoutLine(set, heading) : new Set(set).add(heading),
+      );
+    }
+
     const note = annotationAtCursor();
     if (note) {
       const id = note.id;
@@ -391,9 +458,51 @@ export function ReviewApp(props: ReviewAppProps) {
     }
     // A gap only expands: once it has, the row that stood for it is gone, and
     // there is nothing left under the cursor to press space on.
-    const gap = rows[selection.cursor]?.gapIndex;
+    const gap = row?.gapIndex;
     if (gap === null || gap === undefined) return;
     setExpandedGaps((set) => new Set(set).add(gap));
+  }
+
+  /** The line this row heads a foldable section from, or null. */
+  function foldableHeading(row: ViewRow): number | null {
+    if (row.newLine === null) return null;
+    return foldEnd(model.docLines, row.newLine) === null ? null : row.newLine;
+  }
+
+  /**
+   * `j` walks the feedback, forward, wrapping at the end.
+   *
+   * Forward only: with a wrap there is nothing a backward key would reach that
+   * pressing this one again does not, and a second key for the same walk is a
+   * letter of the keyboard spent on symmetry.
+   *
+   * A comment inside a folded section unfolds it on the way — the alternative
+   * is a key that silently declines to visit feedback you cannot see, which is
+   * exactly the feedback worth being taken to.
+   */
+  function nextFeedback() {
+    const ordered = [...annotations]
+      .filter((a) => a.kind === 'comment')
+      .sort((a, b) => a.anchor.end_line - b.anchor.end_line || a.id.localeCompare(b.id));
+    if (!ordered.length) return setStatus('no feedback on this version');
+
+    const row = rows[selection.cursor];
+    const here = row?.kind === 'feedback' ? row.annotationId : null;
+    const index = here === null ? -1 : ordered.findIndex((a) => a.id === here);
+    const target =
+      index === -1
+        ? (ordered.find((a) => a.anchor.end_line > (row?.newLine ?? 0)) ?? ordered[0]!)
+        : ordered[(index + 1) % ordered.length]!;
+
+    for (const line of foldedSections) {
+      const end = foldEnd(model.docLines, line);
+      if (end !== null && target.anchor.end_line > line && target.anchor.end_line <= end) {
+        setFoldedSections((set) => withoutLine(set, line));
+      }
+    }
+    // The row it lands on may not exist until the fold above is gone, so the
+    // jump waits for the rows to be rebuilt rather than guessing an index.
+    setPendingJump(target.id);
   }
 
   /** Land on another version, with the document reset under the cursor. */
@@ -404,6 +513,9 @@ export function ReviewApp(props: ReviewAppProps) {
     setSelection(initialSelection());
     setOffset(0);
     setExpandedGaps(new Set());
+    // Folds are line numbers in the version they were made on, and line 40 of
+    // v2 is not line 40 of v3.
+    setFoldedSections(new Set());
   }
 
   function stepVersion(delta: number) {
@@ -422,14 +534,28 @@ export function ReviewApp(props: ReviewAppProps) {
   }
 
   function finish(action: ReviewResult['action']) {
-    if (action === 'submit' && !hasFeedback) {
+    if (action === 'submit' && !anythingToSubmit) {
       return setStatus('nothing to submit — press f to leave feedback, or x to leave');
     }
-    const batches = Object.entries(byVersion)
-      .map(([version, list]) => ({ version: Number(version), annotations: list }))
-      .filter((batch) => batch.annotations.length)
-      .sort((a, b) => a.version - b.version);
-    props.onDone({ action, batches, version: versionB, general });
+    // Every version that carries something or was emptied, plus the one you are
+    // on. An empty batch is not noise: it is the record that has to be rewritten
+    // for a deleted comment to stay deleted.
+    const versions = new Set<number>([versionB, ...touched]);
+    for (const [version, list] of Object.entries(byVersion)) {
+      if (list.length) versions.add(Number(version));
+    }
+    for (const [version, note] of Object.entries(generalByVersion)) {
+      if (note.trim()) versions.add(Number(version));
+    }
+
+    const batches = [...versions]
+      .sort((a, b) => a - b)
+      .map((version) => ({
+        version,
+        annotations: byVersion[version] ?? [],
+        general: generalByVersion[version] ?? '',
+      }));
+    props.onDone({ action, batches, version: versionB });
   }
 
   /* ---------------------------------------------------------- keyboard */
@@ -472,15 +598,18 @@ export function ReviewApp(props: ReviewAppProps) {
       if (input === ' ') return toggleFold();
 
       if (input === 'f') return startFeedback();
+      if (input === 'j') return nextFeedback();
       if (input === 'l') return toggleLock();
       if (input === 'd' && previousVersion !== null) return toggleDiff();
       if (input === 'h') return setHiddenFeedback((on) => !on);
       if (input === 'n') return setMode({ kind: 'note', draft: general });
       if (input === 's') return finish('submit');
       if (input === 'a') {
-        // Approving is for a plan you have nothing to say about. With feedback
-        // pending it would seal the very lines the notes are asking to change.
-        if (hasFeedback) return setStatus('you have feedback pending — press s to submit it');
+        // Approving is for a version you have nothing to say about: it would
+        // otherwise seal the very lines the feedback is asking to change. The
+        // bar has already said so by offering `s` instead, so what is left here
+        // is naming what is in the way.
+        if (carries) return setStatus(approveBlocked(annotations.length, general));
         return setMode({ kind: 'confirm' });
       }
       if (input === '?') return setMode({ kind: 'help' });
@@ -506,7 +635,9 @@ export function ReviewApp(props: ReviewAppProps) {
       if (key.return) {
         if (mode.kind === 'editing') commitFeedback(mode.annotationId, mode.draft);
         else {
-          setGeneral(mode.draft.trim());
+          const note = mode.draft.trim();
+          setGeneralByVersion((map) => ({ ...map, [versionB]: note }));
+          if (note !== general) touch(versionB);
           setMode({ kind: 'browse' });
         }
         return;
@@ -545,6 +676,21 @@ export function ReviewApp(props: ReviewAppProps) {
     jumpTo(rows.length - 1);
   }, [rows, selection.cursor, jumpTo]);
 
+  // `j` names the annotation it is going to rather than a row index, because
+  // unfolding a section to reach it moves every row after the fold.
+  useEffect(() => {
+    if (pendingJump === null) return;
+    // The words, not the box's top edge: `j` is for reading the comment, and
+    // landing on a rule with the text one row below is a keypress short.
+    const at = (part: string) =>
+      rows.findIndex(
+        (r) => r.kind === 'feedback' && r.annotationId === pendingJump && r.part === part,
+      );
+    const index = [at('body'), at('collapsed'), at('top')].find((i) => i !== -1);
+    setPendingJump(null);
+    if (index !== undefined) jumpTo(index);
+  }, [rows, pendingJump, jumpTo]);
+
   useEffect(() => () => exit(), [exit]);
 
   /* ------------------------------------------------------------ render */
@@ -556,6 +702,16 @@ export function ReviewApp(props: ReviewAppProps) {
   // viewport would otherwise draw a frame shorter than the terminal, and Ink
   // adds a newline under any frame that does not reach the bottom — the same
   // gap the chrome constant was leaving.
+  // What space would do where the cursor is, so the hint says it rather than
+  // making you press it to find out.
+  const cursorRow = rows[selection.cursor];
+  const headingLine = cursorRow ? foldableHeading(cursorRow) : null;
+  const headingHint =
+    headingLine === null ? null : foldedSections.has(headingLine) ? 'unfold' : 'fold';
+  const noteFolded =
+    cursorRow?.kind === 'feedback' &&
+    (hiddenFeedback || collapsedFeedback.has(cursorRow.annotationId));
+
   const body = fit(
     mode.kind === 'help'
       ? helpLines(inner, previousVersion !== null)
@@ -571,22 +727,20 @@ export function ReviewApp(props: ReviewAppProps) {
     bodyHeight,
   );
 
+  // Never bold. Colour carries the weight — red for what destroys something,
+  // yellow for everything else — and a bold row inside a frame reads as a
+  // heading, which a question is not.
   const message =
     mode.kind === 'confirm'
-      ? bold(signal(`Approve v${versionB}? This seals the plan — every section becomes locked.`))
+      ? signal(`Approve v${versionB}? This seals the plan — every section becomes locked.`)
       : mode.kind === 'leave'
-        ? bold(
-            red(
-              hasFeedback
-                ? 'Back to the list? Your feedback has not been submitted and will be lost.'
-                : 'Back to the list?',
-            ),
-          )
+        ? touched.size
+          ? red('Back to the list? Your feedback has not been submitted and will be lost.')
+          : yellow('Back to the list?')
         : statusLine({
             status,
-            note: mode.kind === 'note' ? mode.draft : general,
+            note: mode.kind === 'note' ? mode.draft : '',
             typing: mode.kind === 'note',
-            previous: previousOn(props.previous, versionB),
             width: inner,
           });
 
@@ -601,10 +755,16 @@ export function ReviewApp(props: ReviewAppProps) {
       ))}
       <Text>{frameLine('', inner)}</Text>
       <Text>{frameLine(message, inner)}</Text>
+      {summary.map((line, i) => (
+        <Text key={i}>{frameLine(line, inner)}</Text>
+      ))}
       {fit(
         hintLines(
           hintsFor(mode, rows[selection.cursor], {
-            hasFeedback,
+            carries,
+            anyFeedback: annotations.length > 0,
+            heading: headingHint,
+            noteFolded,
             locked: isCursorLocked(model, rows, selection),
             annotated: Boolean(annotationAtCursor()),
             selecting: selection.active,
@@ -637,8 +797,55 @@ function headerText(
   );
 }
 
-function previousOn(feedback: readonly Feedback[], version: number): number {
-  return feedback.filter((f) => f.version === version).length;
+/* ------------------------------------------------------- what is stored */
+
+/**
+ * The feedback on this plan, per version, as the review's own state.
+ *
+ * There is no submitted-versus-pending distinction to preserve: a version's
+ * feedback is one thing, and opening the version is how you get at it. Only
+ * comments come back — locks and unlocks were applied to the store the moment
+ * they were made, and replaying them out of a record would apply them twice.
+ */
+function storedAnnotations(feedback: readonly Feedback[]): Record<number, Annotation[]> {
+  const out: Record<number, Annotation[]> = {};
+  for (const record of feedback) {
+    const comments = record.annotations.filter((a) => a.kind === 'comment');
+    if (comments.length) out[record.version] = [...(out[record.version] ?? []), ...comments];
+  }
+  return out;
+}
+
+function storedNotes(feedback: readonly Feedback[]): Record<number, string> {
+  const out: Record<number, string> = {};
+  for (const record of feedback) {
+    if (record.general.trim()) out[record.version] = record.general.trim();
+  }
+  return out;
+}
+
+/** One past the highest `aN` on this version, so a new note cannot collide. */
+function nextAnnotationId(annotations: readonly Annotation[]): string {
+  let highest = 0;
+  for (const annotation of annotations) {
+    const match = /^a(\d+)$/.exec(annotation.id);
+    if (match) highest = Math.max(highest, Number(match[1]));
+  }
+  return `a${highest + 1}`;
+}
+
+/**
+ * Why `a` did not open the confirmation, naming what is in the way.
+ *
+ * The rule is that a plan is approved only when it carries nothing — so the
+ * answer to pressing `a` anyway is the count, not a restatement of the rule.
+ */
+function approveBlocked(count: number, note: string): string {
+  const has: string[] = [];
+  if (count) has.push(`${count} feedback${count === 1 ? '' : 's'}`);
+  if (note.trim()) has.push('a note');
+  const single = count + (note.trim() ? 1 : 0) === 1;
+  return `This version has ${has.join(' and ')}. Delete ${single ? 'it' : 'them'} or press s to submit.`;
 }
 
 function describeSpan(span: LineSpan): string {
@@ -700,27 +907,23 @@ const NOTE_LABEL = 'Global Note: ';
 
 interface StatusOptions {
   status: string | null;
-  /** The whole-plan note: the committed one, or the draft while `n` is open. */
+  /** The whole-plan note as it is being typed, while `n` is open. */
   note: string;
   typing: boolean;
-  previous: number;
   width: number;
 }
 
 /**
- * One line for everything transient, in the order it matters.
+ * One row, for whatever just happened.
  *
- * Stacking status, note and history on separate rows made the frame breathe in
- * and out as they came and went, which moves the document under the cursor.
+ * It is transient by construction: a status message, or the note while it is
+ * being typed, and nothing when neither. What the version *holds* is drawn
+ * underneath, in the summary block, where a long note can have as many rows as
+ * it needs — this row is where a message that has to be read right now goes,
+ * and it cannot be that if something permanent is sitting on it.
  *
- * The whole-plan note lives here too, written and read on the same row. It used
- * to get the box an inline comment gets and then collapse into a dim line on
- * this one — two presentations of one thing, and three rows spent saying what a
- * spare row was already there to say. The yellow label is what tells the two
- * kinds of note apart, so the sentence explaining it is gone with the box.
- *
- * Status wins while it is showing, because it is the thing that just happened;
- * the note comes back underneath when it clears.
+ * The whole-plan note is still written here, on one line, with the yellow
+ * `Global Note:` label saying which of the two kinds of note it is.
  */
 function statusLine(opts: StatusOptions): string {
   if (opts.typing) {
@@ -730,18 +933,51 @@ function statusLine(opts: StatusOptions): string {
     return `${yellow(`${NOTE_LABEL}${opts.note.slice(-room)}`)}${inverse(' ')}`;
   }
   if (opts.status) return signal(truncate(opts.status, opts.width));
-  if (opts.note.trim()) {
-    return yellow(`${NOTE_LABEL}${truncate(opts.note, opts.width - NOTE_LABEL.length)}`);
-  }
-  if (opts.previous) {
-    const n = opts.previous;
-    return dim(`${n} earlier note${n === 1 ? '' : 's'} already left on this version`);
-  }
   return '';
 }
 
+interface SummaryOptions {
+  count: number;
+  note: string;
+  width: number;
+}
+
+/**
+ * What this version holds, above the hints: how much feedback, and the note.
+ *
+ * It replaces the dim `N earlier notes already left on this version` line,
+ * which counted feedback that was nowhere on screen. The feedback is in the
+ * document now, so the count is a summary of what you can see rather than a
+ * rumour about what you cannot.
+ *
+ * The note is drawn in full, wrapped, however many rows that takes. It is the
+ * one piece of feedback with nowhere else to live — an inline comment has a box
+ * beside the lines it is about — and a note truncated to one row is a note you
+ * have to open an editor to finish reading.
+ *
+ * Nothing is drawn when there is nothing to say, so the block costs no rows on
+ * a version nobody has commented on.
+ */
+function summaryLines(opts: SummaryOptions): string[] {
+  const out: string[] = [];
+  if (opts.count) {
+    out.push(dim(`This version has ${opts.count} feedback${opts.count === 1 ? '' : 's'}.`));
+  }
+  if (opts.note.trim()) {
+    out.push(...wrapComment(`${NOTE_LABEL}${opts.note.trim()}`, opts.width).map((l) => yellow(l)));
+  }
+  return out;
+}
+
 interface HintContext {
-  hasFeedback: boolean;
+  /** This version carries feedback or a note, so `s` replaces `a`. */
+  carries: boolean;
+  /** There is feedback to walk, so `j` has somewhere to go. */
+  anyFeedback: boolean;
+  /** What `space` would do to the section under the cursor, if it is a heading. */
+  heading: 'fold' | 'unfold' | null;
+  /** The note under the cursor is already folded, so `space` opens it. */
+  noteFolded: boolean;
   locked: boolean;
   annotated: boolean;
   /** A selection is live, so `v` ends it rather than starting one. */
@@ -800,39 +1036,45 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
   ];
 
   // Folding is offered on the box, which the cursor can now reach — a document
-  // line beside a note is a line, and the note has a row of its own.
+  // line beside a note is a line, and the note has a row of its own. `space`
+  // names what it folds rather than saying `fold`, because there are two kinds
+  // of fold now and the cursor is what decides between them.
   if (row?.kind === 'feedback') {
-    hints.push(['space', 'fold'], ['f', 'edit']);
+    hints.push(['space', ctx.noteFolded ? 'unfold feedback' : 'fold feedback'], ['f', 'edit']);
   } else if (row?.gapIndex !== null && row?.gapIndex !== undefined) {
     hints.push(['space', 'expand'], ['v', ctx.selecting ? 'unselect lines' : 'select lines']);
   } else {
+    if (ctx.heading) hints.push(['space', `${ctx.heading} section`]);
     hints.push(['v', ctx.selecting ? 'unselect lines' : 'select lines']);
     if (ctx.locked) hints.push(['l', `unlock ${lines}`]);
     else hints.push(['f', ctx.annotated ? 'edit' : 'feedback'], ['l', `lock ${lines}`]);
   }
 
+  if (ctx.anyFeedback) hints.push(['j', 'next feedback']);
   if (ctx.canDiff) hints.push(['d', ctx.diffing ? 'hide diff' : 'show diff']);
   if (ctx.manyVersions) hints.push(['←→', 'version']);
-  hints.push(ctx.hasFeedback ? ['s', 'submit'] : ['a', 'approve'], ['?', 'help']);
+  hints.push(ctx.carries ? ['s', 'submit'] : ['a', 'approve'], ['?', 'help']);
   return hints;
 }
 
 /**
  * The widest bar browse mode can produce, for the height to be reserved from.
  *
- * It is one real hint set rather than the union of all of them: a document
- * line that is not locked, with every either/or resolved to the longer side.
- * That branch offers three keys of its own where the note and the collapsed
- * run offer two, and it carries the longest labels — so nothing the cursor can
- * land on needs more rows than this.
+ * It is one real hint set rather than the union of all of them: an unlocked
+ * heading on a version carrying feedback, with every either/or resolved to the
+ * longer side. That branch offers the most keys of any row — `space` for the
+ * section on top of the three a document line always has — and `j` rides along
+ * with it, so nothing the cursor can land on needs more rows than this.
  */
 function widestHints(ctx: Pick<HintContext, 'canDiff' | 'manyVersions'>): Hint[] {
   const hints: Hint[] = [
     ['n', 'note'],
     ['x', 'exit'],
     ['esc', 'back'],
+    ['space', 'unfold section'],
     ['v', 'unselect lines'],
     ['f', 'feedback'],
+    ['j', 'next feedback'],
     ['l', 'lock lines'],
   ];
   if (ctx.canDiff) hints.push(['d', 'show diff']);
@@ -884,10 +1126,11 @@ const HELP: Array<[Hint, 'always' | 'versioned']> = [
   [['^d ^u', 'half a screen down or up'], 'always'],
   [['^f ^b', 'a whole screen down or up'], 'always'],
   [['h', 'fold or unfold every note at once'], 'always'],
+  [['j', 'the next feedback on this version, wrapping at the end'], 'always'],
   [['l', 'lock or unlock the selection — applied immediately'], 'always'],
   [['n', 'a note about the whole plan'], 'always'],
   [['s', 'submit everything at once'], 'always'],
-  [['space', 'fold the note, or expand the collapsed run, under the cursor'], 'always'],
+  [['space', 'fold the section or the note, or expand the run, under the cursor'], 'always'],
   [['v', 'start or end a selection, then ↑ ↓ to extend'], 'always'],
   [['x', 'leave without submitting'], 'always'],
   [['esc', 'back to the list'], 'always'],
@@ -916,5 +1159,11 @@ function withId(set: ReadonlySet<string>, id: string): ReadonlySet<string> {
 function without(set: ReadonlySet<string>, id: string): ReadonlySet<string> {
   const next = new Set(set);
   next.delete(id);
+  return next;
+}
+
+function withoutLine(set: ReadonlySet<number>, line: number): ReadonlySet<number> {
+  const next = new Set(set);
+  next.delete(line);
   return next;
 }

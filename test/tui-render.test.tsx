@@ -2,10 +2,14 @@ import { EventEmitter } from 'node:events';
 import { render } from 'ink';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { capture } from '../src/protocol/capture.js';
+import { buildAnnotation, submitFeedback } from '../src/protocol/submit.js';
 import { setColorEnabled, stripAnsi } from '../src/render/ansi.js';
-import { readLocks } from '../src/store/plans.js';
+import { listFeedback } from '../src/store/feedback.js';
+import { readLocks, readVersionText } from '../src/store/plans.js';
+import type { Feedback } from '../src/store/types.js';
 import { Picker, type PickerItem } from '../src/tui/Picker.js';
 import { ReviewApp, type ReviewResult } from '../src/tui/ReviewApp.js';
+import { stepLines } from '../src/tui/Steps.js';
 import { SAMPLE_PLAN, tempStore } from './helpers.js';
 
 /**
@@ -124,6 +128,7 @@ function mount(
   versions: number[] = [versionB],
   columns = 100,
   rows = 30,
+  previous: Feedback[] = [],
 ): Harness {
   const stdout = new FakeStdout();
   stdout.columns = columns;
@@ -141,7 +146,7 @@ function mount(
       versions={versions}
       mode="rich"
       version="9.9.9"
-      previous={[]}
+      previous={previous}
       onDone={resolve}
     />,
     {
@@ -232,6 +237,17 @@ function bodyRows(frame: string): string[] {
  */
 function boxColumn(rows: string[]): number {
   return rows.find((line) => line.includes('├─'))!.indexOf('├');
+}
+
+/**
+ * The rail's column on one row, counted from the frame edge.
+ *
+ * The gutter is `│ ` then the arrow gutter then the line number, and the rail
+ * sits between the number and the text — so it is wherever the run of digits
+ * ends, whatever width this plan's line numbers happen to need.
+ */
+function boxColumnOf(row: string): number {
+  return /^\S\s+\S?\s*\d+ /.exec(row)![0].length;
 }
 
 describe('the review frame', () => {
@@ -429,6 +445,9 @@ describe('feedback lives in the document', () => {
     const app = mount(seed(), null, 1);
     await app.ready();
 
+    // Off the H1 and onto a line of prose: on a heading, space folds the
+    // section, which is what the row under the cursor says it will do.
+    for (let i = 0; i < 3; i++) await app.press(DOWN);
     await app.press('f');
     await app.press('fold me');
     await app.press(ENTER);
@@ -600,6 +619,162 @@ describe('feedback lives in the document', () => {
     expect(folded).toContain('├─ ▸ fold from within');
     // Still under the cursor, so space puts it straight back.
     expect(cursorRow(rows)).toBe(folded);
+    app.unmount();
+  });
+});
+
+describe('folding a section', () => {
+  it('space on a heading hides what is under it, and says how much', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    // Onto `## Context`, which runs to the line before `## Approach`.
+    await app.press(DOWN);
+    await app.press(DOWN);
+    await app.frame('space fold section');
+
+    await app.press(SPACE);
+    await app.frame('⋯ 3 lines');
+    expect(app.stdout.lastFrame).not.toContain('The poller reads a snapshot');
+    // Its own heading stays, and so does everything after the section.
+    expect(app.stdout.lastFrame).toContain('## Context');
+    expect(app.stdout.lastFrame).toContain('## Approach');
+
+    await app.press(SPACE);
+    await app.frame('The poller reads a snapshot');
+    app.unmount();
+  });
+
+  it('takes the subsections with it, and never folds the deepest headings', async () => {
+    const id = capture({
+      text: [
+        '# Deep',
+        '',
+        '## One',
+        'a',
+        '',
+        '### Under one',
+        'b',
+        '',
+        '##### Too deep',
+        'c',
+        '',
+        '## Two',
+        'd',
+        '',
+      ].join('\n'),
+      source: 'test',
+    }).planId;
+    const app = mount(id, null, 1);
+    await app.ready();
+
+    await app.press(DOWN);
+    await app.press(DOWN);
+    await app.frame('space fold section');
+    await app.press(SPACE);
+    await app.frame('⋯');
+
+    // `## One` swallowed its `###`, and stopped at the next `##`.
+    expect(app.stdout.lastFrame).not.toContain('### Under one');
+    expect(app.stdout.lastFrame).toContain('## Two');
+
+    // `#####` is a paragraph with a title on it; folding it saves nothing, so
+    // it is neither offered nor done.
+    await app.press('G');
+    await app.press('g');
+    for (let i = 0; i < 4; i++) await app.press(DOWN);
+    expect(app.stdout.lastFrame).not.toContain('space fold section');
+    app.unmount();
+  });
+
+  it('keeps feedback findable: the count on the fold, the rail beside it', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    // A note on the line under `## Context`, then fold the section over it.
+    await app.press(DOWN);
+    await app.press(DOWN);
+    await app.press(DOWN);
+    await app.press('f');
+    await app.press('buried');
+    await app.press(ENTER);
+    await app.frame('buried');
+
+    await app.press('\x1b[A'); // back up onto the heading
+    await app.press(SPACE);
+    await app.frame('· 1 feedback');
+    expect(app.stdout.lastFrame).not.toContain('buried');
+
+    const folded = bodyRows(app.stdout.lastFrame).find((l) => l.includes('## Context'))!;
+    expect(folded[boxColumnOf(folded)]).toBe('│');
+    app.unmount();
+  });
+});
+
+describe('j walks the feedback', () => {
+  it('steps forward in document order, wrapping at the end', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press(DOWN);
+    await app.press('f');
+    await app.press('first');
+    await app.press(ENTER);
+    for (let i = 0; i < 4; i++) await app.press(DOWN);
+    await app.press('f');
+    await app.press('second');
+    await app.press(ENTER);
+    await app.frame('second');
+
+    await app.press('g');
+    await app.press('j');
+    await app.frame('j next feedback');
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('first');
+
+    await app.press('j');
+    await new Promise((r) => setTimeout(r, 120));
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('second');
+
+    // Forward only, so the last one leads back to the first.
+    await app.press('j');
+    await new Promise((r) => setTimeout(r, 120));
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('first');
+    app.unmount();
+  });
+
+  it('unfolds a section to reach the feedback inside it', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press(DOWN);
+    await app.press(DOWN);
+    await app.press(DOWN);
+    await app.press('f');
+    await app.press('inside');
+    await app.press(ENTER);
+    await app.frame('inside');
+
+    await app.press('\x1b[A');
+    await app.press(SPACE);
+    await app.frame('⋯');
+    expect(app.stdout.lastFrame).not.toContain('inside');
+
+    await app.press('j');
+    await app.frame('inside');
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('inside');
+    app.unmount();
+  });
+
+  it('is offered only where there is feedback to walk', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+    expect(app.stdout.lastFrame).not.toContain('j next feedback');
+
+    await app.press(DOWN);
+    await app.press('f');
+    await app.press('something');
+    await app.press(ENTER);
+    await app.frame('j next feedback');
     app.unmount();
   });
 });
@@ -781,7 +956,7 @@ describe('the keys, and where they sit', () => {
     await app.frame('f feedback');
 
     // The five the fixed order always put last, and so always lost.
-    const bar = bodyRows(app.stdout.lastFrame).slice(-2).map(inner).join(' · ');
+    const bar = bodyRows(app.stdout.lastFrame).slice(-3).map(inner).join(' · ');
     for (const pair of ['a approve', 'v select lines', 'x exit', 'esc back', '? help']) {
       expect(bar).toContain(pair);
     }
@@ -814,6 +989,7 @@ describe('the keys, and where they sit', () => {
       '^f ^b',
       'g G',
       'h',
+      'j',
       'l',
       'n',
       's',
@@ -861,12 +1037,12 @@ describe('the whole-plan note', () => {
     await app.press('halfway through');
     await app.frame('Global Note: halfway through');
 
-    // Written and read on the same row, directly above the hints, and the frame
-    // is exactly as tall as it was — the three-row box used to eat the plan.
+    // Written on one row, and the frame is exactly as tall as it was — the
+    // three-row box used to eat the plan.
     const rows = bodyRows(app.stdout.lastFrame);
     expect(rows).toHaveLength(before);
-    expect(rows.at(-2)).toContain('Global Note: halfway through');
-    expect(rows.at(-1)).toContain('enter save · esc cancel');
+    expect(rows.some((l) => l.includes('Global Note: halfway through'))).toBe(true);
+    expect(rows.some((l) => l.includes('enter save · esc cancel'))).toBe(true);
     expect(rows.some((l) => l.includes(BOX_CLOSE))).toBe(false);
     app.unmount();
   });
@@ -889,7 +1065,7 @@ describe('the whole-plan note', () => {
     app.unmount();
   });
 
-  it('yields the row to a status message, and takes it back when that clears', async () => {
+  it('keeps its own row when a status message arrives, rather than yielding it', async () => {
     const app = mount(seed(), null, 1);
     await app.ready();
 
@@ -898,13 +1074,95 @@ describe('the whole-plan note', () => {
     await app.press(ENTER);
     await app.frame('Global Note: a standing note');
 
-    // A plan on v1 has nothing to step back to — the cheapest real status.
+    // A plan on v1 has nothing to step back to — the cheapest real status. The
+    // note is what the version holds and the status is what just happened, so
+    // they are two rows and neither has to wait for the other.
     await app.press('[');
     await app.frame('this is the first version');
-    expect(app.stdout.lastFrame).not.toContain('Global Note:');
+    expect(app.stdout.lastFrame).toContain('Global Note: a standing note');
+    app.unmount();
+  });
+
+  it('is shown in full, wrapped, rather than truncated to one row', async () => {
+    const app = mount(seed(), null, 1, [1], 60);
+    await app.ready();
+
+    await app.press('n');
+    await app.press('the rollout section needs to name the flag, and the migration step');
+    await app.press(ENTER);
+    await app.frame('Global Note: the rollout');
+
+    // Two rows, and the first of them does not end in an ellipsis: the note is
+    // the one piece of feedback with nowhere else to live.
+    const rows = bodyRows(app.stdout.lastFrame);
+    expect(rows.find((l) => l.includes('Global Note:'))).not.toContain('…');
+    expect(rows.some((l) => l.includes('migration'))).toBe(true);
+    app.unmount();
+  });
+});
+
+describe('what the version has to say about itself', () => {
+  it('counts the feedback on it, above the hints, and says nothing at zero', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+    expect(app.stdout.lastFrame).not.toContain('This version has');
 
     await app.press(DOWN);
-    await app.frame('Global Note: a standing note');
+    await app.press('f');
+    await app.press('one');
+    await app.press(ENTER);
+    await app.frame('This version has 1 feedback.');
+
+    // Past the box the first note opened, onto a line of its own.
+    for (let i = 0; i < 4; i++) await app.press(DOWN);
+    await app.press('f');
+    await app.press('two');
+    await app.press(ENTER);
+    await app.frame('This version has 2 feedbacks.');
+    app.unmount();
+  });
+
+  it('says what is in the way when a carries feedback', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press(DOWN);
+    await app.press('f');
+    await app.press('needs work');
+    await app.press(ENTER);
+    await app.frame('s submit');
+
+    await app.press('a');
+    await app.frame('This version has 1 feedback. Delete it or press s to submit.');
+    expect(app.stdout.lastFrame).not.toContain('Approve v1?');
+
+    await app.press('n');
+    await app.press('and a note');
+    await app.press(ENTER);
+    await app.press('a');
+    await app.frame('This version has 1 feedback and a note. Delete them or press s to submit.');
+    app.unmount();
+  });
+
+  it('loads the feedback already stored on the version, editable', async () => {
+    const id = seed();
+    const doc = readVersionText(id, 1)!.split('\n');
+    submitFeedback({
+      planId: id,
+      version: 1,
+      verdict: 'revise',
+      annotations: [buildAnnotation(doc, 'comment', 4, 4, 'left last time', 'a1')],
+      general: 'and a standing note',
+    });
+
+    const app = mount(id, null, 1, [1], 100, 30, listFeedback(id));
+    await app.ready();
+
+    await app.frame('left last time');
+    expect(app.stdout.lastFrame).toContain('This version has 1 feedback.');
+    expect(app.stdout.lastFrame).toContain('Global Note: and a standing note');
+    // Editable, exactly as it was left: no separate pending state to reconcile.
+    expect(app.stdout.lastFrame).toContain('s submit');
     app.unmount();
   });
 });
@@ -1031,6 +1289,49 @@ describe('getting around a long plan', () => {
     expect(app.stdout.lastFrame).not.toContain('# A long plan');
     expect(app.stdout.lastFrame).toContain('step ');
     app.unmount();
+  });
+});
+
+/* ------------------------------------------------------------------- steps */
+
+describe('the step-by-step screen', () => {
+  const rows = [
+    {
+      group: 'Detecting agents',
+      label: 'claude',
+      path: '/home/you/.claude',
+      note: 'found',
+      ok: true,
+    },
+    {
+      group: 'Writing skills',
+      label: 'planx',
+      path: '/home/you/.claude/skills',
+      note: '',
+      ok: true,
+    },
+  ];
+
+  it('groups the steps, and marks the one still running', () => {
+    const lines = stepLines(rows, 60).map(stripAnsi);
+
+    expect(lines[0]).toBe('  Detecting agents');
+    expect(lines[1]).toContain('claude');
+    expect(lines[1]).toContain('found');
+    expect(lines[2]).toBe('');
+    expect(lines[3]).toBe('  Writing skills');
+    // Started, not finished: it says so rather than claiming an outcome.
+    expect(lines[4]!.trimEnd().endsWith('…')).toBe(true);
+  });
+
+  it('gives up path, not outcome, when the frame is narrow', () => {
+    const long = rows.map((r) => ({ ...r, path: `/very/long/prefix${r.path}`, note: 'written' }));
+    const lines = stepLines(long, 44).map(stripAnsi);
+
+    for (const line of lines.filter((l) => l.includes('written'))) {
+      expect(line).toContain('…');
+      expect(line.trimEnd().endsWith('written')).toBe(true);
+    }
   });
 });
 

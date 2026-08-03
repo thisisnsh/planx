@@ -42,9 +42,11 @@ line the comment did not draw — stop and ask. Batch every such question into o
 call, and ask **before** capturing. Stating the assumption in the plan and
 flagging it in chat is not asking: it puts a decision the user never made into a
 document that says what will be built, and the only way to undo it is another
-whole review round. **`## Out of scope` may only list what the user declined.**
-Anything there because *you* decided to leave it out is proof of a question you
-skipped.
+whole review round.
+
+**A plan never contains an out-of-scope section.** The plan is what will be
+built. Anything the user declined is said in the chat, immediately before the
+hand-off line.
 
 ## 3. Capture
 
@@ -65,7 +67,8 @@ PLAN
 
 ## 4. Hand back and stop
 
-One line, verbatim, with no preamble and nothing after it:
+If the user declined something, say so here in one short line — in the chat, not
+in the plan. Then, verbatim, with nothing after it:
 
 > Plan created. Open `planx <plan-id> v<n>` in new tab.
 

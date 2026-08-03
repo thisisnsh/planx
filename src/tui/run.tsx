@@ -1,8 +1,11 @@
 import { render } from 'ink';
+import type { StepRunner } from '../install/install.js';
 import type { RenderMode } from '../render/diff.js';
 import type { Feedback } from '../store/types.js';
+import { terminalWidth } from './frame.js';
 import { Picker, type PickerItem } from './Picker.js';
 import { ReviewApp, type ReviewResult } from './ReviewApp.js';
+import { Steps, stepLine, type StepRow } from './Steps.js';
 
 /**
  * Is there a terminal to draw on?
@@ -29,8 +32,8 @@ export interface RunReviewOptions {
   mode: RenderMode;
   /** planx's own version, for the frame. */
   version: string;
-  /** Every note left on this plan; the review shows the ones for the version
-   *  you are on, which is a thing that changes while you are in there. */
+  /** Every note left on this plan; the review loads the ones for the version
+   *  you are on, editable, and rewrites them on submit. */
   previous: Feedback[];
 }
 
@@ -67,8 +70,134 @@ export async function runReview(opts: RunReviewOptions): Promise<ReviewResult> {
 
     instance
       .waitUntilExit()
-      .then(() => finish({ action: 'quit', batches: [], version: opts.versionB, general: '' }));
+      .then(() => finish({ action: 'quit', batches: [], version: opts.versionB }));
   });
+}
+
+/**
+ * Long enough that a step is a thing you saw happen.
+ *
+ * Copying four directories takes single-digit milliseconds, so without this the
+ * screen would draw once, finished, and the step-by-step would be a lie told at
+ * 60fps. The hold is on the near side of each step's work — nothing is reported
+ * done before it is done — which is the difference between pacing and theatre.
+ */
+const STEP_HOLD_MS = 100;
+
+export interface StepsController {
+  /** Hand to `runInstall`; it reports each step through here. */
+  onStep: StepRunner;
+  /** Ask on the same screen. Always false when there is no terminal. */
+  confirm: (question: string) => Promise<boolean>;
+  /** The last line, drawn under everything else. */
+  close: (line: string) => Promise<void>;
+}
+
+export interface RunStepsOptions {
+  /** The subcommand, for the top rule. */
+  command: string;
+  version: string;
+  /** Where the plain-text form goes when there is no terminal to draw on. */
+  out: (line: string) => void;
+  /** `--json` and a pipe both mean: print lines, draw nothing. */
+  plain: boolean;
+}
+
+/**
+ * Drive a multi-step command, drawn live or printed flat.
+ *
+ * Not a TTY, or `--json`: the same steps go out as sequential lines and scroll,
+ * so a CI log keeps everything a person watching the screen would have seen.
+ */
+export async function runSteps<T>(
+  opts: RunStepsOptions,
+  body: (controller: StepsController) => Promise<T>,
+): Promise<T> {
+  const rows: StepRow[] = [];
+  let closing: string | null = null;
+  let prompt: StepsProps['prompt'] = null;
+
+  if (opts.plain) {
+    const controller: StepsController = {
+      onStep: async (step, work) => {
+        const outcome = work();
+        opts.out(stepLine({ ...blank(step), note: outcome.note, ok: outcome.ok !== false }));
+      },
+      confirm: async () => false,
+      close: async (line) => opts.out(line),
+    };
+    return body(controller);
+  }
+
+  clearScreen();
+  const width = terminalWidth();
+  const draw = () =>
+    instance.rerender(
+      <Steps
+        command={opts.command}
+        version={opts.version}
+        rows={[...rows]}
+        closing={closing}
+        prompt={prompt}
+        width={width}
+      />,
+    );
+
+  const instance = render(
+    <Steps
+      command={opts.command}
+      version={opts.version}
+      rows={[]}
+      closing={null}
+      prompt={null}
+      width={width}
+    />,
+    { exitOnCtrlC: true },
+  );
+
+  try {
+    return await body({
+      onStep: async (step, work) => {
+        const row = { ...blank(step), note: '', ok: true };
+        rows.push(row);
+        draw();
+        await hold();
+        const outcome = work();
+        row.note = outcome.note;
+        row.ok = outcome.ok !== false;
+        draw();
+      },
+      confirm: (question) =>
+        new Promise<boolean>((resolve) => {
+          prompt = {
+            question,
+            onAnswer: (yes) => {
+              prompt = null;
+              draw();
+              resolve(yes);
+            },
+          };
+          draw();
+        }),
+      close: async (line) => {
+        closing = line;
+        draw();
+        await hold();
+      },
+    });
+  } finally {
+    instance.unmount();
+  }
+}
+
+type StepsProps = Parameters<typeof Steps>[0];
+
+function blank(step: { group: string; label?: string; path?: string }): StepRow {
+  return { group: step.group, label: step.label ?? '', path: step.path ?? '', note: '', ok: true };
+}
+
+function hold(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, STEP_HOLD_MS));
 }
 
 export interface RunPickerOptions<T> {

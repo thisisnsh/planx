@@ -1,3 +1,5 @@
+import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { closingBlock, handOffLine } from '../src/cli/commands.js';
 import { normalizedLines } from '../src/locks/anchor.js';
@@ -9,6 +11,7 @@ import { buildAnnotation, grantUnlock, submitFeedback } from '../src/protocol/su
 import { setColorEnabled } from '../src/render/ansi.js';
 import { readLocks, readMeta, readVersionText, updateLocks } from '../src/store/plans.js';
 import { listFeedback } from '../src/store/feedback.js';
+import { paths } from '../src/store/paths.js';
 import { SAMPLE_PLAN, tempStore } from './helpers.js';
 
 let store: ReturnType<typeof tempStore>;
@@ -105,6 +108,99 @@ describe('the review loop', () => {
     expect(listFeedback(planId)[0]!.addressed_by).toBe(2);
     // Nothing is outstanding against the new version until someone reviews it.
     expect(listFeedback(planId).filter((f) => f.version === 2)).toHaveLength(0);
+  });
+});
+
+describe('one feedback record per version', () => {
+  it('replaces the record rather than appending a second one', () => {
+    const { planId } = seed();
+    submitFeedback({
+      planId,
+      version: 1,
+      verdict: 'revise',
+      annotations: [comment(planId, 1, 6, 6, 'Rework this.')],
+    });
+    const first = listFeedback(planId)[0]!;
+
+    submitFeedback({
+      planId,
+      version: 1,
+      verdict: 'revise',
+      annotations: [comment(planId, 1, 6, 6, 'Rework this, properly.')],
+    });
+
+    const history = listFeedback(planId);
+    expect(history).toHaveLength(1);
+    expect(history[0]!.annotations[0]!.comment).toBe('Rework this, properly.');
+    // The record's identity is the version's, so it survives being rewritten.
+    expect(history[0]!.id).toBe(first.id);
+    expect(readdirSync(paths.feedbackDir(planId))).toEqual(['v1.json']);
+  });
+
+  /**
+   * Emptying a comment is how it is deleted, and the deletion lands on the next
+   * submit — which under an append-only store it could not, because there was
+   * no way to write "there is nothing here now".
+   */
+  it('lets an empty submit delete the last comment', () => {
+    const { planId } = seed();
+    submitFeedback({
+      planId,
+      version: 1,
+      verdict: 'revise',
+      annotations: [comment(planId, 1, 6, 6, 'Rework this.')],
+    });
+
+    submitFeedback({ planId, version: 1, verdict: 'revise', annotations: [] });
+
+    expect(listFeedback(planId)[0]!.annotations).toEqual([]);
+  });
+
+  /** A store an older planx wrote collapses on read, losing nothing. */
+  it('merges a version left with several records by an older planx', () => {
+    const { planId } = seed();
+    const dir = paths.feedbackDir(planId);
+    mkdirSync(dir, { recursive: true });
+    const base = {
+      format_version: 1,
+      plan_id: planId,
+      version: 1,
+      verdict: 'revise' as const,
+      general: '',
+      addressed_by: null,
+    };
+    writeFileSync(
+      join(dir, 'v1-01AAA.json'),
+      JSON.stringify({
+        ...base,
+        id: '01AAA',
+        created: '2026-01-01T00:00:00.000Z',
+        general: 'name the flag',
+        annotations: [comment(planId, 1, 6, 6, 'first pass')],
+      }),
+    );
+    writeFileSync(
+      join(dir, 'v1-01BBB.json'),
+      JSON.stringify({
+        ...base,
+        id: '01BBB',
+        created: '2026-01-02T00:00:00.000Z',
+        verdict: 'approve',
+        annotations: [comment(planId, 1, 6, 6, 'second pass')],
+      }),
+    );
+
+    const history = listFeedback(planId);
+    expect(history).toHaveLength(1);
+    // Same id, so the later submit's text replaces the earlier one rather than
+    // doubling it — and the note survives a submit that did not carry one.
+    expect(history[0]!.annotations.map((a) => a.comment)).toEqual(['second pass']);
+    expect(history[0]!.general).toBe('name the flag');
+    expect(history[0]!.verdict).toBe('approve');
+
+    // …and the first write of the new shape takes the old files with it.
+    submitFeedback({ planId, version: 1, verdict: 'revise', annotations: [] });
+    expect(readdirSync(dir)).toEqual(['v1.json']);
   });
 });
 
@@ -230,7 +326,7 @@ describe('what the agent sees', () => {
     });
 
     const text = resumeOf(planId, 1);
-    expect(text).toContain('### 🔒 Locked');
+    expect(text).toContain('### Locked');
     expect(text).toContain('— do not modify');
     expect(text).toContain('[[planx:keep L1]]` markers — do not re-emit their text');
   });
@@ -268,7 +364,7 @@ describe('the review hand-off', () => {
   it('is a block: nothing blank inside it, one blank after it', () => {
     setColorEnabled(false);
     for (const action of ['quit', 'revise', 'approve'] as const) {
-      const block = closingBlock(action, 'guard-clock-a3f9', 4, 6);
+      const block = closingBlock(action, 'guard-clock-a3f9', 4);
       expect(block.slice(0, -1).every((line) => line.trim())).toBe(true);
       expect(block.at(-1)).toBe('');
     }
@@ -277,7 +373,7 @@ describe('the review hand-off', () => {
   it('always offers the way back in, last, whichever way the review ended', () => {
     setColorEnabled(false);
     for (const action of ['quit', 'revise', 'approve'] as const) {
-      const block = closingBlock(action, 'guard-clock-a3f9', 4, 6);
+      const block = closingBlock(action, 'guard-clock-a3f9', 4);
       expect(block.at(-2)).toContain('Reopen it with:  planx guard-clock-a3f9 v4');
       expect(block.join('\n')).not.toContain('nothing submitted');
     }
@@ -286,10 +382,10 @@ describe('the review hand-off', () => {
     expect(closingBlock('revise', 'guard-clock-a3f9', 4)[0]).toContain(
       '/planx revise guard-clock-a3f9',
     );
-    expect(closingBlock('approve', 'guard-clock-a3f9', 4, 6)).toEqual([
-      '✓ Approved & sealed — guard-clock-a3f9 v4 (6 sections locked).',
-      '  Paste to your agent:  /planx execute guard-clock-a3f9 v4',
-      '  Reopen it with:  planx guard-clock-a3f9 v4',
+    expect(closingBlock('approve', 'guard-clock-a3f9', 4)).toEqual([
+      'Approved & sealed — guard-clock-a3f9 v4.',
+      'Paste to your agent:  /planx execute guard-clock-a3f9 v4',
+      'Reopen it with:  planx guard-clock-a3f9 v4',
       '',
     ]);
   });

@@ -331,10 +331,10 @@ describe('approval and sealing', () => {
  * without breaking it. Everything else planx prints is a sentence.
  */
 const MECHANICAL = [
-  /^(store\s+)?[/~]/, // `✓ /Users/…/skills/planx`, `store  ~/.planx`
-  /^\/planx\b/, //      the skill row install prints, name then description
-  /^[a-z0-9-]+ v\d+\b/, // `= guard-clock v3 unchanged — …`
-  /^[a-z0-9-]+: /, //   a doctor problem, which leads with the plan it is about
+  /^(Store\s+)?[/~]/, //      `/Users/…/skills/planx`, `Store  ~/.planx`
+  /^[a-z0-9-]+\s{2,}[/~]/, // a step row: what it acted on, then where
+  /^[a-z0-9-]+ v\d+\b/, //    `guard-clock v3 unchanged — …`
+  /^[a-z0-9-]+: /, //         a doctor problem, leading with the plan it is about
 ];
 
 /** Assert the rule over everything a command printed, on both streams. */
@@ -354,7 +354,7 @@ function expectSentences({ stdout, stderr }: { stdout: string; stderr: string })
 }
 
 describe('every line planx prints is a sentence', () => {
-  it('holds through capture, unlock, doctor, install and uninstall', async () => {
+  it('holds through capture, unlock, doctor, add-skills and remove-skills', async () => {
     const id = await seed();
     expectSentences(await cli.run(['capture', '--plan-id', id, '--stdin'], PLAN_V2));
 
@@ -369,9 +369,9 @@ describe('every line planx prints is a sentence', () => {
 
     // `--local`, and the harness runs planx in the temp store's directory, so
     // these write nowhere near the checkout or the real ~/.claude.
-    expectSentences(await cli.run(['install', '--local']));
-    expectSentences(await cli.run(['uninstall', '--local']));
-    expectSentences(await cli.run(['uninstall', '--local']));
+    expectSentences(await cli.run(['add-skills', '--local']));
+    expectSentences(await cli.run(['remove-skills', '--local']));
+    expectSentences(await cli.run(['remove-skills', '--local']));
   });
 });
 

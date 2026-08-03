@@ -8,22 +8,23 @@ Check whether the skill was ever written:
 ls ~/.claude/skills/planx ~/.codex/skills/planx
 ```
 
-If neither is there, the postinstall did not run or was skipped:
+If neither is there, you have not run the second install step. npm installs the
+CLI; the skills are a command:
 
 ```bash
-planx install
+planx add-skills
 ```
 
 Skills are read at session start for both agents, so restart the session
-afterwards. If `~/.codex` does not exist on your machine, the installer skips it
+afterwards. If `~/.codex` does not exist on your machine, `add-skills` skips it
 on purpose rather than creating it — pass `--agent codex` to force it.
 
 ## The agent prints "no feedback yet (waited 480s)"
 
 Its skill is out of date. planx no longer blocks or polls: the agent captures
-the plan, tells you to run `planx`, and ends its turn. Reinstall with
-`planx install`, which also removes the retired `planx-diff` and `planx-execute`
-skills, then restart the session.
+the plan, tells you to run `planx`, and ends its turn. Run
+`planx add-skills`, which also removes the retired `planx-diff` and
+`planx-execute` skills, then restart the session.
 
 ## The agent just stopped after capturing
 

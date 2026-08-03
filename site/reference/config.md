@@ -30,7 +30,7 @@ job, and a command to set it would be a bigger surface than the thing it sets.
 | Variable | Effect |
 | --- | --- |
 | `PLANX_DIR` | Use a different store. `--dir` takes precedence. |
-| `PLANX_NO_POSTINSTALL` | Skip the postinstall step entirely. |
+| `PLANX_NO_POSTINSTALL` | Silence the line npm prints after installing. |
 | `PLANX_DEBUG` | Print stack traces on error. |
 | `NO_COLOR` | Disable ANSI colour, per [no-color.org](https://no-color.org). |
 | `FORCE_COLOR` | Force colour on when not a TTY. |

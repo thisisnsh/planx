@@ -23,9 +23,9 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      # The postinstall writes skills into ~/.claude and ~/.codex. It already
-      # no-ops in a planx checkout, but being explicit here means a change to
-      # that guard can never quietly start mutating a CI runner's home.
+      # The postinstall only prints a line now, and stays quiet in a planx
+      # checkout besides — but being explicit here means a change to either
+      # can never quietly start mutating a CI runner's home.
       - run: npm ci
         env:
           PLANX_NO_POSTINSTALL: '1'

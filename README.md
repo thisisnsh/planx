@@ -62,7 +62,9 @@ $ planx
 
 Press `s`. It prints one command to paste back to your agent, which picks the
 plan up with every comment quoted against the exact lines it refers to. Press
-`a` when you are happy — the plan seals and every section locks.
+`a` when you are happy — the plan seals and every section locks. A version can
+be approved only when it carries no feedback and no note, which is why the bar
+offers `s submit` or `a approve` and never both.
 
 A note hangs off a rail that runs between the line number and the text, so its
 words start on the same left edge as the words they are about. A version with a
@@ -116,15 +118,17 @@ both work today through the same skill files, and neither is privileged.
 
 ```bash
 npm install -g @thisisnsh/planx
+planx add-skills
 ```
 
-Node 20.19 or newer. The install writes one skill into `~/.claude/skills/` and
-`~/.codex/skills/`. It does **not** touch `settings.json`, `config.toml`, or any
-other agent configuration — there is no hook to register.
+Node 20.19 or newer. npm installs the CLI and writes nothing else; `add-skills`
+writes one skill into `~/.claude/skills/` and `~/.codex/skills/`, showing each
+step as it goes. It does **not** touch `settings.json`, `config.toml`, or any
+other agent configuration — there is no hook to register. Run it again after an
+upgrade to refresh the skills.
 
-To remove it, run `planx uninstall` **before** `npm uninstall -g
-@thisisnsh/planx`: npm 7+ runs no uninstall scripts, so removing the package on
-its own leaves the skills behind.
+To remove it: `planx remove-skills`, which also offers to delete `~/.planx`,
+then `npm uninstall -g @thisisnsh/planx`.
 
 Then, in Claude Code or Codex:
 

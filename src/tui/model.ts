@@ -3,6 +3,7 @@ import { diffVersions, rowsForSingleVersion } from '../diff/lines.js';
 import type { Block } from '../diff/types.js';
 import { normalizedLines } from '../locks/anchor.js';
 import { lockedLineMap } from '../locks/manage.js';
+import { dim } from '../render/ansi.js';
 import { renderRichLines, type RenderedLine, type RenderMode } from '../render/diff.js';
 import { readLocks, readVersionText } from '../store/plans.js';
 import type { Annotation, LocksFile } from '../store/types.js';
@@ -69,6 +70,8 @@ export interface BuildModelOptions {
   versionB: number;
   mode: RenderMode;
   expandedGaps: ReadonlySet<number>;
+  /** Headings, by line number, whose sections are folded away. */
+  foldedSections?: ReadonlySet<number>;
   annotations: readonly Annotation[];
   /** Columns available for gutter and text together. */
   width: number;
@@ -120,24 +123,46 @@ export function buildModel(opts: BuildModelOptions): ReviewModel {
   // renderRichLines emits one line per row and one per collapsed gap, in block
   // order, so walking the blocks in parallel recovers which block each came from.
   const rows: ViewRow[] = [];
+  const folds = foldsIn(docLines, opts.foldedSections);
   let blockIndex = 0;
   let withinBlock = 0;
+  /** The section being folded away right now, gathering what it hides. */
+  let fold: OpenFold | null = null;
+
   for (const line of rendered.lines) {
     while (blockIndex < shown.length && withinBlock >= visibleHeight(shown[blockIndex]!)) {
       blockIndex++;
       withinBlock = 0;
     }
-    rows.push({
+    withinBlock++;
+
+    // A fold ends at the first document line past it. Anything with no line of
+    // its own — a deletion, a collapsed run — belongs to whatever is around it,
+    // so it goes under with the section rather than ending it.
+    if (fold && line.newLine !== null && line.newLine > fold.end) {
+      closeFold(fold);
+      fold = null;
+    }
+    if (fold) {
+      if (line.newLine !== null) {
+        fold.lines++;
+        fold.feedback += endingAt(opts.annotations, line.newLine).length;
+      }
+      continue;
+    }
+
+    const row: DocRow = {
       ...line,
       kind: 'doc',
       blockIndex: line.gapIndex ?? blockIndex,
       rail: line.newLine !== null && railed.has(line.newLine),
-    });
-    withinBlock++;
+    };
+    rows.push(row);
+
+    if (line.newLine === null) continue;
 
     // A note belongs directly under the last line it refers to, so it reads as
     // a margin comment on that passage rather than a footnote.
-    if (line.newLine === null) continue;
     for (const annotation of endingAt(opts.annotations, line.newLine)) {
       const editing = opts.draft?.annotationId === annotation.id;
       const text = editing ? opts.draft!.text : annotation.comment;
@@ -145,7 +170,12 @@ export function buildModel(opts: BuildModelOptions): ReviewModel {
         Boolean(opts.hiddenFeedback) || Boolean(opts.collapsedFeedback?.has(annotation.id));
       rows.push(...feedbackRows(annotation.id, text, { blockIndex, boxWidth, collapsed, editing }));
     }
+
+    // The heading itself stays, and its own notes with it. What it covers goes.
+    const end = folds.get(line.newLine);
+    if (end !== undefined) fold = { heading: row, end, lines: 0, feedback: 0 };
   }
+  if (fold) closeFold(fold);
 
   return {
     planId: opts.planId,
@@ -160,6 +190,100 @@ export function buildModel(opts: BuildModelOptions): ReviewModel {
     railColumn: rendered.gutterWidth,
     gutterWidth: rendered.gutterWidth + RAIL_WIDTH,
   };
+}
+
+/* --------------------------------------------------------------- folding */
+
+/**
+ * Heading detection, beside the rows it folds.
+ *
+ * `sectionOf` in ../render/markdown.ts answers a different question — which
+ * heading a line sits *under* — and answers it for one line at a time. This
+ * needs every heading with its level, to work out where a section ends. Both
+ * track fenced code the same way, so a `# comment` inside a fence is not a
+ * heading in either.
+ */
+interface Heading {
+  /** 1-based, in the version under review. */
+  line: number;
+  level: number;
+}
+
+const FENCE = /^\s*(`{3,}|~{3,})/;
+const HEADING = /^(#{1,6})\s+\S/;
+
+function headingsIn(lines: readonly string[]): Heading[] {
+  const out: Heading[] = [];
+  let inFence = false;
+  for (let i = 0; i < lines.length; i++) {
+    const text = lines[i]!;
+    if (FENCE.test(text)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    const match = HEADING.exec(text);
+    if (match) out.push({ line: i + 1, level: match[1]!.length });
+  }
+  return out;
+}
+
+/**
+ * The last line a fold rooted at `line` would hide, or null when there is
+ * nothing to fold there.
+ *
+ * A section runs to the next heading of the same or a higher level, so folding
+ * a `##` takes its `###` and `####` subsections with it. `#####` and `######`
+ * do not fold at all: at that depth a section is a paragraph, and a fold that
+ * hides three lines is a keystroke that costs more than it saves.
+ */
+const MAX_FOLD_LEVEL = 4;
+
+export function foldEnd(lines: readonly string[], line: number): number | null {
+  const all = headingsIn(lines);
+  const index = all.findIndex((h) => h.line === line);
+  const heading = all[index];
+  if (!heading || heading.level > MAX_FOLD_LEVEL) return null;
+
+  const next = all.slice(index + 1).find((h) => h.level <= heading.level);
+  const end = next ? next.line - 1 : lines.length;
+  // A heading with nothing under it folds to itself, which is a keypress that
+  // appears to do nothing. Better that it is never offered.
+  return end > heading.line ? end : null;
+}
+
+/** heading line → last line hidden, for the sections currently folded. */
+function foldsIn(lines: readonly string[], folded?: ReadonlySet<number>): Map<number, number> {
+  const out = new Map<number, number>();
+  if (!folded?.size) return out;
+  for (const line of folded) {
+    const end = foldEnd(lines, line);
+    if (end !== null) out.set(line, end);
+  }
+  return out;
+}
+
+interface OpenFold {
+  heading: DocRow;
+  end: number;
+  lines: number;
+  feedback: number;
+}
+
+/**
+ * Put what was hidden back on the heading, inline.
+ *
+ * A folded section that says nothing about itself is indistinguishable from a
+ * plan that is simply short, and feedback folded out of sight is feedback you
+ * will not answer — so the rail is drawn on the heading too, in its own column,
+ * which is what makes a folded section carrying comments identifiable at a
+ * glance.
+ */
+function closeFold(fold: OpenFold): void {
+  const lines = `${fold.lines} line${fold.lines === 1 ? '' : 's'}`;
+  const feedback = fold.feedback ? ` · ${fold.feedback} feedback` : '';
+  fold.heading.text += dim(`  ⋯ ${lines}${feedback}`);
+  if (fold.feedback) fold.heading.rail = true;
 }
 
 /** Every line a note covers, which is every line the rail runs down. */
