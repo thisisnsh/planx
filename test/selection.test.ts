@@ -28,9 +28,9 @@ const ROWS: SelectableRow[] = [
 const ANNOTATED: SelectableRow[] = [
   { newLine: 1, gapIndex: null },
   { newLine: 2, gapIndex: null },
-  { newLine: null, gapIndex: null, kind: 'feedback' },
-  { newLine: null, gapIndex: null, kind: 'feedback' },
-  { newLine: null, gapIndex: null, kind: 'feedback' },
+  { newLine: null, gapIndex: null },
+  { newLine: null, gapIndex: null },
+  { newLine: null, gapIndex: null },
   { newLine: 3, gapIndex: null },
 ];
 
@@ -73,8 +73,8 @@ describe('keyboard selection', () => {
   });
 });
 
-describe('walking past notes', () => {
-  it('steps over a note box rather than into it', () => {
+describe('walking into notes', () => {
+  it('steps into the box rather than over it, and out the other side', () => {
     const down = run(
       [
         { type: 'moveTo', index: 1 },
@@ -82,34 +82,31 @@ describe('walking past notes', () => {
       ],
       ANNOTATED,
     );
-    expect(down.cursor).toBe(5);
+    expect(down.cursor).toBe(2);
 
-    const up = run(
+    const out = run(
       [
-        { type: 'moveTo', index: 5 },
-        { type: 'move', delta: -1 },
+        { type: 'moveTo', index: 4 },
+        { type: 'move', delta: 1 },
       ],
       ANNOTATED,
     );
-    expect(up.cursor).toBe(1);
+    expect(out.cursor).toBe(5);
   });
 
-  it('counts document rows, not drawn rows', () => {
-    expect(run([{ type: 'move', delta: 2 }], ANNOTATED).cursor).toBe(5);
+  it('counts drawn rows, so the box is four presses deep', () => {
+    expect(run([{ type: 'move', delta: 4 }], ANNOTATED).cursor).toBe(4);
   });
 
-  it('stays put rather than landing on a box at the end of the list', () => {
+  it('starts no selection on a box row, which has no line to anchor to', () => {
+    const state = run([{ type: 'moveTo', index: 3 }, { type: 'toggleVisual' }], ANNOTATED);
+    expect(spanAtCursor(ANNOTATED, state)).toBeNull();
+    expect(spanOf(ANNOTATED, state)).toBeNull();
+  });
+
+  it('rests on the last row of a box that ends the list', () => {
     const rows: SelectableRow[] = [...ANNOTATED.slice(0, 5)];
-    expect(
-      run(
-        [
-          { type: 'moveTo', index: 1 },
-          { type: 'move', delta: 1 },
-        ],
-        rows,
-      ).cursor,
-    ).toBe(1);
-    expect(run([{ type: 'moveTo', index: 4 }], rows).cursor).toBe(1);
+    expect(run([{ type: 'move', delta: 99 }], rows).cursor).toBe(4);
   });
 });
 

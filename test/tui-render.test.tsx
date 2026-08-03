@@ -490,7 +490,7 @@ describe('feedback lives in the document', () => {
     app.unmount();
   });
 
-  it('steps over the note instead of into it, and draws no arrow beside one', async () => {
+  it('steps into the note, so the box is a thing the cursor can point at', async () => {
     const app = mount(seed(), null, 1);
     await app.ready();
 
@@ -499,15 +499,39 @@ describe('feedback lives in the document', () => {
     await app.press(ENTER);
     await app.frame('on line one');
 
+    // Off line 1: the box's top edge, then its text.
+    await app.press(DOWN);
     await app.press(DOWN);
     await new Promise((r) => setTimeout(r, 120));
 
-    const rows = bodyRows(app.stdout.lastFrame);
-    // The arrow is on the next document line, not on any row of the box.
-    const arrowed = rows.filter((l) => l.includes(ARROW));
+    const arrowed = bodyRows(app.stdout.lastFrame).filter((l) => l.includes(ARROW));
     expect(arrowed).toHaveLength(1);
-    expect(arrowed[0]).not.toContain('on line one');
-    expect(arrowed[0]).not.toContain('│ │');
+    expect(arrowed[0]).toContain('on line one');
+    app.unmount();
+  });
+
+  it('folds the note from inside the box, and the cursor stays on it', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('f');
+    await app.press('fold from within');
+    await app.press(ENTER);
+    await app.frame('fold from within');
+
+    await app.press(DOWN);
+    await app.press(DOWN);
+    await app.frame('space fold');
+
+    await app.press(SPACE);
+    await new Promise((r) => setTimeout(r, 120));
+
+    const rows = bodyRows(app.stdout.lastFrame);
+    expect(rows.filter((l) => l.includes('╯'))).toHaveLength(0);
+    const folded = rows.find((l) => l.includes('fold from within'))!;
+    expect(folded).toContain('├─ ▸ fold from within');
+    // Still under the cursor, so space puts it straight back.
+    expect(folded).toContain(ARROW);
     app.unmount();
   });
 });

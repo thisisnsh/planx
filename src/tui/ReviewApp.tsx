@@ -210,8 +210,13 @@ export function ReviewApp(props: ReviewAppProps) {
 
   /* ------------------------------------------------------------- actions */
 
-  /** The comment covering the line, or the selection, under the cursor. */
+  /** The comment under the cursor — the box itself, or the lines it covers. */
   function annotationAtCursor(): Annotation | null {
+    const row = rows[selection.cursor];
+    if (row?.kind === 'feedback') {
+      return annotations.find((a) => a.id === row.annotationId) ?? null;
+    }
+
     const span = spanAtCursor(rows, selection);
     if (!span) return null;
     return (
@@ -282,9 +287,8 @@ export function ReviewApp(props: ReviewAppProps) {
   /**
    * Emptying a note is how you delete it.
    *
-   * There is no delete key: the cursor cannot reach a note any more, and a
-   * second way to destroy something is not worth a letter of the keyboard when
-   * `f`, clear, `enter` already does it.
+   * There is no delete key: a second way to destroy something is not worth a
+   * letter of the keyboard when `f`, clear, `enter` already does it.
    */
   function commitFeedback(annotationId: string, draft: string) {
     const text = draft.trim();
@@ -345,11 +349,23 @@ export function ReviewApp(props: ReviewAppProps) {
     setSelection((s) => reduceSelection(s, { type: 'clear' }, rows));
   }
 
-  /** Space folds what is under the cursor: a note into its rail, a gap open. */
+  /**
+   * Space folds what is under the cursor: a note into its rail, a gap open.
+   *
+   * Any row of the box does it, not only the line it hangs off — the cursor can
+   * reach the box now, and a key that works on the thing you are pointing at is
+   * the one that needs no explaining.
+   */
   function toggleFold() {
     const note = annotationAtCursor();
     if (note) {
       const id = note.id;
+      // Folding from inside the box takes four rows down to one, so the cursor
+      // moves to the row the box is about to become rather than to whatever
+      // line happens to slide up underneath it.
+      if (rows[selection.cursor]?.kind === 'feedback') {
+        jumpTo(rows.findIndex((r) => r.kind === 'feedback' && r.annotationId === id));
+      }
       return setCollapsedFeedback((set) => (set.has(id) ? without(set, id) : withId(set, id)));
     }
     // A gap only expands: once it has, the row that stood for it is gone, and
@@ -515,6 +531,13 @@ export function ReviewApp(props: ReviewAppProps) {
       stdout.write('\x1b[?1006l\x1b[?1000l');
     };
   }, [props.mouse, stdout, stdin, scrollBy]);
+
+  // Folding notes takes rows out from under the cursor — `h` can take dozens —
+  // and a cursor past the end draws no arrow at all until the next keypress.
+  useEffect(() => {
+    if (selection.cursor < rows.length) return;
+    jumpTo(rows.length - 1);
+  }, [rows, selection.cursor, jumpTo]);
 
   useEffect(() => () => exit(), [exit]);
 
@@ -718,7 +741,10 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): strin
   if (mode.kind === 'help') return 'any key to close';
 
   const parts: string[] = [];
-  if (ctx.annotated) parts.push('space fold', 'f edit');
+  // Folding is offered on the box, which the cursor can now reach — a document
+  // line beside a note is a line, and the note has a row of its own.
+  if (row?.kind === 'feedback') parts.push('space fold', 'f edit');
+  else if (ctx.annotated) parts.push('f edit');
   else if (row?.gapIndex !== null && row?.gapIndex !== undefined) {
     parts.push('space expand', 'v select');
   } else {
@@ -747,14 +773,14 @@ function isCursorLocked(
 
 /** `null` in the third slot means the key only exists on a plan with history. */
 const HELP: Array<[string, string, 'always' | 'versioned']> = [
-  ['↑ ↓', 'move a line at a time — notes are stepped over', 'always'],
+  ['↑ ↓', 'move a row at a time, notes included', 'always'],
   ['^d ^u', 'half a screen down or up', 'always'],
   ['^f ^b', 'a whole screen down or up', 'always'],
   ['g G', 'the top and the bottom of the plan', 'always'],
   ['v', 'start or end a selection, then ↑ ↓ to extend', 'always'],
   ['f', 'feedback on the selection, or edit the note on this line', 'always'],
   ['l', 'lock or unlock the selection — applied immediately', 'always'],
-  ['space', 'fold the note, or expand the collapsed run, on this line', 'always'],
+  ['space', 'fold the note, or expand the collapsed run, under the cursor', 'always'],
   ['h', 'fold or unfold every note at once', 'always'],
   ['n', 'a note about the whole plan', 'always'],
   ['d', 'show the diff against the previous version, or hide it', 'versioned'],
