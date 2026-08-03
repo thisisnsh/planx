@@ -138,13 +138,16 @@ describe('the review hand-off across two processes', () => {
     expect(result.stdout).toContain(`planx capture --plan-id ${id} --parent v1 --splice --stdin`);
   });
 
-  it('carries the plan text, so a session that never saw it can revise', async () => {
+  it('carries the feedback and the lines it quotes, but not the plan', async () => {
     const id = await seed();
     await cli.run(['submit', id, 'v1', '--comment', '3-3:Say more here.']);
 
     const result = await cli.run(['resume', id, 'v1']);
-    expect(result.stdout).toContain('The plan as it stands');
     expect(result.stdout).toContain('Say more here.');
+    expect(result.stdout).toContain('> ## Context');
+    expect(result.stdout).not.toContain('The plan as it stands');
+    // A session that genuinely does not have the plan asks for it.
+    expect((await cli.run(['show', id, 'v1', '--plain'])).stdout).toContain('## Rollout');
   });
 
   it('says there is nothing to revise towards before any review', async () => {

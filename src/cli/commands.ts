@@ -213,7 +213,6 @@ export function cmdResume(ctx: Ctx): number {
       version,
       feedback,
       carried,
-      skeleton: renderSkeleton(text, readLocks(id)),
       locks: readLocks(id),
       docLines: normalizedLines(text),
     }),

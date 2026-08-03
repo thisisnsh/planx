@@ -3,7 +3,6 @@ import { capture } from '../src/protocol/capture.js';
 import { carriedOver, presentResume } from '../src/protocol/present.js';
 import { buildAnnotation, submitFeedback } from '../src/protocol/submit.js';
 import { normalizedLines } from '../src/locks/anchor.js';
-import { renderSkeleton } from '../src/locks/markers.js';
 import { readLocks, readVersionText } from '../src/store/plans.js';
 import { listFeedback } from '../src/store/feedback.js';
 import { tempStore } from './helpers.js';
@@ -38,7 +37,6 @@ function resumeText(planId: string, version: number): string {
     version,
     feedback: history.filter((f) => f.version === version),
     carried: carriedOver(history, version, text),
-    skeleton: renderSkeleton(text, readLocks(planId)),
     locks: readLocks(planId),
     docLines: normalizedLines(text),
   });
@@ -64,15 +62,29 @@ describe('resume', () => {
     expect(out).not.toContain('planx capture');
   });
 
-  it('carries the plan text so a cold session can revise it', () => {
+  // The agent that wrote the plan already has it, and for a plan of any size
+  // re-sending it dwarfs the feedback this exists to deliver.
+  it('sends the feedback and not the plan', () => {
     const { planId, version } = capture({ text: PLAN, title: 'p' });
     comment(planId, version, 7, 7, 'Wrong layer.');
 
     const out = resumeText(planId, version);
-    expect(out).toContain('The plan as it stands');
-    expect(out).toContain('Extend the guard in poller.ts.');
+    expect(out).not.toContain('The plan as it stands');
+    expect(out).not.toContain('````');
     expect(out).toContain('Wrong layer.');
     expect(out).toContain(`planx capture --plan-id ${planId} --parent v1`);
+  });
+
+  // The quoted lines are what make a line number mean anything once a revision
+  // has moved it, so they stay — dropping them would force the `planx show`
+  // this is trying to avoid.
+  it('still quotes the lines every comment is anchored to', () => {
+    const { planId, version } = capture({ text: PLAN, title: 'p' });
+    comment(planId, version, 7, 7, 'Wrong layer.');
+
+    const out = resumeText(planId, version);
+    expect(out).toContain('> Extend the guard in poller.ts.');
+    expect(out).toContain('(line 7)');
   });
 
   it('is a pure read — running it twice changes nothing', () => {

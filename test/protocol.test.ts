@@ -195,7 +195,6 @@ describe('what the agent sees', () => {
       version,
       feedback: history.filter((f) => f.version === version),
       carried: carriedOver(history, version, text),
-      skeleton: renderSkeleton(text, readLocks(planId)),
       locks: readLocks(planId),
       docLines: normalizedLines(text),
     });

@@ -8,9 +8,13 @@ The user has reviewed a version and passed the command back. Pick it up.
 planx resume <plan-id>
 ```
 
-One read with everything: the plan as it stands, the comments anchored to the
+One read with everything asked of the plan: the comments, quoted against the
 lines they refer to, anything still unaddressed from an earlier version, and the
 locked blocks. It waits for nothing and is safe to run twice.
+
+It does **not** return the plan. You wrote it, so you have it. If you no longer
+have it in context, run `planx show <plan-id> --plain` — do not assume `resume`
+will hand it to you.
 
 If it says **no review yet**, stop and tell the user. Do not revise — there is
 nothing to revise towards.
