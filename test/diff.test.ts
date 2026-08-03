@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { collapse, flatten } from '../src/diff/collapse.js';
 import { diffVersions, rowsForSingleVersion, splitLines, statOf } from '../src/diff/lines.js';
 import { setColorEnabled, stripAnsi, truncate, visibleLength } from '../src/render/ansi.js';
-import { renderDocument, renderRichLines, renderUnified } from '../src/render/diff.js';
+import { hiddenLine, renderDocument, renderRichLines, renderUnified } from '../src/render/diff.js';
 import { highlightMarkdown, sectionOf } from '../src/render/markdown.js';
 
 afterEach(() => setColorEnabled(null));
@@ -158,7 +158,7 @@ describe('rich rendering', () => {
     // last visible number fills its column.
     const body = Array.from({ length: 40 }, (_, i) => `line ${i + 1}`).join('\n');
     const rows = diffVersions(`head\n${body}\ntail\n`, `HEAD\n${body}\nTAIL\n`);
-    const { lines, gutterWidth } = renderRichLines(collapse(rows), { mode: 'rich' });
+    const { lines, gutterWidth, numberWidth } = renderRichLines(collapse(rows), { mode: 'rich' });
 
     const gap = lines.find((l) => l.gapIndex !== null)!;
     expect(gap.text).toContain('unchanged lines');
@@ -168,6 +168,12 @@ describe('rich rendering', () => {
     const numbered = lines.find((l) => l.newLine === 42)!;
     expect(gap.gutter).toHaveLength(numbered.gutter.indexOf('42'));
     expect(gap.gutter.length).toBeLessThan(gutterWidth);
+
+    // A folded section stands in for lines the same way, so it is drawn by the
+    // same function and lands in the same column.
+    const fold = hiddenLine('12 lines (space to expand)', { numberWidth, gutterWidth });
+    expect(fold.gutter).toHaveLength(gap.gutter.length);
+    expect(fold.text).toContain('⋯ 12 lines');
   });
 
   it('drops the sign column when there is nothing to sign', () => {

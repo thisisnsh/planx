@@ -433,11 +433,13 @@ export function ReviewApp(props: ReviewAppProps) {
    *
    * Any row of the box does it, not only the line it hangs off — the cursor can
    * reach the box now, and a key that works on the thing you are pointing at is
-   * the one that needs no explaining.
+   * the one that needs no explaining. The dim row a folded section leaves
+   * behind answers to it too, for the same reason: it is the thing on screen
+   * saying the section is there.
    */
   function toggleFold() {
     const row = rows[selection.cursor];
-    const heading = row?.kind === 'doc' ? foldableHeading(row) : null;
+    const heading = foldTarget(row);
     if (heading !== null) {
       return setFoldedSections((set) =>
         set.has(heading) ? withoutLine(set, heading) : new Set(set).add(heading),
@@ -462,8 +464,15 @@ export function ReviewApp(props: ReviewAppProps) {
     setExpandedGaps((set) => new Set(set).add(gap));
   }
 
-  /** The line this row heads a foldable section from, or null. */
-  function foldableHeading(row: ViewRow): number | null {
+  /**
+   * The heading line `space` would fold or unfold from this row, or null.
+   *
+   * Two rows answer to the same section: the heading itself, and the dim row
+   * standing in for what it hides.
+   */
+  function foldTarget(row: ViewRow | undefined): number | null {
+    if (row?.kind !== 'doc') return null;
+    if (row.fold !== null) return row.fold;
     if (row.newLine === null) return null;
     return foldEnd(model.docLines, row.newLine) === null ? null : row.newLine;
   }
@@ -703,7 +712,7 @@ export function ReviewApp(props: ReviewAppProps) {
   // What space would do where the cursor is, so the hint says it rather than
   // making you press it to find out.
   const cursorRow = rows[selection.cursor];
-  const headingLine = cursorRow ? foldableHeading(cursorRow) : null;
+  const headingLine = foldTarget(cursorRow);
   const headingHint =
     headingLine === null ? null : foldedSections.has(headingLine) ? 'unfold' : 'fold';
   const noteFolded =
@@ -889,10 +898,10 @@ function renderRow(row: ViewRow, opts: RowOptions): string {
 
   const gutter = opts.cursor ? row.gutterActive : row.gutter;
   const text = truncate(opts.selected ? inverse(stripAnsi(row.text)) : row.text, opts.width);
-  // A collapsed run is not a line of the document — no number, no lock, no note
-  // — so it gets no rail column either, and its marker starts where a line
-  // number would.
-  if (row.gapIndex !== null) return `${arrow} ${gutter}${text}`;
+  // A collapsed run and a folded section are not lines of the document — no
+  // number, no lock, no note — so they get no rail column either, and their
+  // marker starts where a line number would.
+  if (row.gapIndex !== null || row.fold !== null) return `${arrow} ${gutter}${text}`;
 
   const rail = row.rail ? signal('│') : ' ';
   return `${arrow} ${gutter}${rail} ${text}`;
@@ -1039,8 +1048,13 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
   // of fold now and the cursor is what decides between them.
   if (row?.kind === 'feedback') {
     hints.push(['space', ctx.noteFolded ? 'unfold feedback' : 'fold feedback'], ['f', 'edit']);
-  } else if (row?.gapIndex !== null && row?.gapIndex !== undefined) {
-    hints.push(['space', 'expand'], ['v', ctx.selecting ? 'unselect lines' : 'select lines']);
+  } else if (standsInForHiddenLines(row)) {
+    // Nothing on a stand-in row can be commented on or locked, so neither key
+    // is offered. `space` is the only one that means anything here.
+    hints.push(
+      ['space', ctx.heading ? 'unfold section' : 'expand'],
+      ['v', ctx.selecting ? 'unselect lines' : 'select lines'],
+    );
   } else {
     if (ctx.heading) hints.push(['space', `${ctx.heading} section`]);
     hints.push(['v', ctx.selecting ? 'unselect lines' : 'select lines']);
@@ -1053,6 +1067,11 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
   if (ctx.manyVersions) hints.push(['←→', 'version']);
   hints.push(ctx.carries ? ['s', 'submit'] : ['a', 'approve'], ['?', 'help']);
   return hints;
+}
+
+/** A collapsed run or a folded section: a row that stands in for hidden lines. */
+function standsInForHiddenLines(row: ViewRow | undefined): boolean {
+  return row?.kind === 'doc' && (row.gapIndex !== null || row.fold !== null);
 }
 
 /**

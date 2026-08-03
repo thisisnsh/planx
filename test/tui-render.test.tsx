@@ -645,6 +645,50 @@ describe('folding a section', () => {
     app.unmount();
   });
 
+  it('says so on a row of its own, the way a collapsed run does', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press(DOWN);
+    await app.press(DOWN);
+    await app.frame('space fold section');
+    await app.press(SPACE);
+    await app.frame('(space to expand)');
+
+    const rows = bodyRows(app.stdout.lastFrame);
+    const heading = rows.find((l) => l.includes('## Context'))!;
+    const summary = rows.find((l) => l.includes('lines (space to expand)'))!;
+    // The heading is its own text again, with what it hides on the next row —
+    // left of the rail column, where a line number would be.
+    expect(heading).not.toContain('⋯');
+    expect(rows.indexOf(summary)).toBe(rows.indexOf(heading) + 1);
+    expect(summary.indexOf('⋯')).toBeLessThan(boxColumnOf(heading));
+    app.unmount();
+  });
+
+  it('expands from the summary row as well as from the heading', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press(DOWN);
+    await app.press(DOWN);
+    await app.press(SPACE);
+    await app.frame('(space to expand)');
+
+    // Down onto the summary row itself, which offers the key it names.
+    await app.press(DOWN);
+    await app.frame('space unfold section');
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('(space to expand)');
+    // Nothing on it to comment on or lock, so neither key is offered.
+    expect(app.stdout.lastFrame).not.toContain('f feedback');
+    expect(app.stdout.lastFrame).not.toContain('l lock');
+
+    await app.press(SPACE);
+    await app.frame('The poller reads a snapshot');
+    expect(app.stdout.lastFrame).not.toContain('(space to expand)');
+    app.unmount();
+  });
+
   it('takes the subsections with it, and never folds the deepest headings', async () => {
     const id = capture({
       text: [
@@ -679,10 +723,13 @@ describe('folding a section', () => {
     expect(app.stdout.lastFrame).toContain('## Two');
 
     // `#####` is a paragraph with a title on it; folding it saves nothing, so
-    // it is neither offered nor done.
-    await app.press('G');
+    // it is neither offered nor done. Unfolding first, because it is buried in
+    // the section that was just folded away.
+    await app.press(SPACE);
+    await app.frame('### Under one');
     await app.press('g');
-    for (let i = 0; i < 4; i++) await app.press(DOWN);
+    for (let i = 0; i < 8; i++) await app.press(DOWN);
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('##### Too deep');
     expect(app.stdout.lastFrame).not.toContain('space fold section');
     app.unmount();
   });

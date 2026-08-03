@@ -78,17 +78,20 @@ This version has 3 feedbacks. Delete them or press s to submit.
 
 ## Getting around a plan you have read before
 
-`space` on a heading folds its section away, subsections included, and the
-heading says what went with it:
+`space` on a heading folds its section away, subsections included, and leaves a
+row saying what went with it — the same dim marker a collapsed run of unchanged
+lines leaves, in the same column, expanded by the same key:
 
 ```
-▸  3 │ ## Approach              ⋯ 12 lines · 2 feedback
+▸  3 │ ## Approach
+      ⋯ 12 lines · 2 feedback (space to expand)
    16   ## Rollout
 ```
 
-The rail beside a folded heading means there is feedback inside it, so nothing
-you left can hide behind a fold. `j` steps to the next feedback on the version,
-in document order, wrapping at the end — and unfolds a section to get there.
+`space` on either row brings the section back. The rail beside a folded heading
+means there is feedback inside it, so nothing you left can hide behind a fold.
+`j` steps to the next feedback on the version, in document order, wrapping at
+the end — and unfolds a section to get there.
 
 ## Which feedback is still live
 

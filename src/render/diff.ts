@@ -136,6 +136,37 @@ export interface RichLines {
   lines: RenderedLine[];
   /** Columns every gutter takes, so callers can indent under the text column. */
   gutterWidth: number;
+  /** The line-number column's width, for rows that stand in for lines. */
+  numberWidth: number;
+}
+
+export interface HiddenLineMetrics {
+  numberWidth: number;
+  gutterWidth: number;
+}
+
+/**
+ * The dim row that stands in for lines which are not on screen.
+ *
+ * Padded to the line-number column, not the text column, so the `⋯` lands where
+ * a line number would and the eye finds it on the same edge it is already
+ * scanning down. Out at the text column it sat further right than anything
+ * around it.
+ *
+ * A collapsed run of unchanged lines and a folded section are the same object
+ * to a reader — both say there is more here and space brings it back — so they
+ * are drawn by one function rather than two that drift.
+ */
+export function hiddenLine(text: string, metrics: HiddenLineMetrics): RenderedLine {
+  const pad = ' '.repeat(metrics.gutterWidth - metrics.numberWidth - 1);
+  return {
+    gutter: pad,
+    gutterActive: pad,
+    text: dim(`${GAP_MARKER} ${text}`),
+    newLine: null,
+    gapIndex: null,
+    locked: false,
+  };
 }
 
 /**
@@ -160,18 +191,12 @@ export function renderRichLines(blocks: Block[], opts: DiffRenderOptions): RichL
       // Deleted lines never existed in the new document, so they must not
       // advance the fence tracker; hidden context lines must.
       for (const row of block.rows) if (row.kind !== 'del') highlightLine(row.text, state);
-      // Padded to the line-number column, not the text column, so the `⋯` lands
-      // where a line number would and the eye finds it on the same edge it is
-      // already scanning down. Out at the text column it sat further right than
-      // anything around it.
-      const pad = ' '.repeat(width - numberWidth - 1);
       lines.push({
-        gutter: pad,
-        gutterActive: pad,
-        text: dim(`${GAP_MARKER} ${block.count} unchanged lines (space to expand)`),
-        newLine: null,
+        ...hiddenLine(`${block.count} unchanged lines (space to expand)`, {
+          numberWidth,
+          gutterWidth: width,
+        }),
         gapIndex: index,
-        locked: false,
       });
       return;
     }
@@ -191,7 +216,7 @@ export function renderRichLines(blocks: Block[], opts: DiffRenderOptions): RichL
     }
   });
 
-  return { lines, gutterWidth: width };
+  return { lines, gutterWidth: width, numberWidth };
 }
 
 /* ----------------------------------------------------------------- plain */

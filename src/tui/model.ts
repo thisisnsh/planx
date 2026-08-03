@@ -3,8 +3,13 @@ import { diffVersions, rowsForSingleVersion } from '../diff/lines.js';
 import type { Block } from '../diff/types.js';
 import { normalizedLines } from '../locks/anchor.js';
 import { lockedLineMap } from '../locks/manage.js';
-import { dim } from '../render/ansi.js';
-import { renderRichLines, type RenderedLine, type RenderMode } from '../render/diff.js';
+import {
+  hiddenLine,
+  renderRichLines,
+  type HiddenLineMetrics,
+  type RenderedLine,
+  type RenderMode,
+} from '../render/diff.js';
 import { readLocks, readVersionText } from '../store/plans.js';
 import type { Annotation, LocksFile } from '../store/types.js';
 
@@ -25,6 +30,11 @@ export interface DocRow extends RenderedLine {
   blockIndex: number;
   /** A note covers this line, so the rail runs down between number and text. */
   rail: boolean;
+  /**
+   * The heading line whose folded section this row stands in for, or null on
+   * every real line of the document. Space on it unfolds that section.
+   */
+  fold: number | null;
 }
 
 export interface FeedbackRow {
@@ -124,6 +134,7 @@ export function buildModel(opts: BuildModelOptions): ReviewModel {
   // order, so walking the blocks in parallel recovers which block each came from.
   const rows: ViewRow[] = [];
   const folds = foldsIn(docLines, opts.foldedSections);
+  const metrics = { numberWidth: rendered.numberWidth, gutterWidth: rendered.gutterWidth };
   let blockIndex = 0;
   let withinBlock = 0;
   /** The section being folded away right now, gathering what it hides. */
@@ -140,7 +151,7 @@ export function buildModel(opts: BuildModelOptions): ReviewModel {
     // its own — a deletion, a collapsed run — belongs to whatever is around it,
     // so it goes under with the section rather than ending it.
     if (fold && line.newLine !== null && line.newLine > fold.end) {
-      closeFold(fold);
+      rows.push(foldRow(fold, metrics));
       fold = null;
     }
     if (fold) {
@@ -156,6 +167,7 @@ export function buildModel(opts: BuildModelOptions): ReviewModel {
       kind: 'doc',
       blockIndex: line.gapIndex ?? blockIndex,
       rail: line.newLine !== null && railed.has(line.newLine),
+      fold: null,
     };
     rows.push(row);
 
@@ -173,9 +185,11 @@ export function buildModel(opts: BuildModelOptions): ReviewModel {
 
     // The heading itself stays, and its own notes with it. What it covers goes.
     const end = folds.get(line.newLine);
-    if (end !== undefined) fold = { heading: row, end, lines: 0, feedback: 0 };
+    if (end !== undefined) {
+      fold = { heading: row, line: line.newLine, blockIndex, end, lines: 0, feedback: 0 };
+    }
   }
-  if (fold) closeFold(fold);
+  if (fold) rows.push(foldRow(fold, metrics));
 
   return {
     planId: opts.planId,
@@ -265,25 +279,40 @@ function foldsIn(lines: readonly string[], folded?: ReadonlySet<number>): Map<nu
 
 interface OpenFold {
   heading: DocRow;
+  /** The heading's own line, which is what unfolding is keyed on. */
+  line: number;
+  blockIndex: number;
   end: number;
   lines: number;
   feedback: number;
 }
 
 /**
- * Put what was hidden back on the heading, inline.
+ * A row of its own for what the fold hid, under the heading.
+ *
+ * The same dim stand-in a collapsed run of unchanged lines gets, because it is
+ * the same promise: there is more here, space brings it back. Hung off the end
+ * of the heading instead — where it used to be — it read as part of the title,
+ * so the one row you could press space on was the row that looked least like a
+ * control, and a long heading pushed the count off the right edge.
  *
  * A folded section that says nothing about itself is indistinguishable from a
  * plan that is simply short, and feedback folded out of sight is feedback you
- * will not answer — so the rail is drawn on the heading too, in its own column,
- * which is what makes a folded section carrying comments identifiable at a
- * glance.
+ * will not answer — so the count comes with it, and the rail stays on the
+ * heading, which is what makes a folded section carrying comments identifiable
+ * at a glance.
  */
-function closeFold(fold: OpenFold): void {
+function foldRow(fold: OpenFold, metrics: HiddenLineMetrics): DocRow {
   const lines = `${fold.lines} line${fold.lines === 1 ? '' : 's'}`;
   const feedback = fold.feedback ? ` · ${fold.feedback} feedback` : '';
-  fold.heading.text += dim(`  ⋯ ${lines}${feedback}`);
   if (fold.feedback) fold.heading.rail = true;
+  return {
+    ...hiddenLine(`${lines}${feedback} (space to expand)`, metrics),
+    kind: 'doc',
+    blockIndex: fold.blockIndex,
+    rail: false,
+    fold: fold.line,
+  };
 }
 
 /** Every line a note covers, which is every line the rail runs down. */
