@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { contextSha, findOccurrences, locateLock, normalizedLines } from '../src/locks/anchor.js';
+import {
+  contextSha,
+  findOccurrences,
+  locateLock,
+  needleLines,
+  normalizedLines,
+} from '../src/locks/anchor.js';
 import {
   activeGrant,
   addLock,
@@ -249,6 +255,37 @@ describe('sealing', () => {
     expect(coverageOf(locks, doc).every((n) => n <= 1)).toBe(true);
     expect(locks.locks['L1']!.origin).toBe('user');
   });
+
+  // Every section of PLAN but the last ends in a blank line, so this is the
+  // ordinary case rather than a contrived one: sealing used to store a needle
+  // one line short and leave that blank line with no ⚿ beside it.
+  it('locks every line of a plan whose sections end in a blank line', () => {
+    const locks = emptyLocks();
+    const doc = normalizedLines(PLAN);
+    sealPlan(locks, doc, 1);
+
+    const covered = lockedLineMap(doc, locks);
+    expect(doc.map((_, i) => covered.has(i + 1))).toEqual(doc.map(() => true));
+  });
+});
+
+describe('splitting text into lines', () => {
+  // A document's trailing newline is a terminator; a lock's stored text has no
+  // terminator at all, so a trailing "" there is a blank line it covers.
+  it('drops a document’s trailing blank and keeps a needle’s', () => {
+    expect(normalizedLines('one\ntwo\n')).toEqual(['one', 'two']);
+    expect(needleLines('one\ntwo\n')).toEqual(['one', 'two', '']);
+  });
+
+  it('agrees on text that does not end in a newline', () => {
+    expect(normalizedLines('one\ntwo')).toEqual(['one', 'two']);
+    expect(needleLines('one\ntwo')).toEqual(['one', 'two']);
+  });
+
+  it('finds a needle ending in a blank line, at its full length', () => {
+    const doc = ['a', 'b', '', 'c'];
+    expect(findOccurrences(doc, needleLines('b\n'))).toEqual([{ start: 1, end: 2 }]);
+  });
 });
 
 /**
@@ -334,6 +371,26 @@ describe('partial unlock', () => {
     unlockRange(locks, normalizedLines(PLAN), { start: 8, end: 8 });
     expect(Object.keys(locks.locks)).toEqual(['L1']);
     expect(locks.locks['L1']!.text).toContain('ff_clock_guard');
+  });
+
+  // A sealed section runs to the blank line before the next heading, so
+  // unlocking its body leaves that blank line behind. A lock on nothing but a
+  // blank line matches every blank line in the plan, so it could never be
+  // placed again — and a lock that cannot be placed blocks every later capture.
+  it('does not leave a blank line behind as a lock of its own', () => {
+    const locks = emptyLocks();
+    const doc = normalizedLines(PLAN);
+    // `## Approach`, its body, and the blank line under it.
+    addLock(locks, {
+      docLines: doc,
+      range: { start: 5, end: 7 },
+      origin: 'seal',
+      version: 1,
+      section: '## Approach',
+    });
+
+    unlockRange(locks, doc, { start: 5, end: 6 });
+    expect(Object.keys(locks.locks)).toHaveLength(0);
   });
 
   it('leaves locks that do not overlap untouched', () => {

@@ -55,19 +55,22 @@ export function addLock(locks: LocksFile, input: CreateLockInput): LockRecord {
  * that already exists: the unlock handshake names a lock, the gutter shows
  * locks individually, and `--skeleton` collapses them one at a time. A single
  * monolithic lock would need a special case in all three.
+ *
+ * Every line, blank ones included. Sealing means the version is settled, and a
+ * blank line that no lock covers is a line a later capture may quietly fill in.
+ * Skipping them also left the gutter telling the truth about a plan it drew as
+ * only partly frozen.
  */
 export function sealPlan(locks: LocksFile, docLines: string[], version: number): LockRecord[] {
   const created: LockRecord[] = [];
 
   for (const section of splitSections(docLines)) {
     const range = { start: section.start, end: section.end };
-    if (!rangeText(docLines, range).trim()) continue; // blank lines are not worth a lock
 
     // Lines already locked by hand stay as they are — re-locking them would
     // renumber them and orphan any grant the user already issued, and laying a
     // section lock over the top would leave the line covered twice.
     for (const run of uncoveredRuns(locks, docLines, range)) {
-      if (!rangeText(docLines, run).trim()) continue;
       created.push(
         addLock(locks, { docLines, range: run, origin: 'seal', version, section: section.heading }),
       );
@@ -112,6 +115,20 @@ export function uncoveredRuns(locks: LocksFile, docLines: string[], range: LineR
   return runs;
 }
 
+/**
+ * Is this fragment a lock worth keeping, or only the blank lines around one?
+ *
+ * Sealing covers every line, blank ones included, so unlocking the middle of a
+ * section can leave a fragment that is nothing but a blank line. Its text
+ * identifies no passage — it matches every blank line in the plan — so
+ * `locateLock` can never place it again, and a lock that cannot be placed
+ * fails closed and blocks every later capture. Letting the unlock take the
+ * blank line with it errs towards the thing the user just asked for.
+ */
+function worthKeeping(docLines: string[], range: LineRange): boolean {
+  return range.end >= range.start && rangeText(docLines, range).trim() !== '';
+}
+
 export interface UnlockResult {
   removed: string[];
   created: LockRecord[];
@@ -147,7 +164,9 @@ export function unlockRange(locks: LocksFile, docLines: string[], range: LineRan
     const head = { start, end: Math.min(end, range.start - 1) };
     const tail = { start: Math.max(start, range.end + 1), end };
 
-    if (head.end >= head.start) {
+    let keptHead = false;
+    if (worthKeeping(docLines, head)) {
+      keptHead = true;
       result.created.push(
         addLock(locks, {
           docLines,
@@ -159,8 +178,7 @@ export function unlockRange(locks: LocksFile, docLines: string[], range: LineRan
         }),
       );
     }
-    if (tail.end >= tail.start) {
-      const id = head.end >= head.start ? undefined : lock.id;
+    if (worthKeeping(docLines, tail)) {
       result.created.push(
         addLock(locks, {
           docLines,
@@ -168,7 +186,9 @@ export function unlockRange(locks: LocksFile, docLines: string[], range: LineRan
           origin: lock.origin,
           version: lock.first_locked_version,
           section: lock.section,
-          id,
+          // The head keeps the original id so an outstanding grant against it
+          // still means something; only an unlock that left no head passes it on.
+          id: keptHead ? undefined : lock.id,
         }),
       );
     }
