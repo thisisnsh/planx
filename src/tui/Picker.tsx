@@ -1,16 +1,11 @@
 import { Box, Text, useApp, useInput, useStdout } from 'ink';
 import { useMemo, useState } from 'react';
 import { bold, dim, inverse, padEnd, signal, stripAnsi, truncate } from '../render/ansi.js';
-import {
-  bottomRule,
-  brandTitle,
-  frameLine,
-  FRAME_PADDING,
-  MAX_FRAME_WIDTH,
-  REPO,
-  topRule,
-} from './frame.js';
+import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO, topRule } from './frame.js';
 import { fuzzyFilter } from './fuzzy.js';
+
+/** Matches the review's floor, so both frames narrow to the same width. */
+const MIN_WIDTH = 48;
 
 export interface PickerItem<T> {
   value: T;
@@ -114,7 +109,7 @@ export function Picker<T>({
     }
   });
 
-  const frameWidth = Math.max(48, Math.min(MAX_FRAME_WIDTH, (stdout?.columns ?? 80) - 1));
+  const frameWidth = Math.max(MIN_WIDTH, (stdout?.columns ?? 80) - 1);
   const inner = frameWidth - FRAME_PADDING;
   const labelWidth = Math.max(12, Math.floor((inner - 6) * 0.55));
 

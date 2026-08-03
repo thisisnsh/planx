@@ -9,6 +9,9 @@ import { bold, colorEnabled, dim, padEnd, signal, stripAnsi, truncate } from '..
  * reached the plan. They are pure string builders, so the printed commands can
  * use the same edges the TUI does without mounting anything.
  *
+ * Every frame is the terminal's width, review and picker and printed block
+ * alike, so the edges line up whichever of them you are looking at.
+ *
  * The chrome rides on the border itself. A title bar drawn *inside* a border is
  * two horizontal rules stacked with a line of text between them, spending three
  * rows to say what one edge can. It is drawn by hand rather than with Ink's
@@ -16,10 +19,10 @@ import { bold, colorEnabled, dim, padEnd, signal, stripAnsi, truncate } from '..
  */
 export const REPO = 'github.com/thisisnsh/planx';
 
-/** Wide enough for a plan, narrow enough that help does not stretch. */
-export const MAX_FRAME_WIDTH = 92;
 /** `│ ` on the left and ` │` on the right of every row. */
 export const FRAME_PADDING = 4;
+/** Narrow enough to still be a frame, wide enough for a gutter and some text. */
+export const MIN_FRAME_WIDTH = 40;
 
 export function topRule(width: number, title: string): string {
   const fill = Math.max(0, width - 3 - visible(title));
@@ -68,8 +71,17 @@ export function frameBlock(lines: readonly string[], opts: FrameBlockOptions = {
   ].join('\n');
 }
 
+/**
+ * The terminal, less a column so the right edge never wraps.
+ *
+ * Uncapped. A frame that stops at 92 columns in a 200-column terminal reads as
+ * something that failed to load rather than something laid out, and the review
+ * has always drawn full width — the cap was only ever a difference between the
+ * two halves of the same product. `wrapToFrame` folds prose to whatever width
+ * it is handed, so help text stays readable at any of them.
+ */
 export function terminalWidth(): number {
-  return Math.max(40, Math.min(MAX_FRAME_WIDTH, (process.stdout.columns ?? 80) - 1));
+  return Math.max(MIN_FRAME_WIDTH, (process.stdout.columns ?? 80) - 1);
 }
 
 /**
