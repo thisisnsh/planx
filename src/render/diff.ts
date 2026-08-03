@@ -119,7 +119,7 @@ function renderSegments(segments: Segment[], kind: 'add' | 'del'): string {
 }
 
 export interface RenderedLine {
-  /** The fixed-width prefix, styled. */
+  /** The fixed-width prefix, styled. Shorter on a gap, which has no number. */
   gutter: string;
   /** The same prefix with the number lit, for the row under the cursor. */
   gutterActive: string;
@@ -160,7 +160,11 @@ export function renderRichLines(blocks: Block[], opts: DiffRenderOptions): RichL
       // Deleted lines never existed in the new document, so they must not
       // advance the fence tracker; hidden context lines must.
       for (const row of block.rows) if (row.kind !== 'del') highlightLine(row.text, state);
-      const pad = ' '.repeat(width);
+      // Padded to the line-number column, not the text column, so the `⋯` lands
+      // where a line number would and the eye finds it on the same edge it is
+      // already scanning down. Out at the text column it sat further right than
+      // anything around it.
+      const pad = ' '.repeat(width - numberWidth - 1);
       lines.push({
         gutter: pad,
         gutterActive: pad,

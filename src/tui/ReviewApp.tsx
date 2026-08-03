@@ -659,9 +659,14 @@ function renderRow(row: ViewRow, opts: RowOptions): string {
     return `${arrow} ${pad}${signal('│')} ${filled} ${signal('│')}`;
   }
 
-  const rail = row.rail ? signal('│') : ' ';
   const gutter = opts.cursor ? row.gutterActive : row.gutter;
   const text = truncate(opts.selected ? inverse(stripAnsi(row.text)) : row.text, opts.width);
+  // A collapsed run is not a line of the document — no number, no lock, no note
+  // — so it gets no rail column either, and its marker starts where a line
+  // number would.
+  if (row.gapIndex !== null) return `${arrow} ${gutter}${text}`;
+
+  const rail = row.rail ? signal('│') : ' ';
   return `${arrow} ${gutter}${rail} ${text}`;
 }
 

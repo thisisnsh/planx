@@ -152,6 +152,24 @@ describe('rich rendering', () => {
     for (const line of lines) expect(line.gutter).toHaveLength(gutterWidth);
   });
 
+  it('starts a collapsed run at the line-number column, not the text column', () => {
+    setColorEnabled(false);
+    // Changed at both ends, so the gap sits between two numbered runs and the
+    // last visible number fills its column.
+    const body = Array.from({ length: 40 }, (_, i) => `line ${i + 1}`).join('\n');
+    const rows = diffVersions(`head\n${body}\ntail\n`, `HEAD\n${body}\nTAIL\n`);
+    const { lines, gutterWidth } = renderRichLines(collapse(rows), { mode: 'rich' });
+
+    const gap = lines.find((l) => l.gapIndex !== null)!;
+    expect(gap.text).toContain('unchanged lines');
+
+    // The marker begins exactly where the number column does, so the widest
+    // number and the `⋯` share a left edge.
+    const numbered = lines.find((l) => l.newLine === 42)!;
+    expect(gap.gutter).toHaveLength(numbered.gutter.indexOf('42'));
+    expect(gap.gutter.length).toBeLessThan(gutterWidth);
+  });
+
   it('drops the sign column when there is nothing to sign', () => {
     setColorEnabled(false);
     const withDiff = renderRichLines(collapse(diffVersions('a\n', 'b\n')), { mode: 'rich' });
