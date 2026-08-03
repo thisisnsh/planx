@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { capture } from '../src/protocol/capture.js';
 import { setColorEnabled, stripAnsi } from '../src/render/ansi.js';
 import { readLocks } from '../src/store/plans.js';
+import { Picker, type PickerItem } from '../src/tui/Picker.js';
 import { ReviewApp, type ReviewResult } from '../src/tui/ReviewApp.js';
 import { SAMPLE_PLAN, tempStore } from './helpers.js';
 
@@ -929,6 +930,251 @@ describe('getting around a long plan', () => {
     await new Promise((r) => setTimeout(r, 120));
     expect(app.stdout.lastFrame).not.toContain('# A long plan');
     expect(app.stdout.lastFrame).toContain('step ');
+    app.unmount();
+  });
+});
+
+/* ------------------------------------------------------------------ picker */
+
+interface PickerHarness<T> {
+  stdout: FakeStdout;
+  chosen: Promise<T[]>;
+  press: (keys: string) => Promise<void>;
+  ready: () => Promise<void>;
+  frame: (text: string) => Promise<void>;
+  unmount: () => void;
+}
+
+function mountPicker<T>(
+  items: Array<PickerItem<T>>,
+  onDelete?: (item: PickerItem<T>) => Array<PickerItem<T>>,
+): PickerHarness<T> {
+  const stdout = new FakeStdout();
+  const stdin = new FakeStdin();
+  let resolve!: (value: T[]) => void;
+  const chosen = new Promise<T[]>((r) => (resolve = r));
+
+  const instance = render(
+    <Picker
+      title="Which plan?"
+      subtitle="Pick one to review, → for its versions, or type to filter."
+      items={items}
+      version="9.9.9"
+      onDelete={onDelete}
+      onDone={resolve}
+      onCancel={() => resolve([])}
+    />,
+    {
+      stdout: stdout as unknown as NodeJS.WriteStream,
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      exitOnCtrlC: false,
+      patchConsole: false,
+    },
+  );
+
+  return {
+    stdout,
+    chosen,
+    unmount: () => instance.unmount(),
+    press: async (keys: string) => {
+      const before = stdout.frames.length;
+      stdin.send(keys);
+      await new Promise((r) => setTimeout(r, 60));
+      await waitFor(() => stdout.frames.length > before, 1_000);
+    },
+    ready: async () => {
+      if (!(await waitFor(() => stdout.lastFrame.trim().length > 0))) {
+        throw new Error('the picker never drew a frame');
+      }
+    },
+    frame: async (text: string) => {
+      await waitFor(() => stdout.lastFrame.includes(text));
+      expect(stdout.lastFrame).toContain(text);
+    },
+  };
+}
+
+type Pick = { id: string; version: number; row: 'plan' | 'version' };
+
+/** Two plans, one approved, one of them three versions deep. */
+function planRows(): Array<PickerItem<Pick>> {
+  return [
+    {
+      value: { id: 'guard-clock', version: 3, row: 'plan' },
+      label: 'Guard the clock regression',
+      hint: '1h ago   guard-clock',
+      searchable: 'guard-clock',
+      approved: true,
+      deleteAs: 'guard-clock',
+      children: [
+        { value: { id: 'guard-clock', version: 3, row: 'version' }, label: 'v3', hint: '1h ago' },
+        {
+          value: { id: 'guard-clock', version: 2, row: 'version' },
+          label: 'v2',
+          hint: '2h ago',
+          deleteAs: 'guard-clock v2',
+        },
+        {
+          value: { id: 'guard-clock', version: 1, row: 'version' },
+          label: 'v1',
+          hint: '3h ago',
+          deleteAs: 'guard-clock v1',
+        },
+      ],
+    },
+    {
+      value: { id: 'rail-frame', version: 1, row: 'plan' },
+      label: 'The annotation rail',
+      hint: '2d ago   rail-frame',
+      searchable: 'rail-frame',
+      deleteAs: 'rail-frame',
+      children: [
+        { value: { id: 'rail-frame', version: 1, row: 'version' }, label: 'v1', hint: '2d ago' },
+      ],
+    },
+  ];
+}
+
+describe('the picker as a version tree', () => {
+  it('leads with the time, then the id, and shows no version on a plan row', async () => {
+    const app = mountPicker(planRows());
+    await app.ready();
+
+    const row = bodyRows(app.stdout.lastFrame).find((l) => l.includes('Guard the clock'))!;
+    expect(row).toContain('1h ago   guard-clock');
+    expect(row).not.toContain('v3');
+    expect(row).not.toContain('✓');
+    app.unmount();
+  });
+
+  it('→ opens a plan into its versions, newest first, and ← closes it', async () => {
+    const app = mountPicker(planRows());
+    await app.ready();
+    expect(app.stdout.lastFrame).not.toContain('v3');
+
+    await app.press(RIGHT);
+    await app.frame('v3');
+    const rows = bodyRows(app.stdout.lastFrame).filter((l) => /\bv[123]\b/.test(l));
+    expect(rows.map((l) => /v[123]/.exec(l)![0])).toEqual(['v3', 'v2', 'v1']);
+
+    await app.press(LEFT);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(app.stdout.lastFrame).not.toContain('v3');
+    app.unmount();
+  });
+
+  it('walks down into the versions and back out into the next plan', async () => {
+    const app = mountPicker(planRows());
+    await app.ready();
+    await app.press(RIGHT);
+    await app.frame('v3');
+
+    // The plan row, then v3, v2, v1, then the next plan.
+    for (let i = 0; i < 4; i++) await app.press(DOWN);
+    await app.frame('The annotation rail');
+    const marked = bodyRows(app.stdout.lastFrame).find((l) => l.includes('❯'))!;
+    expect(marked).toContain('The annotation rail');
+    app.unmount();
+  });
+
+  it('opens the latest from a plan row and that version from a child row', async () => {
+    const app = mountPicker(planRows());
+    await app.ready();
+    await app.press(RIGHT);
+    await app.frame('v3');
+    await app.press(DOWN);
+    await app.press(DOWN);
+    await app.press(ENTER);
+
+    expect(await app.chosen).toEqual([{ id: 'guard-clock', version: 2, row: 'version' }]);
+    app.unmount();
+  });
+
+  it('collapses everything when you type, and matches plans only', async () => {
+    const app = mountPicker(planRows());
+    await app.ready();
+    await app.press(RIGHT);
+    await app.frame('v3');
+
+    await app.press('rail');
+    await app.frame('The annotation rail');
+    expect(app.stdout.lastFrame).not.toContain('Guard the clock');
+    // The expanded versions are gone with the rest of the tree.
+    expect(app.stdout.lastFrame).not.toContain('v3');
+    app.unmount();
+  });
+});
+
+describe('deleting from the picker', () => {
+  it('names the target in full and takes esc as a no', async () => {
+    const app = mountPicker(planRows(), () => []);
+    await app.ready();
+
+    await app.press('d');
+    await app.frame('delete guard-clock? this cannot be undone');
+    await app.frame('enter delete · esc cancel');
+
+    await app.press(ESC);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(app.stdout.lastFrame).not.toContain('cannot be undone');
+    expect(app.stdout.lastFrame).toContain('Guard the clock');
+    app.unmount();
+  });
+
+  it('deletes the whole plan from a plan row', async () => {
+    const deleted: string[] = [];
+    const app = mountPicker(planRows(), (item) => {
+      deleted.push(`${item.value.id}:${item.value.row}`);
+      return planRows().slice(1);
+    });
+    await app.ready();
+
+    await app.press('d');
+    await app.frame('cannot be undone');
+    await app.press(ENTER);
+    await new Promise((r) => setTimeout(r, 120));
+
+    expect(deleted).toEqual(['guard-clock:plan']);
+    expect(app.stdout.lastFrame).not.toContain('Guard the clock');
+    app.unmount();
+  });
+
+  it('deletes just that version from a child row', async () => {
+    const deleted: Pick[] = [];
+    const app = mountPicker(planRows(), (item) => {
+      deleted.push(item.value);
+      return planRows();
+    });
+    await app.ready();
+
+    await app.press(RIGHT);
+    await app.frame('v3');
+    await app.press(DOWN);
+    await app.press(DOWN);
+    await app.press('d');
+    await app.frame('delete guard-clock v2? this cannot be undone');
+    await app.press(ENTER);
+    await new Promise((r) => setTimeout(r, 120));
+
+    expect(deleted).toEqual([{ id: 'guard-clock', version: 2, row: 'version' }]);
+    app.unmount();
+  });
+
+  it('offers d only where the row can actually be deleted', async () => {
+    const app = mountPicker(planRows(), () => []);
+    await app.ready();
+    await app.frame('d delete');
+
+    // v3 is the latest, so it cannot go and the hint stops offering it.
+    await app.press(RIGHT);
+    await app.press(DOWN);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(app.stdout.lastFrame).not.toContain('d delete');
+
+    // Pressing it anyway does nothing at all.
+    await app.press('d');
+    await new Promise((r) => setTimeout(r, 120));
+    expect(app.stdout.lastFrame).not.toContain('cannot be undone');
     app.unmount();
   });
 });

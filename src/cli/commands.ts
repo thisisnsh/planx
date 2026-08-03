@@ -7,23 +7,28 @@ import { renderSkeleton } from '../locks/markers.js';
 import { capture, LockViolationError } from '../protocol/capture.js';
 import { carriedOver, presentResume } from '../protocol/present.js';
 import { grantUnlock, submitFeedback } from '../protocol/submit.js';
-import { bold, cyan, dim, green, yellow } from '../render/ansi.js';
+import { bold, cyan, dim, green, padEnd, yellow } from '../render/ansi.js';
 import { renderDocument, renderStatLine, renderUnified, type RenderMode } from '../render/diff.js';
+import { protectedFor } from '../store/clean.js';
 import { listFeedback } from '../store/feedback.js';
 import { paths } from '../store/paths.js';
 import {
   ensureStore,
   latestVersion,
   listPlans,
+  purgePlan,
   readLocks,
   readMeta,
   readVersions,
   readVersionText,
   rebuildIndex,
+  removeVersions,
   resolvePlanRef,
   resolveVersionRef,
 } from '../store/plans.js';
+import type { VersionRecord } from '../store/types.js';
 import { brandTitle, frameBlock } from '../tui/frame.js';
+import type { PickerItem } from '../tui/Picker.js';
 import { clearScreen, isInteractive, runPicker, runReview } from '../tui/run.js';
 import { all, has, one, type ParsedArgs } from './args.js';
 
@@ -50,29 +55,79 @@ function readPlanText(args: ParsedArgs): string {
   throw new Error('planx: no plan text. Use --stdin or --file <path>.');
 }
 
-/** Resolve a plan reference, falling back to a picker when one is not given. */
-async function resolvePlan(
-  ctx: Ctx,
-  ref: string | undefined,
-  prompt: string,
-  subtitle: string,
-): Promise<string | null> {
-  if (ref) return resolvePlanRef(ref);
-  const plans = listPlans();
-  if (!plans.length) throw new Error('planx: no plans stored yet.');
+/** A row of the picker: a plan, opening at its latest, or one of its versions. */
+export interface PlanChoice {
+  id: string;
+  version: number;
+  row: 'plan' | 'version';
+}
+
+/** Versions whose text is still on disk, newest first. */
+function storedVersions(id: string): VersionRecord[] {
+  return readVersions(id)
+    .versions.filter((v) => readVersionText(id, v.n) !== null)
+    .sort((a, b) => b.n - a.n);
+}
+
+/**
+ * Every plan, each opening into its own versions.
+ *
+ * Time first in the grey column. The old order put the id first and the version
+ * in the middle, so a narrow terminal truncated the version away — the one
+ * thing on the row you could not get at any other way. The version numbers live
+ * on the child rows now, where there is room for them, and approval is the
+ * title's colour rather than a tick fighting for the last column.
+ *
+ * Rebuilt from the store rather than patched, so `d` can hand back a list that
+ * is simply true.
+ */
+function planItems(): Array<PickerItem<PlanChoice>> {
+  return listPlans().map((plan) => {
+    // A version a lock was cut from is the source `--splice` re-reads, and the
+    // latest is the plan itself. Neither can go, so neither offers `d`.
+    const pinned = protectedFor(plan.id);
+    return {
+      value: { id: plan.id, version: plan.latest, row: 'plan' },
+      label: plan.title,
+      approved: plan.approved,
+      hint: `${padEnd(ago(plan.updated), 9)}${plan.id}`,
+      searchable: plan.id,
+      deleteAs: plan.id,
+      children: storedVersions(plan.id).map((v) => ({
+        value: { id: plan.id, version: v.n, row: 'version' },
+        label: `v${v.n}`,
+        hint: ago(v.created),
+        deleteAs: v.n === plan.latest || pinned.has(v.n) ? undefined : `${plan.id} v${v.n}`,
+      })),
+    };
+  });
+}
+
+/**
+ * Choose a plan, or a version of one.
+ *
+ * `d` deletes what is highlighted and there is no trash behind it, so the red
+ * confirmation the picker draws is the only thing between a keystroke and a
+ * plan that is gone. That is the direct cost of dropping `clean` and `restore`,
+ * and it is why the confirmation names its target in full.
+ */
+async function pickPlan(ctx: Ctx): Promise<PlanChoice | null> {
+  const items = planItems();
+  if (!items.length) throw new Error('planx: no plans stored yet.');
   if (!isInteractive()) {
     throw new Error('planx: name a plan. `planx list` shows what is stored.');
   }
-  const [chosen] = await runPicker<string>({
-    title: prompt,
-    subtitle,
+
+  const [chosen] = await runPicker<PlanChoice>({
+    title: 'Which plan?',
+    subtitle: 'Pick one to review, → for its versions, or type to filter.',
     version: ctx.version,
-    items: plans.map((p) => ({
-      value: p.id,
-      label: p.title,
-      hint: `${p.id}  v${p.latest}  ${ago(p.updated)}${p.approved ? '  ✓' : ''}`,
-      searchable: p.id,
-    })),
+    items,
+    onDelete: (item) => {
+      if (item.value.row === 'plan') purgePlan(item.value.id);
+      else removeVersions(item.value.id, [item.value.version]);
+      return planItems();
+    },
   });
   return chosen ?? null;
 }
@@ -97,7 +152,7 @@ function requireVersionText(id: string, version: number): string {
   const text = readVersionText(id, version);
   if (text === null) {
     throw new Error(
-      `planx: ${id} v${version} is not stored — its file may have been trimmed by \`planx clean\`.`,
+      `planx: ${id} v${version} is not stored — it may have been deleted from the picker.`,
     );
   }
   return text;
@@ -251,7 +306,7 @@ export async function cmdDiff(ctx: Ctx): Promise<number> {
   // interactive path is a loop and picks inside it.
   if (!printOnly) return reviewLoop(ctx, named ? resolvePlanRef(named) : null);
 
-  const id = await resolvePlan(ctx, named, 'Which plan?', 'Pick one to review, or type to filter.');
+  const id = named ? resolvePlanRef(named) : ((await pickPlan(ctx))?.id ?? null);
   if (!id) return 1;
 
   const [, refA, refB] = ctx.args.positionals;
@@ -291,38 +346,33 @@ export async function cmdDiff(ctx: Ctx): Promise<number> {
  * does ends the loop, because it has printed a command to paste back.
  */
 async function reviewLoop(ctx: Ctx, named: string | null): Promise<number> {
-  let opened = named;
+  const [, refA, refB] = ctx.args.positionals;
+
+  // Versions named on the command line belong to the plan they were named with,
+  // not to whatever you pick after coming back to the list.
+  let opened = named
+    ? { id: named, version: refA ? resolveVersionRef(named, refB ?? refA) : latestVersion(named) }
+    : null;
+  let pinnedA = named && refA && refB ? resolveVersionRef(named, refA) : null;
   let returning = false;
+
   for (;;) {
     if (!opened) {
       // The review is still on screen on the way back, and the list has to be
       // the whole screen rather than something drawn over a plan.
       if (returning) clearScreen();
-      opened = await resolvePlan(
-        ctx,
-        undefined,
-        'Which plan?',
-        'Pick one to review, or type to filter.',
-      );
-      if (!opened) return 0;
+      const chosen = await pickPlan(ctx);
+      if (!chosen) return 0;
+      opened = { id: chosen.id, version: chosen.version };
+      pinnedA = null;
     }
-
-    const [, refA, refB] = ctx.args.positionals;
-    // A version named on the command line applies to the plan it was named
-    // with, not to whatever you pick after coming back to the list.
-    const explicit = opened === named;
-    const versionB =
-      explicit && refA ? resolveVersionRef(opened, refB ?? refA) : latestVersion(opened);
-    const versionA =
-      explicit && refA && refB
-        ? resolveVersionRef(opened, refA)
-        : previousStoredVersion(opened, versionB);
 
     // A version with a predecessor opens against it. You open v4 because v4 is
     // new, and what is new about it is the diff — opening flat and making you
     // press `d` had it backwards for the common case. v1 has nothing to diff
     // against and opens as itself; `d` toggles either way.
-    const code = await runInteractiveReview(ctx, opened, versionA, versionB);
+    const versionA = pinnedA ?? previousStoredVersion(opened.id, opened.version);
+    const code = await runInteractiveReview(ctx, opened.id, versionA, opened.version);
     if (code !== BACK) return code;
     opened = null;
     returning = true;
@@ -476,12 +526,15 @@ export function cmdList(ctx: Ctx): number {
     return 0;
   }
 
+  // Approval is colour, here as in the picker. The `✓` and `🔒` badges spent a
+  // column each saying what green already says, and the padlock was two cells
+  // wide in some terminals and one in others, so the id column moved with it.
   const idWidth = Math.min(38, Math.max(...plans.map((p) => p.id.length)));
   framed(
     ctx,
     plans.map((plan) => {
-      const badge = plan.sealed ? green(' 🔒') : plan.approved ? green(' ✓') : '  ';
-      return `${badge} ${cyan(plan.id.padEnd(idWidth))}  ${dim(`v${plan.latest}`.padEnd(5))} ${dim(ago(plan.updated).padEnd(8))} ${plan.title}`;
+      const title = plan.approved ? green(plan.title) : plan.title;
+      return `  ${cyan(padEnd(plan.id, idWidth))}  ${dim(padEnd(`v${plan.latest}`, 5))} ${dim(padEnd(ago(plan.updated), 9))}${title}`;
     }),
   );
   return 0;

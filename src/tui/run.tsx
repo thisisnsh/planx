@@ -76,8 +76,8 @@ export interface RunPickerOptions<T> {
   /** One dim line under the heading, saying what picking one does. */
   subtitle?: string;
   items: Array<PickerItem<T>>;
-  multi?: boolean;
-  footer?: string;
+  /** Delete the highlighted row, and return the list as it stands afterwards. */
+  onDelete?: (item: PickerItem<T>) => Array<PickerItem<T>>;
   /** planx's own version, for the frame's top edge. */
   version?: string;
 }
@@ -97,8 +97,7 @@ export async function runPicker<T>(opts: RunPickerOptions<T>): Promise<T[]> {
         title={opts.title}
         subtitle={opts.subtitle}
         items={opts.items}
-        multi={opts.multi ?? false}
-        footer={opts.footer}
+        onDelete={opts.onDelete}
         version={opts.version}
         onDone={finish}
         onCancel={() => finish([])}
@@ -108,18 +107,4 @@ export async function runPicker<T>(opts: RunPickerOptions<T>): Promise<T[]> {
 
     instance.waitUntilExit().then(() => finish([]));
   });
-}
-
-/** Ask one yes/no question outside the TUI, for confirmations in plain commands. */
-export async function confirm(question: string, version?: string): Promise<boolean> {
-  if (!isInteractive()) return false;
-  const [answer] = await runPicker<boolean>({
-    title: question,
-    version,
-    items: [
-      { value: false, label: 'no', hint: 'nothing happens' },
-      { value: true, label: 'yes', hint: 'go ahead' },
-    ],
-  });
-  return answer === true;
 }
