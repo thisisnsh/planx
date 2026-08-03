@@ -68,21 +68,6 @@ decision reviewable later in `planx locks`.
 ## After approval
 
 Approving seals the plan and prints one command to paste back — no questions
-about agents or models.
-
-**New window** applies your model choice automatically. **Same window** cannot:
-no agent CLI lets a running session change its own model, so planx prints the
-exact `/model opus` line for you to paste, then Claude continues. One paste, or
-zero if you are happy with the current model. See
-[Executing](/guide/executing).
-
-## Backfilling old plans
-
-Claude Code writes plans to `~/.claude/plans/*.md`. To bring them in:
-
-```bash
-planx import --from claude --all
-planx import --from claude --since 7d
-```
-
-Explicit and user-run. Nothing watches that directory in the background.
+about agents or models. planx cannot switch a running session's model and no
+agent CLI lets it, so it prints the command and you run it wherever you like.
+See [Executing](/guide/executing).

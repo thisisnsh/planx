@@ -2,11 +2,13 @@
 
 ## `/planx` does nothing, or the agent has never heard of it
 
+Check whether the skill was ever written:
+
 ```bash
-planx status
+ls ~/.claude/skills/planx ~/.codex/skills/planx
 ```
 
-If `skills` is empty, the postinstall did not run or was skipped:
+If neither is there, the postinstall did not run or was skipped:
 
 ```bash
 planx install
@@ -89,7 +91,7 @@ were.
 ```bash
 planx diff <id> --plain
 NO_COLOR=1 planx diff <id>
-planx config set render plain     # make it the default
+# make it the default: "render": "plain" in ~/.planx/config.json
 ```
 
 If the terminal is left in a strange state after a crash, run `reset`.
@@ -109,11 +111,12 @@ delete the named `.lock` file.
 
 ## I deleted a plan by accident
 
-```bash
-planx restore <id>
-```
+It is gone. There is no trash and nothing to restore from — `d` in the picker
+deletes permanently, which is what the red confirmation naming the plan in full
+is there to say. See [Deleting](/guide/retention).
 
-Deletion is soft unless you passed `--purge` or ran `--empty-trash`.
+The one thing that survives is a version you deleted from a plan you kept: the
+plan, its other versions and its locks are all still there.
 
 ## Filing a bug
 

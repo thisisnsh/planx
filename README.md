@@ -41,26 +41,32 @@ $ planx
 ```
 
 ```
-╭─ planx v0.3.0  guard-the-clock-regression-26af  v1 ─────────────────────────╮
-│                                                                             │
-│   │   1  ## Approach                                                        │
-│   │   2  Extend the existing snapshot-regression guard in `poller.ts`       │
-│   │   3  to also reject a cross-period backward jump.                       │
-│   ├────────────────────────────────────────────────────────────╮            │
-│   │ Wrong layer. This belongs in the R2 write path.            │            │
-│   ╰────────────────────────────────────────────────────────────╯            │
-│       4                                                                     │
-│   ⚿  5  ## Rollout                                                          │
-│ ▸ ⚿  6  Deploy behind the `ff_clock_guard` flag, 10% → 50% → 100% over 3 d… │
-│                                                                             │
-│                                                                             │
-│ v select · f feedback · l lock · n note · d diff · [ ] version · g/G ^d/^u… │
-╰────────────────────────────────────────────── ★ github.com/thisisnsh/planx ─╯
+╭─ planx v0.3.0  guard-clock-a3f9  v1 ────────────────────────────────────────────────────────────────╮
+│                                                                                                     │
+│      1   # Guard the clock regression                                                               │
+│      2                                                                                              │
+│      3   ## Approach                                                                                │
+│      4 │ Extend the existing snapshot-regression guard in `poller.ts`                               │
+│      5 │ to also reject a cross-period backward jump.                                               │
+│        ├──────────────────────────────────────────────────────────────────────╮                     │
+│        │ Wrong layer. This belongs in the R2 write path.                      │                     │
+│        ╰──────────────────────────────────────────────────────────────────────╯                     │
+│      6                                                                                              │
+│ ▸ ⚿  7   ## Rollout                                                                                 │
+│   ⚿  8   Deploy behind the `ff_clock_guard` flag, 10% then 50% then 100% over three days.           │
+│                                                                                                     │
+│                                                                                                     │
+│ h fold notes · l unlock line · n note · s submit · v select lines · x exit · esc back · ? help      │
+╰────────────────────────────────────────────────────────────────────── ★ github.com/thisisnsh/planx ─╯
 ```
 
 Press `s`. It prints one command to paste back to your agent, which picks the
 plan up with every comment quoted against the exact lines it refers to. Press
 `a` when you are happy — the plan seals and every section locks.
+
+A note hangs off a rail that runs between the line number and the text, so its
+words start on the same left edge as the words they are about. A version with a
+predecessor opens as the diff against it; `d` shows the plan on its own.
 
 Nothing blocks and nothing polls. The agent finishes its turn when it captures,
 and starts again when you hand it the command.
@@ -142,8 +148,8 @@ planx capture --stdin --title "Rate limit uploads" < plan.md
 planx resume <plan-id>
 
 # from anywhere else — a script, a hook, another editor
-planx submit <plan-id> --comment "42-47:Wrong layer, use the R2 write path."
-planx submit <plan-id> --approve
+planx <plan-id>                 # review it: comment, lock, submit or approve
+planx locks <plan-id>           # what is frozen, and any unlock an agent issued
 ```
 
 `planx resume` waits for nothing and is safe to run twice: it reads the plan,
@@ -158,10 +164,12 @@ what you want:
 
 | Say | What happens |
 | --- | --- |
-| `planx <anything>` | Research it, write a plan, capture it for review |
-| `planx resume <id>` | Pick up the feedback and revise |
-| `planx execute <id>` | Build the approved plan in this session |
-| `planx diff <id>` | Print a diff between two versions, no commentary |
+| `/planx` | Print the branches, then ask what to plan |
+| `/planx <anything>` | Clarify, check, research, write a plan, capture it |
+| `/planx resume <id>` | Pick up the feedback and revise |
+| `/planx execute <id>` | Build the approved plan in this session |
+| `/planx diff <id>` | Print a diff between two versions, no commentary |
+| `/planx off` | Say how to disable the skill by hand; change nothing |
 
 ### Channels
 

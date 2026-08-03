@@ -22,7 +22,7 @@ Rendering mode is independent of interactivity: `--plain` works in the TUI and
 piped alike. Make it permanent with:
 
 ```bash
-planx config set render plain
+# or set "render": "plain" in ~/.planx/config.json
 ```
 
 `NO_COLOR` is honoured, as is `--no-color`.

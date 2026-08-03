@@ -50,30 +50,36 @@ $ planx guard-clock-regression-a3f9
 ```
 
 ```
-╭─ planx v0.3.0  guard-clock-regression-a3f9  v1 ─────────────────────────────╮
-│                                                                             │
-│   │  42  Extend the existing snapshot-regression guard in `poller.ts`       │
-│   │  43  to also reject a cross-period backward jump.                       │
-│   ├────────────────────────────────────────────────────────────╮            │
-│   │ Wrong layer. This belongs in the R2 write path.            │            │
-│   ╰────────────────────────────────────────────────────────────╯            │
-│      44                                                                     │
-│   ⚿ 88  ## Rollout                                                          │
-│ ▸ ⚿ 89  Deploy behind the `ff_clock_guard` flag, 10% → 50% → 100% over 3 d… │
-│                                                                             │
-│                                                                             │
-│ v select · f feedback · l lock · n note · d diff · [ ] version · g/G ^d/^u… │
-╰────────────────────────────────────────────── ★ github.com/thisisnsh/planx ─╯
+╭─ planx v0.3.0  guard-clock-a3f9  v1 ────────────────────────────────────────────────────────────────╮
+│                                                                                                     │
+│      1   # Guard the clock regression                                                               │
+│      2                                                                                              │
+│      3   ## Approach                                                                                │
+│      4 │ Extend the existing snapshot-regression guard in `poller.ts`                               │
+│      5 │ to also reject a cross-period backward jump.                                               │
+│        ├──────────────────────────────────────────────────────────────────────╮                     │
+│        │ Wrong layer. This belongs in the R2 write path.                      │                     │
+│        ╰──────────────────────────────────────────────────────────────────────╯                     │
+│      6                                                                                              │
+│ ▸ ⚿  7   ## Rollout                                                                                 │
+│   ⚿  8   Deploy behind the `ff_clock_guard` flag, 10% then 50% then 100% over three days.           │
+│                                                                                                     │
+│                                                                                                     │
+│ h fold notes · l unlock line · n note · s submit · v select lines · x exit · esc back · ? help      │
+╰────────────────────────────────────────────────────────────────────── ★ github.com/thisisnsh/planx ─╯
 ```
 
-A note hangs off a rail down the lines it is about, so it is never a comment
-floating near a passage — it is attached to one. The plan opens as it stands;
-`d` shows the diff against the previous version, and `[` and `]` walk the
-history.
+A note hangs off a rail that runs down the lines it is about, between the line
+number and the text, so it is never a comment floating near a passage — it is
+attached to one, and its words start on the same left edge as theirs.
+
+A version with a predecessor opens as the diff against it: you opened v4
+because v4 is new, and what is new about it is the diff. `d` shows the plan on
+its own instead, and `←` and `→` walk the history.
 
 You press `s`. It prints a command to paste back to your agent, which picks the
-plan up with your
-annotations attached to the lines they came from, and it revises.
+plan up with your annotations attached to the lines they came from, and it
+revises.
 
 ## Why a lock is different from an instruction
 

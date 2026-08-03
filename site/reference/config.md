@@ -1,52 +1,32 @@
 # Configuration
 
-`~/.planx/config.json`, seeded on first use.
+`~/.planx/config.json`, seeded on first use. There is one key.
 
 ```jsonc
 {
   "format_version": 1,
-  "enabled": true,
-  "render": "rich",
-  "mouse": "off",
-  "agents": {
-    "claude": {
-      "cmd": "claude",
-      "args": ["--permission-mode", "acceptEdits", "--model", "{model}", "{prompt}"],
-      "models": ["opus", "sonnet", "haiku"],
-      "model_switch": "/model {model}",
-      "skills_dir": ".claude/skills"
-    }
-  }
+  "render": "rich"
 }
-```
-
-## Settable keys
-
-```bash
-planx config get                    # the whole document
-planx config get render
-planx config set render plain
 ```
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `enabled` | boolean | `true` | `planx off` sets this false. Write commands then print a notice and exit 0, so the skills degrade quietly instead of erroring. |
-| `render` | `rich` \| `plain` | `"rich"` | Default rendering for `diff` and `show`. |
-| `mouse` | `off` \| `on` | `"off"` | Wheel scrolling in the review. Off by default: capturing mouse events is what stops the terminal letting you select and copy a line out of a plan, so it is a trade you make deliberately. Only the wheel is acted on. |
+| `render` | `rich` \| `plain` | `"rich"` | Default rendering for `diff` and `show`. `--plain` and `--rich` override it per command. |
 
-Agent definitions are edited in `config.json` directly. There is no
-`planx config set agents.claude.args[2]` — a flag syntax for nested argv arrays
-would be worse than a text editor.
+There is no `planx config` command. One key in a two-line file is a text editor's
+job, and a command to set it would be a bigger surface than the thing it sets.
 
-## Agent entries
+## What used to be here
 
-| Field | Meaning |
-| --- | --- |
-| `cmd` | The executable. Must be on `PATH`. |
-| `args` | argv template. See the placeholder table in [Executing](/guide/executing). |
-| `models` | Offered in the model picker. Never validated against a provider — planx passes through what you configure. |
-| `model_switch` | The line printed for you to paste when executing in the same window. |
-| `skills_dir` | Where `planx install` writes skills, relative to `$HOME`. Empty means this agent gets none. |
+- **`enabled`**, written by `planx on` / `planx off`. Whether planx is available
+  is the skill's business now, not a flag in the store — see
+  [Claude Code](/guide/claude-code).
+- **`mouse`**, which turned on wheel scrolling in the review at the cost of the
+  terminal's own click-and-drag text selection. Wheel scrolling is gone: an
+  append-only render cannot host a moving cursor, boxes that grow as you type,
+  or folds, so there was nothing on the other side of the trade.
+- **`agents`**, an argv registry that existed so planx could spawn an agent for
+  you. It does not: it prints a command and you run it where you already are.
 
 ## Environment
 
@@ -57,14 +37,3 @@ would be worse than a text editor.
 | `PLANX_DEBUG` | Print stack traces on error. |
 | `NO_COLOR` | Disable ANSI colour, per [no-color.org](https://no-color.org). |
 | `FORCE_COLOR` | Force colour on when not a TTY. |
-
-## Turning planx off
-
-```bash
-planx off      # skills degrade quietly; nothing is deleted
-planx on
-planx status
-```
-
-`status`, `config`, `install`, `uninstall` and `doctor` keep working while
-disabled — otherwise you could never turn it back on.

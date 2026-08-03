@@ -6,7 +6,7 @@ citizen, forever.
 
 ```
 ~/.planx/
-  config.json                     # enabled flag, agent registry, render prefs
+  config.json                     # render preference, and nothing else
   index.json                      # id → {title, cwd, updated, latest, approved}
   plans/
     guard-clock-regression-a3f9/
@@ -15,7 +15,6 @@ citizen, forever.
       locks.json                  # active locks — plan-level, carried across versions
       v1.md  v2.md  v3.md
       feedback/  v2-01K9X4….json
-  .trash/                         # soft-deleted plans
   logs/
 ```
 
@@ -51,8 +50,8 @@ keeps two plans called "refactor the poller" apart. `--name` pins an id
 instead.
 
 Because the id is derived from title *and* content, capturing the same plan
-twice lands on the same id and adds no version. That is what makes
-`planx import` safe to re-run.
+twice lands on the same id and adds no version. That is what makes a defensive
+`capture` safe to run.
 
 ## Versions are content-addressed
 

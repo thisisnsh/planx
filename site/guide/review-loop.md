@@ -5,17 +5,17 @@ agent                                     you
   |                                        |
   | planx capture --stdin --title "..."    |
   |   → writes v2.md, prints id + version  |
-  |   → says "run planx <id>", stops       |
+  |   → says "open planx <id> v2", stops   |
   |                                        |
-  |                                      planx <id>
-  |                                        → the plan as it stands
+  |                                      planx <id> v2
+  |                                        → the diff against v1
   |                                        → select lines: feedback / lock
   |                                        → s to submit
-  |                                        → prints: planx resume <id>
+  |                                        → prints: /planx resume <id>
   |                                        |
   |   ← you paste that back                |
   | planx resume <id>                      |
-  |   → the plan, the feedback, the locks  |
+  |   → the feedback, and the locks        |
   | revises → capture v3 → stops again     |
 ```
 
@@ -37,7 +37,8 @@ version, and whenever you hand the agent `planx resume`, it sees all of them.
 
 `planx <plan>` opens that plan directly — the id the agent printed is the
 argument, and prefixes work, so `planx guard-clock` is enough. Bare `planx`
-opens a picker instead.
+opens the list instead: every plan, newest first, and `→` on one opens it into
+its versions. `esc` in a review takes you back to that list.
 
 ## The plan first, the diff on `d`
 
@@ -72,8 +73,8 @@ changing something else entirely.
 
 ## The feedback payload
 
-This is the wire format. The TUI writes exactly this, which is why
-`planx submit` can too.
+This is the wire format — what the review writes into
+`~/.planx/plans/<id>/feedback/` and what `planx resume` reads back out.
 
 ```jsonc
 {
@@ -99,18 +100,6 @@ rewritten; the quoted lines are what the agent must act on, and they survive.
 Line numbers and `context_sha` are hints for re-locating the range in the TUI,
 never the source of truth.
 
-Post one yourself:
-
-```bash
-planx submit <id> v2 --stdin < feedback.json
-
-# or the shorthand
-planx submit <id> v2 \
-  --comment "42-47:Wrong layer, use the R2 write path." \
-  --lock 88-104 \
-  --general "Direction is fine."
-```
-
 ## Selection is line-based, everywhere
 
 **You cannot select a sub-line span.** Every selection — feedback, lock, unlock
@@ -128,20 +117,11 @@ affects what you can select.
 
 ## What the agent sees
 
-`planx resume <id>` prints exactly this — one read with everything needed to
-revise, including the plan itself, so it works in a session that has never seen
-the plan:
+`planx resume <id>` prints exactly this — one read with everything asked of the
+plan, and nothing else:
 
 ````markdown
 ## planx — guard-clock-regression-a3f9 v2 (verdict: revise)
-
-### The plan as it stands
-```markdown
-# Guard the clock regression
-[[planx:keep L1]]   <!-- ## Context — 28 lines, locked -->
-## Approach
-…
-```
 
 ### What was asked
 
@@ -162,6 +142,13 @@ as `[[planx:keep L1]]` markers — do not re-emit their text. Then run:
 
 Every comment carries its verbatim quote, the locks are stated as an instruction
 rather than a status, and the last line is the exact command to run next.
+
+**It does not return the plan.** It used to emit the whole thing as a fenced
+skeleton on every call, which for a plan of any size dwarfed the feedback it
+exists to deliver — and the agent that wrote the plan already has it. The quoted
+lines stay, because they are what makes a line number mean anything once a
+revision has moved it. A session that genuinely does not have the plan runs
+`planx show <id> --plain`.
 
 It waits for nothing and is safe to run twice.
 

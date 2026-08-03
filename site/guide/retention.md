@@ -1,52 +1,59 @@
-# Retention
+# Deleting
 
 Plans are kept **forever** by default. Nothing expires, nothing is pruned
 automatically, and there is no background GC. They are a few kilobytes each.
 
-Cleanup is an explicit action:
+Deleting is something you do by hand, in the picker, on the row in front of you.
 
-```bash
-planx clean                          # interactive multi-select over all plans
-planx clean --older-than 90d
-planx clean --unapproved             # never reached approve
-planx clean --versions-beyond 5      # trim history, keep the plan and its latest
-planx clean --id <id> [--purge]
-planx clean --empty-trash [--older-than 30d]
+## `d`, in the picker
+
+Open bare `planx`, put the cursor on what you want gone, and press `d`.
+
+- On a **plan row**, that is the whole plan and every version of it.
+- On a **version row** — press `→` on a plan to open its versions — that is
+  that one version.
+
+A red line at the foot names the target in full before anything happens:
+
+```
+delete guard-clock-a3f9 v3? this cannot be undone
 ```
 
-Bare `planx clean` opens a picker showing every plan with its title, age,
-version count and approved badge: `space` to mark, `x` to mark everything
-matching the current filter, `enter` to confirm.
+`enter` confirms, `esc` backs out. `d` is only offered when the highlighted row
+can actually be deleted, so a key that is going to refuse is a key you never
+see.
 
-Filter forms print the full list of what they would remove and ask for
-confirmation. `--yes` skips the prompt, for scripts. Outside a terminal, a
-destructive command without `--yes` refuses rather than guessing.
+## It is permanent
 
-## Deletion is soft by default
+There is no trash. Deleted is gone.
 
-Removed plans move to `~/.planx/.trash/<id>/` with a deletion timestamp:
+planx used to soft-delete to `~/.planx/.trash/` with a `planx restore` to bring
+things back, and nobody ever emptied it — a soft delete you never empty is a
+directory full of plans you have already decided you do not want. The red
+confirmation is what stands in its place, which is why it names the target
+rather than asking about "this".
+
+## What cannot be deleted
+
+Two version rows refuse, and say so by not offering `d`:
+
+- **The latest version.** A plan with no current text is not a plan, and every
+  read path assumes one exists.
+- **A version a lock was cut from.** `--splice` re-reads a locked block's source
+  text out of the version it was recorded in, so deleting that version would
+  break the marker path. See [Locking](/guide/locking).
+
+Deleting the plan itself is always allowed. If you want it gone, the locks go
+with it.
+
+## Repairing the index
+
+`index.json` is a derived cache — `planx list` and the picker read it instead of
+opening every plan directory — so an interrupted write can leave it stale.
 
 ```bash
-planx restore <id>
+planx doctor
 ```
 
-`--purge` deletes for real. The trash is never emptied automatically —
-`planx clean --empty-trash` does it, and only when asked.
-
-Losing a plan you spent an hour reviewing to an off-by-one in a date filter is
-the one unrecoverable failure in this system, so it takes two deliberate steps.
-
-## Trimming history
-
-`--versions-beyond N` keeps the newest N versions of each matching plan and
-deletes the older `vN.md` files, leaving the plan itself alone.
-
-It **never** removes a version a lock still points at. Splice reads its source
-text out of stored versions, so trimming one a lock references would break the
-marker path — that is treated as a constraint, not a preference. The latest
-version is never removed either.
-
-## Durations
-
-`--older-than` and `--since` take `90d`, `36h`, `2w`, `6mo`, `1y`, `30m`, `45s`.
-They compare against a plan's **last update**, not when it was created.
+It walks every plan, reports anything it cannot make sense of, and rebuilds the
+index from the directories on disk. It is the only repair path in the tool.

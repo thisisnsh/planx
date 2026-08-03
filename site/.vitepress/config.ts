@@ -39,7 +39,7 @@ export default defineConfig({
           { text: 'Locking', link: '/guide/locking' },
           { text: 'Diffing', link: '/guide/diffing' },
           { text: 'Executing', link: '/guide/executing' },
-          { text: 'Retention', link: '/guide/retention' },
+          { text: 'Deleting', link: '/guide/retention' },
         ],
       },
       {

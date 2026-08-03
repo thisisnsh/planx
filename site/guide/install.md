@@ -75,20 +75,17 @@ change is described in the relevant
 ## Verify it
 
 ```bash
-planx status
+planx doctor
 ```
 
 ```
-planx on
-  store      /Users/you/.planx
-  plans      0 (0 approved)
-  trash      0
-  render     rich
-  skills     /Users/you/.claude/skills/planx
+  store  /Users/you/.planx
+✓ reindexed 0 plan(s)
+✓ no problems found
 ```
 
-If something looks wrong, `planx doctor` checks the store and rebuilds its
-index.
+It says which store it is talking to, checks every plan for anything it cannot
+make sense of, and rebuilds the index. It is the only repair path in the tool.
 
 ## Using a different store
 
@@ -97,4 +94,5 @@ planx --dir /tmp/scratch list
 PLANX_DIR=/tmp/scratch planx list
 ```
 
-Worth knowing before you experiment with `planx clean`.
+Worth knowing before you experiment with `d` in the picker, which deletes
+permanently.

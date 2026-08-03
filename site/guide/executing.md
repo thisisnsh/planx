@@ -6,13 +6,24 @@ build it:
 ```
 ✓ Approved & sealed — guard-clock-regression-a3f9 v3 (6 sections locked)
 
-  To build it, tell your agent — this session or a new one:
-      planx execute guard-clock-regression-a3f9 v3
+  Paste to your agent:  /planx execute guard-clock-regression-a3f9 v3
 ```
 
 Paste that to an agent and the `/planx` skill takes the execute branch: it loads
 the stored version with `planx show`, drops it into the current context, and
 implements it there.
+
+**A slash command is for your agent; a bare command is for your terminal.** That
+is the only thing that tells the two apart, so the review is careful about which
+form it prints. `/planx execute` is a branch of the skill and has never been a
+shell command — printing it as one is what used to make the line read as noise.
+
+The other two exits print the same way:
+
+```
+s   Paste to your agent:  /planx resume guard-clock-regression-a3f9
+x   Reopen it with:  planx guard-clock-regression-a3f9 v3
+```
 
 ## In this session, not a new process
 
