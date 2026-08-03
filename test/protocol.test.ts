@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { handOffLine } from '../src/cli/commands.js';
+import { closingBlock, handOffLine } from '../src/cli/commands.js';
 import { normalizedLines } from '../src/locks/anchor.js';
 import { addLock } from '../src/locks/manage.js';
 import { renderSkeleton } from '../src/locks/markers.js';
@@ -263,5 +263,34 @@ describe('the review hand-off', () => {
     expect(handOffLine('terminal', 'planx guard-clock-a3f9 v3').trim()).toBe(
       'Reopen it with:  planx guard-clock-a3f9 v3',
     );
+  });
+
+  it('is a block: nothing blank inside it, one blank after it', () => {
+    setColorEnabled(false);
+    for (const action of ['quit', 'revise', 'approve'] as const) {
+      const block = closingBlock(action, 'guard-clock-a3f9', 4, 6);
+      expect(block.slice(0, -1).every((line) => line.trim())).toBe(true);
+      expect(block.at(-1)).toBe('');
+    }
+  });
+
+  it('always offers the way back in, last, whichever way the review ended', () => {
+    setColorEnabled(false);
+    for (const action of ['quit', 'revise', 'approve'] as const) {
+      const block = closingBlock(action, 'guard-clock-a3f9', 4, 6);
+      expect(block.at(-2)).toContain('Reopen it with:  planx guard-clock-a3f9 v4');
+      expect(block.join('\n')).not.toContain('nothing submitted');
+    }
+
+    expect(closingBlock('quit', 'guard-clock-a3f9', 4).join('\n')).not.toContain('Paste');
+    expect(closingBlock('revise', 'guard-clock-a3f9', 4)[0]).toContain(
+      '/planx resume guard-clock-a3f9',
+    );
+    expect(closingBlock('approve', 'guard-clock-a3f9', 4, 6)).toEqual([
+      '✓ Approved & sealed — guard-clock-a3f9 v4 (6 sections locked).',
+      '  Paste to your agent:  /planx execute guard-clock-a3f9 v4',
+      '  Reopen it with:  planx guard-clock-a3f9 v4',
+      '',
+    ]);
   });
 });

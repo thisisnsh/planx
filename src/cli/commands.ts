@@ -406,8 +406,9 @@ async function runInteractiveReview(
 
   if (result.action === 'back') return BACK;
   if (result.action === 'quit') {
-    ctx.out(dim('nothing submitted'));
-    handOff(ctx, 'terminal', `planx ${id} v${result.version}`);
+    // No `nothing submitted` above it: you just quit, so you know. What follows
+    // is the part that carries something you did not already have.
+    for (const line of closingBlock('quit', id, result.version)) ctx.out(line);
     return 0;
   }
 
@@ -446,12 +447,7 @@ async function runInteractiveReview(
     sealed += submitted.sealedLocks.length;
   }
 
-  if (verdict === 'approve') {
-    afterApproval(ctx, id, result.version, sealed);
-    handOff(ctx, 'agent', `/planx execute ${id} v${result.version}`);
-  } else {
-    handOff(ctx, 'agent', `/planx resume ${id}`);
-  }
+  for (const line of closingBlock(verdict, id, result.version, sealed)) ctx.out(line);
   return 0;
 }
 
@@ -473,17 +469,41 @@ export function handOffLine(to: 'agent' | 'terminal', command: string): string {
   return `  ${lead}  ${yellow(command)}`;
 }
 
-function handOff(ctx: Ctx, to: 'agent' | 'terminal', command: string): void {
-  ctx.out('');
-  ctx.out(handOffLine(to, command));
-}
-
-/** The approve → seal summary. The command to build it follows separately. */
-function afterApproval(ctx: Ctx, id: string, version: number, sections: number): void {
-  ctx.out('');
-  ctx.out(
-    `${green('✓')} Approved & sealed — ${bold(id)} v${version} (${sections} sections locked)`,
-  );
+/**
+ * How a review signs off: what happened, what to do next, how to get back.
+ *
+ * The blanks used to lead instead of trail — the summary, the paste line and
+ * the reopen line each opened with one — so what should read as a block arrived
+ * as three separate announcements. One line of air after the whole thing, and
+ * none inside it.
+ *
+ * The reopen line is on every exit now. Only quitting printed it before, so a
+ * review that ended *successfully* left no way back to what you had just been
+ * looking at. It goes last: the agent command is the next step, and this is the
+ * fallback.
+ */
+export function closingBlock(
+  action: 'quit' | 'revise' | 'reject' | 'approve',
+  planId: string,
+  version: number,
+  sealed = 0,
+): string[] {
+  const lines: string[] = [];
+  if (action === 'approve') {
+    lines.push(
+      `${green('✓')} Approved & sealed — ${bold(planId)} v${version} (${sealed} sections locked).`,
+    );
+  }
+  if (action !== 'quit') {
+    lines.push(
+      handOffLine(
+        'agent',
+        action === 'approve' ? `/planx execute ${planId} v${version}` : `/planx resume ${planId}`,
+      ),
+    );
+  }
+  lines.push(handOffLine('terminal', `planx ${planId} v${version}`), '');
+  return lines;
 }
 
 /* ---------------------------------------------------------------- show */
