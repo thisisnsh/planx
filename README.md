@@ -56,7 +56,7 @@ $ planx
 │   ⚿  8   Deploy behind the `ff_clock_guard` flag, 10% then 50% then 100% over three days.           │
 │                                                                                                     │
 │                                                                                                     │
-│ h fold notes · l unlock line · n note · s submit · v select lines · x exit · esc back · ? help      │
+│ l unlock line · n note · s submit · v select lines · x exit · esc back · ? help                     │
 ╰────────────────────────────────────────────────────────────────────── ★ github.com/thisisnsh/planx ─╯
 ```
 
