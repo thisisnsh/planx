@@ -254,17 +254,22 @@ function firstLine(comment: string): string {
 /**
  * Wrap a note to the box, one character behind whoever is typing it.
  *
- * Two things here are not the obvious word wrap, and both are the difference
- * between a box that grows as you type and one that lurches:
+ * Every space you typed is a space you get back. The obvious word wrap splits
+ * on `/\s+/`, which throws the runs away: `"hello "` and `"hello"` render
+ * identically so pressing space appears to do nothing, two spaces between
+ * sentences become one, and a pasted snippet loses the indent that was the
+ * reason for pasting it. A note is usually prose, but it is sometimes a
+ * snippet, and prose survives having its own spacing respected.
  *
- * - A trailing space survives. Splitting on whitespace throws it away, so
- *   `"hello "` and `"hello"` render identically and pressing space appears to
- *   do nothing at all. It counts against the width like any other character.
+ * So the text is tokenised into words and runs of whitespace, both preserved,
+ * and the wrap works on tokens:
+ *
+ * - A word that would fit on a line of its own waits for the next line rather
+ *   than being cut.
  * - A word wider than the box is broken at the edge. Wrapping only between
  *   words leaves a 90-character token on one line, where the renderer cuts it
  *   with an ellipsis until the next space arrives and it jumps down — which is
- *   the "delay" it looks like. Runs of spaces still collapse to one: a note is
- *   prose, and preserving five spaces would only make the box ragged.
+ *   the "delay" it looks like.
  */
 export function wrapComment(comment: string, width: number): string[] {
   const limit = Math.max(8, width);
@@ -277,21 +282,22 @@ export function wrapComment(comment: string, width: number): string[] {
       current = '';
     };
 
-    for (const word of paragraph.split(/\s+/).filter(Boolean)) {
-      let rest = word;
-      while (rest.length > limit) {
-        if (current) push();
-        out.push(rest.slice(0, limit));
-        rest = rest.slice(limit);
+    for (const token of paragraph.match(/\s+|\S+/g) ?? []) {
+      let rest = token;
+      while (current.length + rest.length > limit) {
+        const room = limit - current.length;
+        // The line is full; or the word fits on one of its own; or it is wider
+        // than the box and there is already something here, so it takes a fresh
+        // line rather than being cut in the middle of this one.
+        if (room <= 0 || (/\S/.test(rest) && (rest.length <= limit || current.trim()))) {
+          push();
+          continue;
+        }
+        current += rest.slice(0, room);
+        rest = rest.slice(room);
+        push();
       }
-      if (!rest) continue;
-      if (current && `${current} ${rest}`.length > limit) push();
-      current = current ? `${current} ${rest}` : rest;
-    }
-
-    if (/\s$/.test(paragraph)) {
-      if (current.length + 1 > limit) push();
-      current += ' ';
+      current += rest;
     }
     out.push(current);
   }

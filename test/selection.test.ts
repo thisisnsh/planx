@@ -171,16 +171,26 @@ describe('wrapping a note', () => {
   it('breaks a word wider than the box instead of leaving it to be truncated', () => {
     expect(wrapComment('a'.repeat(25), 10)).toEqual(['aaaaaaaaaa', 'aaaaaaaaaa', 'aaaaa']);
     // With something already on the line, the long word starts on a fresh one.
-    expect(wrapComment(`hi ${'b'.repeat(12)}`, 10)).toEqual(['hi', 'bbbbbbbbbb', 'bb']);
+    expect(wrapComment(`hi ${'b'.repeat(12)}`, 10)).toEqual(['hi ', 'bbbbbbbbbb', 'bb']);
   });
 
   it('fills the box exactly before it wraps', () => {
     expect(wrapComment('abcde fghij', 11)).toEqual(['abcde fghij']);
-    expect(wrapComment('abcde fghijk', 11)).toEqual(['abcde', 'fghijk']);
+    expect(wrapComment('abcde fghijk', 11)).toEqual(['abcde ', 'fghijk']);
   });
 
-  it('still collapses runs of spaces — a note is prose, not code', () => {
-    expect(wrapComment('one     two', 20)).toEqual(['one two']);
+  // A note is usually prose and sometimes a snippet, and the wrap cannot tell
+  // which — so every space you typed is a space you get back.
+  it('keeps a run of spaces rather than collapsing it', () => {
+    expect(wrapComment('one     two', 20)).toEqual(['one     two']);
+    expect(wrapComment('    indented', 20)).toEqual(['    indented']);
+  });
+
+  it('keeps a run of spaces through a round trip at the box edge', () => {
+    // Wrapping is the only thing that may move them, and it moves the overflow
+    // down rather than dropping it.
+    expect(wrapComment('ab    cd', 8).join('')).toBe('ab    cd');
+    expect(wrapComment('a  b  c  d', 5).join('')).toBe('a  b  c  d');
   });
 });
 
