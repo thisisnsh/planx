@@ -1,4 +1,4 @@
-import { normalizedLines } from '../locks/anchor.js';
+import { contextSha, normalizedLines } from '../locks/anchor.js';
 import { addLock, issueGrant, sealPlan, unlockRange } from '../locks/manage.js';
 import { sectionOf } from '../render/markdown.js';
 import { ulid } from '../store/ids.js';
@@ -94,7 +94,7 @@ export function submitFeedback(input: SubmitInput): SubmitResult {
     plan_id: input.planId,
     version: input.version,
     verdict: input.verdict,
-    annotations: input.annotations,
+    annotations: input.annotations.map((a) => reanchor(a, docLines)),
     general: input.general ?? '',
     created: new Date().toISOString(),
     addressed_by: stored?.addressed_by ?? null,
@@ -102,6 +102,30 @@ export function submitFeedback(input: SubmitInput): SubmitResult {
   writeFeedback(feedback);
 
   return { feedback, locksCreated, locksRemoved, sealedLocks };
+}
+
+/**
+ * Re-read a comment's quote, section and context from the version as it stands.
+ *
+ * A submit that follows an in-place edit is anchored to lines the reviewer has
+ * just rewritten. The anchor itself is a line number and a line count, neither
+ * of which an edit can change, so the comment keeps its place — but the quote it
+ * carried is what the line used to say, and the agent acts on the quote. On an
+ * untouched version this is a no-op that rewrites the same three fields.
+ */
+function reanchor(annotation: Annotation, docLines: string[]): Annotation {
+  if (annotation.kind !== 'comment') return annotation;
+  const { start_line: start, end_line: end } = annotation.anchor;
+  if (start < 1 || end > docLines.length) return annotation;
+  return {
+    ...annotation,
+    anchor: {
+      ...annotation.anchor,
+      context_sha: contextSha(docLines, { start: start - 1, end: end - 1 }),
+    },
+    quote: docLines.slice(start - 1, end).join('\n'),
+    section: sectionOf(docLines, start - 1),
+  };
 }
 
 function toRange(annotation: Annotation): { start: number; end: number } {

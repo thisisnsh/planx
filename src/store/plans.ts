@@ -1,5 +1,12 @@
 import { readdirSync, rmSync } from 'node:fs';
 import {
+  contextSha,
+  locateLock,
+  normalizedLines,
+  rangeText,
+  type LineRange,
+} from '../locks/anchor.js';
+import {
   ensureDir,
   pathExists,
   readJson,
@@ -16,6 +23,7 @@ import {
   LocksFileSchema,
   PlanMetaSchema,
   VersionsFileSchema,
+  type EditRecord,
   type IndexEntry,
   type IndexFile,
   type LocksFile,
@@ -283,6 +291,7 @@ export function addVersion(
     created: new Date().toISOString(),
     parent: opts.parent ?? (latest > 0 ? latest : null),
     note: opts.note ?? null,
+    edits: [],
   };
 
   writeAtomic(paths.versionFile(id, n), body);
@@ -297,6 +306,103 @@ export function addVersion(
   reindex(id);
 
   return { version: n, record, created: true };
+}
+
+/* ------------------------------------------------------ editing in place */
+
+export interface LineEdit {
+  /** 1-based, in the version being rewritten. */
+  line: number;
+  /** The line as the reviewer left it. */
+  text: string;
+}
+
+export interface RewriteResult {
+  /** What was recorded. A line typed back to what it said is dropped on the way in. */
+  edits: EditRecord[];
+  sha256: string;
+}
+
+/**
+ * Rewrite lines of a stored version in place — the only way a reviewer's edit
+ * reaches disk.
+ *
+ * No version is minted. The reviewer rewrote a line of the version on screen,
+ * and what they submitted is what they meant; a v4 whose only change is the
+ * wording a human already settled is a round trip through an agent that has
+ * nothing to decide.
+ *
+ * It refuses everything that would make an edit mean something other than it
+ * says: an older version is the text a newer one was built from, and a sealed
+ * plan has already been closed. The lock check is the same rule the TUI applies
+ * before it will open a line, enforced again where the writing happens — locks
+ * hold in the CLI, not in the UI that happens to be driving it.
+ */
+export function rewriteVersion(id: string, n: number, lines: readonly LineEdit[]): RewriteResult {
+  const versions = readVersions(id);
+  const latest = latestVersionNumber(versions);
+  const record = versions.versions.find((v) => v.n === n);
+  if (!record || n !== latest) {
+    throw new Error(`planx: only v${latest} of ${id} can be edited — v${n} is not the latest.`);
+  }
+  const locks = readLocks(id);
+  if (locks.sealed_at !== null) {
+    throw new Error(`planx: ${id} is sealed — approving locked every section.`);
+  }
+
+  const text = readVersionText(id, n);
+  if (text === null) throw new Error(`planx: ${id} has no stored v${n}.`);
+
+  const docLines = normalizedLines(text);
+  const at = new Date().toISOString();
+  const edits: EditRecord[] = [];
+  for (const edit of lines) {
+    const index = edit.line - 1;
+    if (index < 0 || index >= docLines.length) {
+      throw new Error(`planx: ${id} v${n} has no line ${edit.line} to edit.`);
+    }
+    if (docLines[index] === edit.text) continue;
+    edits.push({ line: edit.line, before: docLines[index]!, after: edit.text, at });
+    docLines[index] = edit.text;
+  }
+  if (!edits.length) return { edits: [], sha256: record.sha256 };
+
+  // Every lock has to still locate, with the same text, before anything is
+  // written. A lock that moved is a lock that no longer means what it was made
+  // to mean, and the answer to that is to refuse rather than to re-anchor.
+  const located = new Map<string, LineRange>();
+  for (const lock of Object.values(locks.locks)) {
+    const found = locateLock(docLines, lock);
+    if (!found.ok || contentHash(rangeText(docLines, found.range)) !== lock.sha256) {
+      throw new Error(`planx: editing v${n} of ${id} would move lock ${lock.id}. Unlock it first.`);
+    }
+    located.set(lock.id, found.range);
+  }
+
+  const body = normalize(docLines.join('\n')).replace(/\n*$/, '\n');
+  writeAtomic(paths.versionFile(id, n), body);
+
+  // The locked text is untouched, but a lock is disambiguated by the lines
+  // *around* it, and editing an adjacent line staled that hash.
+  updateLocks(id, (current) => {
+    for (const [lockId, range] of located) {
+      const lock = current.locks[lockId];
+      if (lock) lock.context_sha = contextSha(docLines, range);
+    }
+  });
+
+  record.sha256 = contentHash(body);
+  record.edits = [...record.edits, ...edits];
+  writeVersions(id, versions);
+
+  const meta = readMeta(id);
+  if (meta) {
+    meta.updated = at;
+    writeMeta(meta);
+  }
+  reindex(id);
+
+  return { edits, sha256: record.sha256 };
 }
 
 /* --------------------------------------------------------- version refs */

@@ -636,6 +636,216 @@ describe('feedback lives in the document', () => {
   });
 });
 
+/**
+ * A review could only *ask* for a change before this: the reviewer wrote a note,
+ * the agent rewrote, a new version landed, and a wrong word cost a whole round
+ * trip through an agent that had to guess which word was meant.
+ */
+describe('rewriting a line in place', () => {
+  it('opens the line under the cursor, and typed keys stop being commands', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('e');
+    await app.frame('enter save line');
+    // `s` submits in browse mode; here it has to be a letter, at the caret.
+    await app.press(' says so');
+    await app.frame('# Guard the clock regression says so');
+    app.unmount();
+  });
+
+  it('marks the committed line in the sign column and counts it', async () => {
+    const id = seed();
+    const app = mount(id, null, 1);
+    await app.ready();
+    // A plan with no diff on screen pays for no sign column at all.
+    expect(app.stdout.lastFrame).not.toContain('~');
+
+    await app.press('e');
+    await app.press(' now');
+    await app.press(ENTER);
+    await app.frame('1 line edited on this version.');
+
+    const row = bodyRows(app.stdout.lastFrame).find((l) => l.includes('# Guard'))!;
+    expect(row).toContain('# Guard the clock regression now');
+    expect(row).toMatch(/~\s*1\s/);
+    // Nothing is on disk until it is submitted.
+    expect(readVersionText(id, 1)).toContain('# Guard the clock regression\n');
+    app.unmount();
+  });
+
+  it('esc puts the line back as it was', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('e');
+    await app.press(' oops');
+    await app.frame('# Guard the clock regression oops');
+
+    await app.press(ESC);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(app.stdout.lastFrame).not.toContain('oops');
+    expect(app.stdout.lastFrame).not.toContain('line edited on this version');
+    app.unmount();
+  });
+
+  it('types at the caret — ← moves it, not the version, and ^a goes to the start', async () => {
+    const app = mount(seedTwoVersions(), null, 2, [1, 2]);
+    await app.ready();
+
+    await app.press('e');
+    await app.press(LEFT);
+    await app.press('!');
+    await app.press(ENTER);
+    await app.frame('# Guard the clock regressio!n');
+    // Still v2: the mode is explicit, so ← never stepped a version.
+    expect(frameRows(app.stdout.lastFrame)[0]).toContain('v2');
+
+    await app.press('e');
+    await app.press('\x01'); // ^a
+    await app.press('> ');
+    await app.press(ENTER);
+    await app.frame('> # Guard the clock regressio!n');
+    app.unmount();
+  });
+
+  it('walks a selection, one line at a time from the top', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('v');
+    await app.press(DOWN);
+    await app.press('e');
+    await app.press(' one');
+    await app.press(ENTER);
+    // enter commits and opens the next line of the span rather than browsing.
+    await app.frame('enter save line');
+    await app.press('two');
+    await app.press(ENTER);
+
+    await app.frame('2 lines edited on this version.');
+    expect(app.stdout.lastFrame).toContain('# Guard the clock regression one');
+    expect(app.stdout.lastFrame).toContain('two');
+    app.unmount();
+  });
+
+  it('refuses a locked line, and stops offering the key', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+    await app.frame('e rewrite line');
+
+    await app.press('l');
+    await app.frame('⚿');
+    expect(app.stdout.lastFrame).not.toContain('e rewrite line');
+
+    await app.press('e');
+    await app.frame('That line is locked — press l to unlock it before editing.');
+    app.unmount();
+  });
+
+  it('refuses any version but the latest, and says which one that is', async () => {
+    const app = mount(seedTwoVersions(), null, 2, [1, 2]);
+    await app.ready();
+    await app.frame('e rewrite line');
+
+    await app.press(LEFT);
+    await app.frame('10% then 50% then 100%');
+    expect(app.stdout.lastFrame).not.toContain('e rewrite line');
+
+    await app.press('e');
+    await app.frame('Only v2 can be edited — press → to reach it.');
+    app.unmount();
+  });
+
+  it('refuses a sealed plan', async () => {
+    const id = seed();
+    submitFeedback({ planId: id, version: 1, verdict: 'approve', annotations: [] });
+
+    const app = mount(id, null, 1);
+    await app.ready();
+    expect(app.stdout.lastFrame).not.toContain('e rewrite line');
+
+    await app.press('e');
+    await app.frame('This plan is sealed — approving locked every section.');
+    app.unmount();
+  });
+
+  it('sends you to f on a note, and declines a row that is not a line', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('f');
+    await app.press('not a line');
+    await app.press(ENTER);
+    await app.frame('not a line');
+
+    await app.press(DOWN);
+    await app.press('e');
+    await app.frame('That is feedback — press f to edit it.');
+    app.unmount();
+  });
+
+  it('declines a collapsed run, which stands for lines rather than being one', async () => {
+    const app = mount(seedTwoVersions(), 1, 2, [1, 2]);
+    await app.ready();
+    await app.frame('unchanged lines');
+
+    await app.press('e');
+    await app.frame('Nothing to edit there.');
+    app.unmount();
+  });
+
+  it('counts as something to submit, to lose, and to save on the way to approving', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('e');
+    await app.press(' rewritten');
+    await app.press(ENTER);
+    await app.frame('1 line edited on this version.');
+
+    // Leaving names them: an edit is on disk no sooner than a note is.
+    await app.press(ESC);
+    await app.frame('1 edited line has not been submitted and will be lost.');
+    await app.press(ESC);
+
+    // Approving is not blocked by them — it saves them and then seals.
+    await app.press('a');
+    await app.frame('This saves 1 edited line, then seals the plan');
+    await app.press(ESC);
+
+    await app.press('s');
+    const result = await app.result;
+    expect(result.editedVersion).toBe(1);
+    expect(result.edits).toEqual([{ line: 1, text: '# Guard the clock regression rewritten' }]);
+    // The edited version is submitted too, so `planx revise` has a record to
+    // report the edits against even when nothing was commented on.
+    expect(result.batches.map((b) => b.version)).toEqual([1]);
+    app.unmount();
+  });
+
+  it('follows the version it belongs to, not the one you finished on', async () => {
+    const app = mount(seedTwoVersions(), null, 2, [1, 2]);
+    await app.ready();
+
+    await app.press('e');
+    await app.press(' rewritten');
+    await app.press(ENTER);
+    await app.frame('1 line edited on this version.');
+
+    // v1 is not the version that was edited, so it says nothing about them.
+    await app.press(LEFT);
+    await app.frame('10% then 50% then 100%');
+    expect(app.stdout.lastFrame).not.toContain('line edited on this version');
+
+    await app.press('s');
+    const result = await app.result;
+    expect(result.editedVersion).toBe(2);
+    expect(result.batches.map((b) => b.version)).toEqual([1, 2]);
+    app.unmount();
+  });
+});
+
 describe('folding a section', () => {
   it('space on a heading hides what is under it, and says how much', async () => {
     const app = mount(seed(), null, 1);
@@ -860,7 +1070,7 @@ describe('locking', () => {
     await app.press('l');
     await app.frame('⚿');
     await app.press('l');
-    await app.frame('unlocked line 1');
+    await app.frame('Unlocked line 1.');
 
     expect(Object.keys(readLocks(id).locks)).toHaveLength(0);
     app.unmount();
@@ -875,7 +1085,7 @@ describe('locking', () => {
     expect(app.stdout.lastFrame).not.toContain('f feedback');
 
     await app.press('f');
-    await app.frame('those lines are locked');
+    await app.frame('Those lines are locked');
     app.unmount();
   });
 });
@@ -886,7 +1096,7 @@ describe('submitting and approving', () => {
     await app.ready();
 
     await app.press('s');
-    await app.frame('nothing to submit');
+    await app.frame('Nothing to submit');
     app.unmount();
   });
 
@@ -992,7 +1202,7 @@ describe('the keys, and where they sit', () => {
     const keys = inner(bodyRows(app.stdout.lastFrame).at(-1)!)
       .split(' · ')
       .map((part) => part.split(' ')[0]!);
-    expect(keys).toEqual(['←→', 'a', 'd', 'f', 'l', 'n', 'v', 'x', 'esc', '?']);
+    expect(keys).toEqual(['←→', 'a', 'd', 'e', 'f', 'l', 'n', 'v', 'x', 'esc', '?']);
     app.unmount();
   });
 
@@ -1045,6 +1255,7 @@ describe('the keys, and where they sit', () => {
       'a',
       'd',
       '^d ^u',
+      'e',
       'f',
       '^f ^b',
       'g G',
@@ -1138,7 +1349,7 @@ describe('the whole-plan note', () => {
     // note is what the version holds and the status is what just happened, so
     // they are two rows and neither has to wait for the other.
     await app.press('[');
-    await app.frame('this is the first version');
+    await app.frame('This is the first version.');
     expect(app.stdout.lastFrame).toContain('Global Note: a standing note');
     app.unmount();
   });

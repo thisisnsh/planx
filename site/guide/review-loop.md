@@ -62,6 +62,50 @@ change nothing, and it stays out of the submission — what you already left
 there is untouched, and the summary names only the versions you actually wrote
 on.
 
+## Rewrite a line yourself, with `e`
+
+A review can do more than ask. `e` opens the line under the cursor as its raw
+markdown source — the `##`, the backticks, the text as it is stored — with a
+caret at the end of it, and what you type is what the plan says. A wrong word
+costs a keystroke instead of a round trip through an agent that has to guess
+which word you meant.
+
+It is a line editor, not a note box. `←` `→` move the caret, `^a` and `^e` reach
+the ends of the line, `enter` commits it and `esc` throws the draft away. There
+is no key that splits a line or joins two, so the line count never changes and
+every comment and lock keeps the line number it already had.
+
+`v` a span first and the lines open one at a time from the top: `enter` commits
+this one and opens the next, `esc` ends the walk and keeps everything already
+committed. Lines a lock covers are stepped over, and the status line says how
+many were.
+
+The edit lands **on the version on screen** — no new version is minted, because
+you already settled the wording and there is nothing left for an agent to
+decide. Like feedback, nothing reaches disk until `s` submits or `a` approves:
+until then an edited line carries a yellow `~` in the sign column, the words you
+changed are lit against the ones you kept, and the summary counts them.
+
+```
+▸  ~ 7 │ Extend the guard on the R2 write path.
+```
+
+`e` refuses where an edit would mean something other than it says, and where it
+refuses it is not on the hint bar at all: a locked line (unlock it with `l`
+first), a sealed plan, and any version but the latest — rewriting v2 while v3
+exists rewrites the text v3 was built from.
+
+`planx revise` reports what you rewrote in a section of its own, above what was
+asked, as settled text rather than a request:
+
+```markdown
+### Edited by the reviewer
+
+- **line 7**
+  - was: `Extend the existing snapshot-regression guard in poller.ts`
+  - now: `Extend the guard on the R2 write path`
+```
+
 ## Submit, or approve — never both
 
 A version carrying feedback or a note offers `s submit`. A version carrying

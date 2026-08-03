@@ -2,7 +2,7 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { previousStoredVersion } from '../src/cli/commands.js';
 import { normalizedLines } from '../src/locks/anchor.js';
-import { addLock } from '../src/locks/manage.js';
+import { addLock, lockedLineMap, sealPlan } from '../src/locks/manage.js';
 import { protectedFor } from '../src/store/clean.js';
 import { StoreCorruptionError } from '../src/store/atomic.js';
 import { contentHash, planId, slugify, ulid } from '../src/store/ids.js';
@@ -10,6 +10,7 @@ import { paths } from '../src/store/paths.js';
 import {
   addVersion,
   createPlan,
+  latestVersion,
   listPlans,
   PlanNotFoundError,
   readLocks,
@@ -22,6 +23,7 @@ import {
   readVersionText,
   resolvePlanRef,
   resolveVersionRef,
+  rewriteVersion,
   updateLocks,
   VersionNotFoundError,
   writeMeta,
@@ -251,6 +253,109 @@ describe('the version a review opens against', () => {
     // v4 opens against v2 rather than against a file that is not there — this
     // is the state `doctor` reports, and the review has to survive it.
     expect(previousStoredVersion(id, 4)).toBe(2);
+  });
+});
+
+/**
+ * The reviewer's own words, landing on the version they were written on.
+ *
+ * No v2 is minted: they rewrote a line of v1 and what they submitted is what
+ * they meant, so there is no decision left for a new version to record.
+ */
+describe('editing a version in place', () => {
+  it('rewrites the line and mints no version', () => {
+    const id = seed();
+    const result = rewriteVersion(id, 1, [{ line: 1, text: '# Guard the clock' }]);
+
+    expect(latestVersion(id)).toBe(1);
+    expect(readVersionText(id, 1)!.split('\n')[0]).toBe('# Guard the clock');
+    expect(result.edits).toEqual([
+      expect.objectContaining({
+        line: 1,
+        before: '# Guard the clock regression',
+        after: '# Guard the clock',
+      }),
+    ]);
+    // The record has to follow the file, or every later capture compares
+    // against a hash of text nobody can read any more.
+    const record = readVersions(id).versions.find((v) => v.n === 1)!;
+    expect(record.sha256).toBe(result.sha256);
+    expect(record.sha256).toBe(contentHash(readVersionText(id, 1)!));
+  });
+
+  it('drops a line typed back to what it already said', () => {
+    const id = seed();
+    const result = rewriteVersion(id, 1, [
+      { line: 1, text: '# Guard the clock regression' },
+      { line: 3, text: '## Background' },
+    ]);
+
+    expect(result.edits.map((e) => e.line)).toEqual([3]);
+    expect(readVersions(id).versions[0]!.edits).toHaveLength(1);
+  });
+
+  it('appends across rounds rather than rewriting what it found', () => {
+    const id = seed();
+    rewriteVersion(id, 1, [{ line: 1, text: '# Guard it' }]);
+    rewriteVersion(id, 1, [{ line: 1, text: '# Guard the R2 write path' }]);
+
+    const edits = readVersions(id).versions[0]!.edits;
+    expect(edits.map((e) => [e.before, e.after])).toEqual([
+      ['# Guard the clock regression', '# Guard it'],
+      ['# Guard it', '# Guard the R2 write path'],
+    ]);
+  });
+
+  it('refuses a version that is not the latest', () => {
+    const id = seed();
+    addVersion(id, `${SAMPLE_PLAN}\nrev 2\n`);
+    // Rewriting v1 rewrites the text v2 was built from.
+    expect(() => rewriteVersion(id, 1, [{ line: 1, text: '# Nope' }])).toThrow('can be edited');
+    expect(readVersionText(id, 1)!.split('\n')[0]).toBe('# Guard the clock regression');
+  });
+
+  it('refuses a sealed plan', () => {
+    const id = seed();
+    updateLocks(id, (locks) => sealPlan(locks, normalizedLines(SAMPLE_PLAN), 1));
+    expect(() => rewriteVersion(id, 1, [{ line: 1, text: '# Nope' }])).toThrow('sealed');
+  });
+
+  it('refuses to write anything when an edit would move a lock', () => {
+    const id = seed();
+    const doc = normalizedLines(SAMPLE_PLAN);
+    updateLocks(id, (locks) =>
+      addLock(locks, { docLines: doc, range: { start: 6, end: 8 }, origin: 'user', version: 1 }),
+    );
+
+    // Line 7 is inside the locked block, and line 1 is not — the whole edit is
+    // refused, not the part of it that would have been fine.
+    expect(() =>
+      rewriteVersion(id, 1, [
+        { line: 1, text: '# Guard it' },
+        { line: 7, text: '## Plan' },
+      ]),
+    ).toThrow('would move lock');
+    expect(readVersionText(id, 1)).toBe(SAMPLE_PLAN);
+  });
+
+  it('refreshes the context hash of a lock the edit moved the ground under', () => {
+    const id = seed();
+    const doc = normalizedLines(SAMPLE_PLAN);
+    updateLocks(id, (locks) =>
+      addLock(locks, { docLines: doc, range: { start: 6, end: 8 }, origin: 'user', version: 1 }),
+    );
+    const before = Object.values(readLocks(id).locks)[0]!;
+
+    // Line 6 is blank and sits just above the lock: the locked text is
+    // untouched, but what disambiguates it is not.
+    rewriteVersion(id, 1, [{ line: 6, text: 'A note above the approach.' }]);
+    const after = Object.values(readLocks(id).locks)[0]!;
+
+    expect(after.text).toBe(before.text);
+    expect(after.context_sha).not.toBe(before.context_sha);
+    expect(lockedLineMap(normalizedLines(readVersionText(id, 1)!), readLocks(id)).get(7)).toBe(
+      after.id,
+    );
   });
 });
 

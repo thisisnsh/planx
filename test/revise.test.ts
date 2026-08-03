@@ -3,7 +3,7 @@ import { capture } from '../src/protocol/capture.js';
 import { carriedOver, presentResume } from '../src/protocol/present.js';
 import { buildAnnotation, submitFeedback } from '../src/protocol/submit.js';
 import { normalizedLines } from '../src/locks/anchor.js';
-import { readLocks, readVersionText } from '../src/store/plans.js';
+import { readLocks, readVersions, readVersionText, rewriteVersion } from '../src/store/plans.js';
 import { listFeedback } from '../src/store/feedback.js';
 import { tempStore } from './helpers.js';
 
@@ -37,6 +37,7 @@ function reviseText(planId: string, version: number): string {
     version,
     feedback: history.filter((f) => f.version === version),
     carried: carriedOver(history, version, text),
+    edits: readVersions(planId).versions.find((v) => v.n === version)?.edits ?? [],
     locks: readLocks(planId),
     docLines: normalizedLines(text),
   });
@@ -97,6 +98,75 @@ describe('revise', () => {
 
     expect(second).toBe(first);
     expect(JSON.stringify(listFeedback(planId))).toBe(before);
+  });
+});
+
+/**
+ * A line the reviewer rewrote is not a request. It is text they have already
+ * settled, and the only thing the agent has to do with it is carry it through.
+ */
+describe('revise reports what the reviewer edited', () => {
+  it('names the line, what it was, and what it now says', () => {
+    const { planId, version } = capture({ text: PLAN, title: 'p' });
+    rewriteVersion(planId, version, [{ line: 7, text: 'Extend the guard on the R2 write path.' }]);
+
+    const out = reviseText(planId, version);
+    expect(out).toContain('### Edited by the reviewer');
+    expect(out).toContain('This is settled text, not a request');
+    expect(out).toContain('- **line 7**');
+    expect(out).toContain('  - was: `Extend the guard in poller.ts.`');
+    expect(out).toContain('  - now: `Extend the guard on the R2 write path.`');
+  });
+
+  it('reads as one change when the same line was edited twice', () => {
+    const { planId, version } = capture({ text: PLAN, title: 'p' });
+    rewriteVersion(planId, version, [{ line: 7, text: 'Extend the guard in the writer.' }]);
+    rewriteVersion(planId, version, [{ line: 7, text: 'Extend the guard on the R2 write path.' }]);
+
+    const out = reviseText(planId, version);
+    expect(out.match(/- \*\*line 7\*\*/g)).toHaveLength(1);
+    expect(out).toContain('  - was: `Extend the guard in poller.ts.`');
+    expect(out).not.toContain('in the writer');
+  });
+
+  // A line that is nothing but backticks would otherwise close the inline code
+  // span in the middle of itself.
+  it('fences a rewritten line around the backticks it contains', () => {
+    const { planId, version } = capture({ text: PLAN, title: 'p' });
+    rewriteVersion(planId, version, [{ line: 9, text: 'Deploy behind `ff_clock_guard`' }]);
+
+    expect(reviseText(planId, version)).toContain('  - now: `` Deploy behind `ff_clock_guard` ``');
+  });
+
+  it('is above what was asked, and leaves no empty heading when nothing was', () => {
+    const { planId, version } = capture({ text: PLAN, title: 'p' });
+    rewriteVersion(planId, version, [{ line: 7, text: 'Extend the guard in the writer.' }]);
+    // Submitting edits alone writes an empty record — that is what this is.
+    submitFeedback({ planId, version, verdict: 'revise', annotations: [] });
+
+    const out = reviseText(planId, version);
+    expect(out).not.toContain('### What was asked');
+    expect(out).toContain('### Edited by the reviewer');
+    // The capture instruction follows as usual, without sending the agent
+    // looking for a comment that was never left.
+    expect(out).toContain(`planx capture --plan-id ${planId} --parent v1`);
+    expect(out).toContain('keeping every edited line exactly as it now reads');
+
+    comment(planId, version, 4, 4, 'Say how often.');
+    const withBoth = reviseText(planId, version);
+    expect(withBoth.indexOf('### Edited by the reviewer')).toBeLessThan(
+      withBoth.indexOf('### What was asked'),
+    );
+    expect(withBoth).toContain('addressing every comment');
+  });
+
+  it('is a review in itself — no version carrying one is reported as unreviewed', () => {
+    const { planId, version } = capture({ text: PLAN, title: 'p' });
+    rewriteVersion(planId, version, [{ line: 7, text: 'Extend the guard in the writer.' }]);
+
+    const out = reviseText(planId, version);
+    expect(out).not.toContain('No review of v1 yet');
+    expect(out).toContain('### Edited by the reviewer');
   });
 });
 

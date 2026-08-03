@@ -98,6 +98,18 @@ function worthPairing(a: string, b: string): boolean {
   return shared / Math.max(ta.size, tb.size) >= 0.25;
 }
 
+/**
+ * The word-level segments for a line the reviewer rewrote in place.
+ *
+ * The same pairing rule the diff uses, for the same reason: two lines that
+ * share nothing come back as null and the caller draws the new text plainly,
+ * rather than lighting up every word as changed.
+ */
+export function editSegments(before: string, after: string): Segment[] | null {
+  if (!worthPairing(before, after)) return null;
+  return wordSegments(before, after)[1];
+}
+
 function wordSegments(oldLine: string, newLine: string): [Segment[], Segment[]] {
   const parts = diffWordsWithSpace(oldLine, newLine);
   const left: Segment[] = [];

@@ -83,9 +83,15 @@ export async function runReview(opts: RunReviewOptions): Promise<ReviewResult> {
       { exitOnCtrlC: true },
     );
 
-    instance
-      .waitUntilExit()
-      .then(() => finish({ action: 'quit', batches: [], version: opts.versionB }));
+    instance.waitUntilExit().then(() =>
+      finish({
+        action: 'quit',
+        batches: [],
+        version: opts.versionB,
+        edits: [],
+        editedVersion: null,
+      }),
+    );
   });
 }
 

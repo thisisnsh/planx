@@ -5,7 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { normalizedLines } from '../src/locks/anchor.js';
 import { buildAnnotation, submitFeedback } from '../src/protocol/submit.js';
 import { setStoreRoot } from '../src/store/paths.js';
-import { readVersions, readVersionText } from '../src/store/plans.js';
+import { readVersions, readVersionText, rewriteVersion } from '../src/store/plans.js';
 import { Cli, collect, ensureBuilt, PLAN_V1, PLAN_V2 } from './cli.js';
 
 let cli: Cli;
@@ -215,6 +215,32 @@ describe('the review hand-off across two processes', () => {
     const result = await cli.run(['revise', id, 'v1']);
     expect(result.code).toBe(0);
     expect(result.stdout).toContain('No review of v1 yet');
+  });
+
+  /**
+   * The other half of the hand-off: what the reviewer rewrote themselves. The
+   * agent is told the words, not asked for them, and the comment beside them
+   * quotes the line as it now reads rather than as it was written.
+   */
+  it('hands over a line the reviewer rewrote, and re-quotes the comment on it', async () => {
+    const id = await seed();
+
+    inStore(() =>
+      rewriteVersion(id, 1, [{ line: 7, text: 'Extend the guard on the R2 write path.' }]),
+    );
+    review(id, 1, { comments: [[7, 7, 'Name the flag too.']] });
+
+    const result = await cli.run(['revise', id, 'v1']);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('### Edited by the reviewer');
+    expect(result.stdout).toContain('  - now: `Extend the guard on the R2 write path.`');
+    // The quote follows the text on disk, which is the edited line.
+    expect(result.stdout).toContain('> Extend the guard on the R2 write path.');
+    expect(versionsOf(id)).toEqual([1]);
+
+    const json = JSON.parse((await cli.run(['revise', id, 'v1', '--json'])).stdout);
+    expect(json.edits).toHaveLength(1);
+    expect(json.edits[0]).toMatchObject({ line: 7 });
   });
 
   it('stops re-delivering feedback once the next version lands', async () => {

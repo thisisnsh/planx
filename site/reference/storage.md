@@ -55,7 +55,13 @@ twice lands on the same id and adds no version. That is what makes a defensive
 
 ## Versions are content-addressed
 
-`versions.json` holds `{n, sha256, author, agent, created, parent, note}`.
+`versions.json` holds `{n, sha256, author, agent, created, parent, note, edits}`.
+
+`edits` is what the reviewer rewrote in place with `e` — `{line, before, after,
+at}` per line, appended and never rewritten, so a version edited across two
+reviews keeps both rounds. Rewriting a line updates that version's `sha256` and
+its `vN.md`; it mints nothing. The field is optional with a default, so a store
+written by a newer planx still parses under an older one.
 
 Capturing content byte-identical to the current **latest** is a no-op returning
 that version. Only the latest is compared: matching an older version would mean

@@ -94,6 +94,8 @@ export interface BuildModelOptions {
   hiddenFeedback?: boolean;
   /** Notes collapsed one at a time, by id. */
   collapsedFeedback?: ReadonlySet<string>;
+  /** Lines the reviewer has rewritten and not yet submitted, by line number. */
+  edits?: ReadonlyMap<number, string>;
   /** The note being typed right now, so the box grows under the cursor. */
   draft?: { annotationId: string; text: string } | null;
 }
@@ -125,7 +127,7 @@ export function buildModel(opts: BuildModelOptions): ReviewModel {
   );
 
   const lockedLines = lockedLineMap(docLines, locks);
-  const rendered = renderRichLines(shown, { mode: opts.mode, lockedLines });
+  const rendered = renderRichLines(shown, { mode: opts.mode, lockedLines, edits: opts.edits });
 
   // The rail runs between the line number and the text, so the box opens off it
   // in the same column and its text starts on the same left edge the plan's

@@ -1,5 +1,5 @@
 import { collapse, DEFAULT_CONTEXT } from '../diff/collapse.js';
-import { splitLines, statOf } from '../diff/lines.js';
+import { editSegments, splitLines, statOf } from '../diff/lines.js';
 import type { Block, DiffRow, Segment } from '../diff/types.js';
 import {
   bgGreen,
@@ -13,8 +13,14 @@ import {
   red,
   signal,
   strikethrough,
+  yellow,
 } from './ansi.js';
-import { highlightLine, highlightMarkdown, initialMarkdownState } from './markdown.js';
+import {
+  highlightLine,
+  highlightMarkdown,
+  initialMarkdownState,
+  type MarkdownState,
+} from './markdown.js';
 
 export type RenderMode = 'rich' | 'plain';
 
@@ -22,6 +28,8 @@ export interface DiffRenderOptions {
   mode: RenderMode;
   /** new-version line number → lock id, drawn in the gutter. */
   lockedLines?: ReadonlyMap<number, string>;
+  /** new-version line number → the text the reviewer has rewritten it to. */
+  edits?: ReadonlyMap<number, string>;
   context?: number;
   oldLabel?: string;
   newLabel?: string;
@@ -49,6 +57,8 @@ export interface GutterOptions {
   lockId?: string | undefined;
   /** Reserve the +/- column. Off when there is no diff to sign. */
   signs?: boolean;
+  /** The reviewer rewrote this line and has not submitted it yet. */
+  edited?: boolean;
   /** Light the number up, for the row under the cursor. */
   active?: boolean;
 }
@@ -72,14 +82,19 @@ export function gutterWidth(opts: { numberWidth: number; signs?: boolean }): num
  */
 export function renderGutter(row: DiffRow, opts: GutterOptions): string {
   const lock = opts.lockId ? signal(LOCK_ICON) : ' ';
+  // A pending edit signs itself `~`, in the column a diff signs `+` and `-`:
+  // it is the third thing that can have happened to a line, so it belongs where
+  // the eye is already looking for what happened to one.
   const sign =
     opts.signs === false
       ? ''
-      : row.kind === 'add'
-        ? green('+')
-        : row.kind === 'del'
-          ? red('-')
-          : ' ';
+      : opts.edited
+        ? yellow('~')
+        : row.kind === 'add'
+          ? green('+')
+          : row.kind === 'del'
+            ? red('-')
+            : ' ';
   const number = row.newLine ?? row.oldLine;
   const num = padStart(number === null ? '' : String(number), opts.numberWidth);
   // The number carries the change as well as the sign does. A `+` is one glyph
@@ -107,6 +122,22 @@ export function renderRowText(row: DiffRow, state = initialMarkdownState()): str
   }
   if (row.segments) return renderSegments(row.segments, 'add');
   return highlightLine(row.text, state);
+}
+
+/**
+ * A line the reviewer rewrote, drawn as the words they changed against the ones
+ * they kept — the highlight the diff already computes for a rewritten line.
+ *
+ * The text is substituted after the diff is built rather than re-diffed as it
+ * is typed: rows never move under the cursor mid-edit, and an edited line keeps
+ * the line number it has always had. The markdown state is still advanced over
+ * the stored text, because that is what the rest of the document is highlighted
+ * against.
+ */
+function renderEditedText(row: DiffRow, after: string, state: MarkdownState): string {
+  renderRowText(row, state);
+  const segments = editSegments(row.text, after);
+  return segments ? renderSegments(segments, 'add') : after;
 }
 
 function renderSegments(segments: Segment[], kind: 'add' | 'del'): string {
@@ -180,8 +211,9 @@ export function hiddenLine(text: string, metrics: HiddenLineMetrics): RenderedLi
 export function renderRichLines(blocks: Block[], opts: DiffRenderOptions): RichLines {
   const allRows = blocks.flatMap((b) => b.rows);
   const numberWidth = lineNumberWidth(allRows);
-  // Nothing added or removed means nothing to sign, so the column comes back.
-  const signs = allRows.some((r) => r.kind !== 'context');
+  // Nothing added or removed means nothing to sign, so the column comes back —
+  // unless a line has been edited, which is a sign of its own to draw.
+  const signs = allRows.some((r) => r.kind !== 'context') || Boolean(opts.edits?.size);
   const width = gutterWidth({ numberWidth, signs });
   const state = initialMarkdownState();
   const lines: RenderedLine[] = [];
@@ -203,12 +235,14 @@ export function renderRichLines(blocks: Block[], opts: DiffRenderOptions): RichL
 
     for (const row of block.rows) {
       const lockId = row.newLine === null ? undefined : opts.lockedLines?.get(row.newLine);
+      const rewritten = row.newLine === null ? undefined : opts.edits?.get(row.newLine);
+      const edited = rewritten !== undefined;
       // The lock id is not repeated after the text: the marker in the gutter
       // already says the line is frozen, and `planx locks` says by which lock.
       lines.push({
-        gutter: renderGutter(row, { numberWidth, lockId, signs }),
-        gutterActive: renderGutter(row, { numberWidth, lockId, signs, active: true }),
-        text: renderRowText(row, state),
+        gutter: renderGutter(row, { numberWidth, lockId, signs, edited }),
+        gutterActive: renderGutter(row, { numberWidth, lockId, signs, edited, active: true }),
+        text: edited ? renderEditedText(row, rewritten, state) : renderRowText(row, state),
         newLine: row.newLine,
         gapIndex: null,
         locked: Boolean(lockId),

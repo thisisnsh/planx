@@ -5,7 +5,7 @@ import { normalizedLines } from '../locks/anchor.js';
 import { lockedLineMap } from '../locks/manage.js';
 import { renderSkeleton } from '../locks/markers.js';
 import { capture, LockViolationError } from '../protocol/capture.js';
-import { carriedOver, presentResume } from '../protocol/present.js';
+import { carriedOver, collapseEdits, presentResume } from '../protocol/present.js';
 import { grantUnlock, submitFeedback } from '../protocol/submit.js';
 import { bold, cyan, dim, green, padEnd, yellow } from '../render/ansi.js';
 import { renderDocument, renderStatLine, renderUnified, type RenderMode } from '../render/diff.js';
@@ -26,6 +26,7 @@ import {
   removeVersions,
   resolvePlanRef,
   resolveVersionRef,
+  rewriteVersion,
 } from '../store/plans.js';
 import type { VersionRecord } from '../store/types.js';
 import { brandTitle, frameBlock } from '../tui/frame.js';
@@ -251,10 +252,17 @@ export function cmdRevise(ctx: Ctx): number {
   // by the capture that produced a newer version.
   const feedback = history.filter((f) => f.version === version);
   const carried = carriedOver(history, version, text);
+  // What the reviewer rewrote by hand, one record per line — the same ones the
+  // section below is rendered from.
+  const edits = collapseEdits(readVersions(id).versions.find((v) => v.n === version)?.edits ?? []);
 
   if (ctx.json) {
     ctx.out(
-      JSON.stringify({ plan_id: id, version, feedback, carried, locks: readLocks(id) }, null, 2),
+      JSON.stringify(
+        { plan_id: id, version, feedback, carried, edits, locks: readLocks(id) },
+        null,
+        2,
+      ),
     );
     return 0;
   }
@@ -265,6 +273,7 @@ export function cmdRevise(ctx: Ctx): number {
       version,
       feedback,
       carried,
+      edits,
       locks: readLocks(id),
       docLines: normalizedLines(text),
     }),
@@ -429,6 +438,19 @@ async function runInteractiveReview(
   }
 
   const verdict = result.action === 'submit' ? 'revise' : result.action;
+
+  // The edits first, so the locks seal against the text the reviewer settled on
+  // and every comment re-anchors to it rather than to the line it replaced.
+  if (result.editedVersion !== null && result.edits.length) {
+    const { edits } = rewriteVersion(id, result.editedVersion, result.edits);
+    if (edits.length) {
+      ctx.out(
+        green(
+          `Edited ${edits.length} line${edits.length === 1 ? '' : 's'} of ${bold(id)} v${result.editedVersion}.`,
+        ),
+      );
+    }
+  }
 
   // Every version the reviewer touched comes back, the one on screen included,
   // so there is no batch to invent here — and a version they emptied comes back

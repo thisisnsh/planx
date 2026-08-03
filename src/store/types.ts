@@ -32,6 +32,22 @@ export type PlanMeta = z.infer<typeof PlanMetaSchema>;
 
 /* -------------------------------------------------------------- versions */
 
+/**
+ * One line the reviewer rewrote in place, in the version they rewrote it on.
+ *
+ * Appended and never rewritten, so a version edited across two reviews keeps
+ * both rounds. `planx revise` collapses them per line before reporting them —
+ * the agent is told what its line became, not how the reviewer got there.
+ */
+export const EditRecordSchema = z.object({
+  /** 1-based, in the version being edited. Editing never changes the count. */
+  line: z.number().int(),
+  before: z.string(),
+  after: z.string(),
+  at: z.string(),
+});
+export type EditRecord = z.infer<typeof EditRecordSchema>;
+
 export const VersionRecordSchema = z.object({
   n: z.number().int(),
   sha256: z.string(),
@@ -40,6 +56,12 @@ export const VersionRecordSchema = z.object({
   created: z.string(),
   parent: z.number().int().nullable().default(null),
   note: z.string().nullable().default(null),
+  /**
+   * Optional with a default, so a store written by this CLI still parses under
+   * an older one. That is why it is not a `FORMAT_VERSION` bump: nothing older
+   * breaks on it, and it goes in the release notes instead.
+   */
+  edits: z.array(EditRecordSchema).default([]),
 });
 export type VersionRecord = z.infer<typeof VersionRecordSchema>;
 
