@@ -1,6 +1,7 @@
 ---
 name: planx
 description: Plan something as a reviewable artifact the user annotates, or revise, execute or diff a plan they already have. Use for /planx and anything mentioning planx.
+argument-hint: <task> | revise <id> | execute <id> | diff <id>
 ---
 
 # planx
