@@ -22,6 +22,20 @@ export function clearScreen(): void {
   if (process.stdout.isTTY) process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
 }
 
+/**
+ * Put the cursor back on a line of its own after Ink lets go of the screen.
+ *
+ * Ink's last frame does not always end in a newline, so the cursor can be left
+ * sitting at the end of the bottom border. Whatever printed next — the closing
+ * block, most visibly — put its first character in the border's last column and
+ * wrapped the rest, which is how `Reopen it with:` reached the screen as
+ * `eopen it with:`. One newline of our own makes the handoff the same at every
+ * width instead of depending on where Ink happened to stop.
+ */
+export function endFrame(): void {
+  if (process.stdout.isTTY) process.stdout.write('\n');
+}
+
 export interface RunReviewOptions {
   planId: string;
   title: string;
@@ -49,6 +63,7 @@ export async function runReview(opts: RunReviewOptions): Promise<ReviewResult> {
       if (settled) return;
       settled = true;
       instance.unmount();
+      endFrame();
       resolve(result);
     };
 
@@ -187,6 +202,7 @@ export async function runSteps<T>(
     });
   } finally {
     instance.unmount();
+    endFrame();
   }
 }
 
@@ -218,6 +234,7 @@ export async function runPicker<T>(opts: RunPickerOptions<T>): Promise<T[]> {
       if (settled) return;
       settled = true;
       instance.unmount();
+      endFrame();
       resolve(chosen);
     };
 
