@@ -77,6 +77,34 @@ describe('install', () => {
     expect(existsSync(join(skillDir('planx'), 'references', 'resume.md'))).toBe(true);
   });
 
+  /**
+   * `cpSync` overwrites what the source has and never removes what it does
+   * not, so renaming a reference file used to leave the old one installed —
+   * loadable, and telling an agent to run a command that no longer exists.
+   */
+  it('replaces an installed skill rather than copying over it', () => {
+    runInstall({ home, skillsOnly: true });
+    const stale = join(skillDir('planx'), 'references', 'retired.md');
+    writeFileSync(stale, 'run `planx retired`\n');
+
+    runInstall({ home, skillsOnly: true });
+
+    expect(existsSync(stale)).toBe(false);
+    expect(existsSync(join(skillDir('planx'), 'SKILL.md'))).toBe(true);
+  });
+
+  it('leaves a hand-written skill directory of the same name untouched', () => {
+    mkdirSync(join(home, '.claude', 'skills', 'planx'), { recursive: true });
+    writeFileSync(join(skillDir('planx'), 'SKILL.md'), 'mine\n');
+    writeFileSync(join(skillDir('planx'), 'notes.md'), 'mine too\n');
+
+    runInstall({ home, skillsOnly: true });
+
+    // No marker, so nothing was deleted: the copy landed on top, and what the
+    // package does not ship survived.
+    expect(readFileSync(join(skillDir('planx'), 'notes.md'), 'utf8')).toBe('mine too\n');
+  });
+
   it('uninstall removes what it wrote and keeps what it did not', () => {
     mkdirSync(skillDir('planx-mine'), { recursive: true });
     writeFileSync(join(skillDir('planx-mine'), 'SKILL.md'), 'mine\n');

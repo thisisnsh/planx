@@ -64,7 +64,9 @@ export interface InstallReport {
  * conflict handling that would otherwise be the riskiest thing in the package.
  *
  * Idempotent by construction: it copies the same files to the same paths and
- * leaves a marker so `uninstall` removes only what it wrote.
+ * leaves a marker so `uninstall` removes only what it wrote. It *replaces*
+ * rather than layers, so `npm install -g` — which re-runs `postinstall`, and so
+ * this — genuinely upgrades a skill instead of merging the new one over the old.
  */
 export function runInstall(opts: InstallOptions = {}): InstallReport {
   const report: InstallReport = { wrote: [], seeded: [], skipped: [], removed: [] };
@@ -89,6 +91,15 @@ export function runInstall(opts: InstallOptions = {}): InstallReport {
 
     for (const name of names) {
       const dest = join(base, name);
+      // `cpSync` overwrites what the source still has and never removes what it
+      // does not, so a renamed reference file would sit in every existing
+      // install forever, loadable and pointing at a command that is gone. That
+      // is the failure `sweepRetired` prevents one directory up; this is the
+      // same thing one level down, inside the skill.
+      //
+      // Gated on the marker, so a hand-written `planx` skill is never
+      // destroyed — the protection `runUninstall` already gives it.
+      if (existsSync(join(dest, MARKER))) rmSync(dest, { recursive: true, force: true });
       ensureDir(dest);
       cpSync(join(source, name), dest, { recursive: true });
       writeFileSync(join(dest, MARKER), `${new Date().toISOString()}\n`, 'utf8');

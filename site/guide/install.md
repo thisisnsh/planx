@@ -12,7 +12,9 @@ run, no daemon to start, and nothing to add to a config file.
 A `postinstall` step runs `planx install`, which:
 
 - writes the `planx` skill into `~/.claude/skills/planx/` and
-  `~/.codex/skills/planx/`, for whichever of those directories exists;
+  `~/.codex/skills/planx/`, for whichever of those directories exists,
+  **replacing** any it previously wrote there rather than copying over it — so
+  a file this version no longer ships does not survive the upgrade;
 - removes skills an older planx installed that this version no longer ships,
   leaving anything you wrote by hand alone;
 - seeds `~/.planx/` with a `config.json`;
@@ -30,15 +32,26 @@ PLANX_NO_POSTINSTALL=1 npm install -g @thisisnsh/planx
 planx install    # run it yourself later
 ```
 
-Reverse it:
+Reverse it — **in this order**:
 
 ```bash
-planx uninstall
+planx uninstall                      # first
+npm uninstall -g @thisisnsh/planx    # second
 ```
+
+npm 7 and newer do not run `preuninstall` or `postuninstall` scripts at all, so
+`npm uninstall` alone removes the binary and leaves the skills sitting in
+`~/.claude/skills/` and `~/.codex/skills/` — still listed, still loadable, and
+now with no `planx` behind them. planx ships no uninstall hook rather than one
+that silently does nothing for nearly everybody, so running `planx uninstall`
+first is the step that actually cleans up.
 
 `uninstall` removes only what the installer wrote — it leaves a `planx*` skill
 directory alone if it does not carry the installer's marker, and it never
 touches `~/.planx`. Your plans survive uninstalling the tool.
+
+If you removed the package first, reinstall it, run `planx uninstall`, then
+remove it again.
 
 ## Repo-local install
 

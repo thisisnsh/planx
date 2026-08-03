@@ -122,6 +122,10 @@ Node 20.19 or newer. The install writes one skill into `~/.claude/skills/` and
 `~/.codex/skills/`. It does **not** touch `settings.json`, `config.toml`, or any
 other agent configuration — there is no hook to register.
 
+To remove it, run `planx uninstall` **before** `npm uninstall -g
+@thisisnsh/planx`: npm 7+ runs no uninstall scripts, so removing the package on
+its own leaves the skills behind.
+
 Then, in Claude Code or Codex:
 
 ```
