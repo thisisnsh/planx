@@ -130,6 +130,6 @@ npm install -g @thisisnsh/planx
 Then type `/planx` in Claude Code or Codex.
 
 - [Install](/guide/install) — what the installer touches, channels, rollback
-- [The review loop](/guide/review-loop) — capture, review, resume, approve
+- [The review loop](/guide/review-loop) — capture, review, revise, approve
 - [Locking](/guide/locking) — how locks are enforced and lifted
 - [CLI reference](/reference/cli) — every command and flag

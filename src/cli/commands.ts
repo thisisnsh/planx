@@ -231,7 +231,7 @@ export function cmdCapture(ctx: Ctx): number {
   return 0;
 }
 
-/* -------------------------------------------------------------- resume */
+/* -------------------------------------------------------------- revise */
 
 /**
  * Pick a plan back up: what it says now, what was asked of it, what is locked.
@@ -240,8 +240,8 @@ export function cmdCapture(ctx: Ctx): number {
  * the agent blocking on a queue, so everything the agent needs is assembled
  * from the store on demand — one read, no waiting, safe to run twice.
  */
-export function cmdResume(ctx: Ctx): number {
-  const id = resolvePlanRef(requirePositional(ctx, 0, 'planx resume <id> [version]'));
+export function cmdRevise(ctx: Ctx): number {
+  const id = resolvePlanRef(requirePositional(ctx, 0, 'planx revise <id> [version]'));
   const version = resolveVersionRef(id, ctx.args.positionals[1]);
   const text = requireVersionText(id, version);
 
@@ -513,7 +513,7 @@ export function closingBlock(
     lines.push(
       handOffLine(
         'agent',
-        action === 'approve' ? `/planx execute ${planId} v${version}` : `/planx resume ${planId}`,
+        action === 'approve' ? `/planx execute ${planId} v${version}` : `/planx revise ${planId}`,
       ),
     );
   }

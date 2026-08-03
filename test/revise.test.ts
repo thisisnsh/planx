@@ -28,8 +28,8 @@ afterEach(() => {
   store.cleanup();
 });
 
-/** What `cmdResume` assembles, without going through the CLI. */
-function resumeText(planId: string, version: number): string {
+/** What `cmdRevise` assembles, without going through the CLI. */
+function reviseText(planId: string, version: number): string {
   const text = readVersionText(planId, version)!;
   const history = listFeedback(planId);
   return presentResume({
@@ -52,10 +52,10 @@ function comment(planId: string, version: number, from: number, to: number, body
   });
 }
 
-describe('resume', () => {
+describe('revise', () => {
   it('says there is nothing to revise towards before any review', () => {
     const { planId, version } = capture({ text: PLAN, title: 'p' });
-    const out = resumeText(planId, version);
+    const out = reviseText(planId, version);
 
     expect(out).toContain('No review of v1 yet');
     // Must not invite a revision when no one has asked for one.
@@ -68,7 +68,7 @@ describe('resume', () => {
     const { planId, version } = capture({ text: PLAN, title: 'p' });
     comment(planId, version, 7, 7, 'Wrong layer.');
 
-    const out = resumeText(planId, version);
+    const out = reviseText(planId, version);
     expect(out).not.toContain('The plan as it stands');
     expect(out).not.toContain('````');
     expect(out).toContain('Wrong layer.');
@@ -82,7 +82,7 @@ describe('resume', () => {
     const { planId, version } = capture({ text: PLAN, title: 'p' });
     comment(planId, version, 7, 7, 'Wrong layer.');
 
-    const out = resumeText(planId, version);
+    const out = reviseText(planId, version);
     expect(out).toContain('> Extend the guard in poller.ts.');
     expect(out).toContain('(line 7)');
   });
@@ -91,9 +91,9 @@ describe('resume', () => {
     const { planId, version } = capture({ text: PLAN, title: 'p' });
     comment(planId, version, 7, 7, 'Wrong layer.');
 
-    const first = resumeText(planId, version);
+    const first = reviseText(planId, version);
     const before = JSON.stringify(listFeedback(planId));
-    const second = resumeText(planId, version);
+    const second = reviseText(planId, version);
 
     expect(second).toBe(first);
     expect(JSON.stringify(listFeedback(planId))).toBe(before);
@@ -102,10 +102,10 @@ describe('resume', () => {
 
 /**
  * Capturing a new version silently retires the previous version's feedback,
- * addressed or not. Nothing records the difference, so `resume` infers it from
+ * addressed or not. Nothing records the difference, so `revise` infers it from
  * whether the quoted lines survived.
  */
-describe('resume flags feedback that was never addressed', () => {
+describe('revise flags feedback that was never addressed', () => {
   it('reports a comment whose quoted text is still present verbatim', () => {
     const { planId } = capture({ text: PLAN, title: 'p' });
     comment(planId, 1, 7, 7, 'Wrong layer. Use the R2 write path.');
@@ -113,7 +113,7 @@ describe('resume flags feedback that was never addressed', () => {
     // v2 edits Rollout and leaves the quoted Approach line untouched.
     capture({ planId, text: PLAN.replace('ff_clock_guard.', 'ff_clock_guard, staged.') });
 
-    const out = resumeText(planId, 2);
+    const out = reviseText(planId, 2);
     expect(out).toContain('Still unaddressed from earlier versions');
     expect(out).toContain('Use the R2 write path');
   });
@@ -127,7 +127,7 @@ describe('resume flags feedback that was never addressed', () => {
       text: PLAN.replace('Extend the guard in poller.ts.', 'Extend the guard in the R2 writer.'),
     });
 
-    const out = resumeText(planId, 2);
+    const out = reviseText(planId, 2);
     expect(out).not.toContain('Still unaddressed');
   });
 

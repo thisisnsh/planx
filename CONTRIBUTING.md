@@ -39,7 +39,7 @@ npm run build && node dist/cli.js --dir .planx-dev diff
 src/
   cli.ts, cli/       arg parsing, dispatch, the command spec, the doc generator
   store/             ~/.planx: atomic writes, index, versions, trash
-  protocol/          capture, resume, submit, unlock grants
+  protocol/          capture, revise, submit, unlock grants
   locks/             anchoring, verification, seal, split, splice/skeleton
   diff/, render/     line diff, collapsing, rich + plain rendering
   tui/               pure interaction model + Ink components
@@ -64,7 +64,7 @@ npx vitest                        # watch
 Four kinds, and it matters which one a change belongs in:
 
 - **`test/integration.test.ts`** drives the built binary as real subprocesses
-  with real timing. The `capture`/submit/`resume` hand-off lives here because it
+  with real timing. The `capture`/submit/`revise` hand-off lives here because it
   is the thing most likely to break, and mocking the process boundary would mock
   away the only part under test.
 - **`test/locks.test.ts`** is adversarial by design: reworded block, whitespace

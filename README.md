@@ -149,14 +149,14 @@ planx is a normal CLI. The agent side is three commands:
 ```bash
 # store a plan, then pick it back up after someone reviews it
 planx capture --stdin --title "Rate limit uploads" < plan.md
-planx resume <plan-id>
+planx revise <plan-id>
 
 # from anywhere else — a script, a hook, another editor
 planx <plan-id>                 # review it: comment, lock, submit or approve
 planx locks <plan-id>           # what is frozen, and any unlock an agent issued
 ```
 
-`planx resume` waits for nothing and is safe to run twice: it reads the plan,
+`planx revise` waits for nothing and is safe to run twice: it reads the plan,
 the feedback on it and its locks straight out of the store.
 
 </details>
@@ -170,7 +170,7 @@ what you want:
 | --- | --- |
 | `/planx` | Print the branches, then ask what to plan |
 | `/planx <anything>` | Clarify, check, research, write a plan, capture it |
-| `/planx resume <id>` | Pick up the feedback and revise |
+| `/planx revise <id>` | Pick up the feedback and revise |
 | `/planx execute <id>` | Build the approved plan in this session |
 | `/planx diff <id>` | Print a diff between two versions, no commentary |
 | `/planx off` | Say how to disable the skill by hand; change nothing |
@@ -196,7 +196,7 @@ README is the front door.
 | [What planx is](https://thisisnsh.github.io/planx) | The problem, and the shape of the answer |
 | [Install](https://thisisnsh.github.io/planx/guide/install) | What the installer touches, channels, rollback |
 | [Claude Code](https://thisisnsh.github.io/planx/guide/claude-code) · [Codex](https://thisisnsh.github.io/planx/guide/codex) | Per-agent setup |
-| [The review loop](https://thisisnsh.github.io/planx/guide/review-loop) | Capture, review, resume, approve |
+| [The review loop](https://thisisnsh.github.io/planx/guide/review-loop) | Capture, review, revise, approve |
 | [Locking](https://thisisnsh.github.io/planx/guide/locking) | How locks are enforced and lifted |
 | [CLI reference](https://thisisnsh.github.io/planx/reference/cli) | Every command and flag |
 | [Troubleshooting](https://thisisnsh.github.io/planx/troubleshooting) | When something does not behave |

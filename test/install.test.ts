@@ -37,7 +37,7 @@ describe('install', () => {
   it('copies the reference files the router branches into', () => {
     runInstall({ home, skillsOnly: true });
     const references = join(skillDir('planx'), 'references');
-    for (const name of ['resume.md', 'execute.md', 'diff.md']) {
+    for (const name of ['revise.md', 'execute.md', 'diff.md']) {
       expect(existsSync(join(references, name))).toBe(true);
     }
   });
@@ -74,7 +74,7 @@ describe('install', () => {
     const second = runInstall({ home, skillsOnly: true });
 
     expect(second.removed).toHaveLength(0);
-    expect(existsSync(join(skillDir('planx'), 'references', 'resume.md'))).toBe(true);
+    expect(existsSync(join(skillDir('planx'), 'references', 'revise.md'))).toBe(true);
   });
 
   /**

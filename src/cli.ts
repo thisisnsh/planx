@@ -10,7 +10,7 @@ import {
   cmdInstall,
   cmdList,
   cmdLocks,
-  cmdResume,
+  cmdRevise,
   cmdShow,
   cmdUninstall,
   cmdUnlock,
@@ -48,8 +48,8 @@ async function dispatch(name: string, ctx: Ctx): Promise<number> {
   switch (name) {
     case 'capture':
       return cmdCapture(ctx);
-    case 'resume':
-      return cmdResume(ctx);
+    case 'revise':
+      return cmdRevise(ctx);
     case 'unlock':
       return cmdUnlock(ctx);
     case 'diff':

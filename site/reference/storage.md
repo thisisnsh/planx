@@ -22,7 +22,7 @@ citizen, forever.
 
 The thing planx needs is a **tool call that blocks** while a human does
 something out of band. A blocking shell command gets it: the agent runs
-`planx resume <id>`, the command reads what the TUI in another
+`planx revise <id>`, the command reads what the TUI in another
 tab submits, and then it prints the feedback to stdout.
 
 That works in Claude Code, Codex, Gemini CLI, Cursor, Amp — anything that can
@@ -73,7 +73,7 @@ diffing, execution and rendering never learn they existed.
 - `index.json` and `locks.json` take an advisory lock: an `O_EXCL` lockfile,
   stolen if it is more than 10 seconds old. Not `flock`, because dotfiles live
   on network filesystems where `flock` lies.
-- Two `resume`s on the same version both read the same feedback.
+- Two `revise`s on the same version both read the same feedback.
 
 ## Corruption
 

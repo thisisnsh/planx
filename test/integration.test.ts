@@ -41,7 +41,7 @@ interface Review {
  * `planx submit` used to do this from a shell and went with the rest of the
  * surface nobody typed. What these tests are about survives it — the payload
  * still crosses a process boundary, written here and read back by a `planx
- * resume` running somewhere else.
+ * revise` running somewhere else.
  */
 function review(id: string, version: number, opts: Review) {
   return inStore(() => {
@@ -108,6 +108,12 @@ describe('the CLI as a real process', () => {
     const unknown = await cli.run(['frobnicate']);
     expect(unknown.code).toBe(2);
     expect(unknown.stderr).toContain('is not a command or a stored plan');
+
+    // `resume` was renamed with no alias, so it leaves the vocabulary the same
+    // way any other word planx does not know does.
+    const renamed = await cli.run(['resume']);
+    expect(renamed.code).toBe(2);
+    expect(renamed.stderr).toContain('"resume" is not a command or a stored plan');
 
     // Anything starting with a dash is never a plan reference.
     const badFlag = await cli.run(['list', '--nope']);
@@ -184,7 +190,7 @@ describe('the review hand-off across two processes', () => {
       general: 'Direction is fine.',
     });
 
-    const result = await cli.run(['resume', id, 'v1']);
+    const result = await cli.run(['revise', id, 'v1']);
     expect(result.code).toBe(0);
     expect(result.stdout).toContain(`## planx — ${id} v1 (verdict: revise)`);
     expect(result.stdout).toContain('Wrong layer. Guard belongs in the R2 write path.');
@@ -196,7 +202,7 @@ describe('the review hand-off across two processes', () => {
     const id = await seed();
     review(id, 1, { comments: [[3, 3, 'Say more here.']] });
 
-    const result = await cli.run(['resume', id, 'v1']);
+    const result = await cli.run(['revise', id, 'v1']);
     expect(result.stdout).toContain('Say more here.');
     expect(result.stdout).toContain('> ## Context');
     expect(result.stdout).not.toContain('The plan as it stands');
@@ -206,7 +212,7 @@ describe('the review hand-off across two processes', () => {
 
   it('says there is nothing to revise towards before any review', async () => {
     const id = await seed();
-    const result = await cli.run(['resume', id, 'v1']);
+    const result = await cli.run(['revise', id, 'v1']);
     expect(result.code).toBe(0);
     expect(result.stdout).toContain('No review of v1 yet');
   });
@@ -214,10 +220,10 @@ describe('the review hand-off across two processes', () => {
   it('stops re-delivering feedback once the next version lands', async () => {
     const id = await seed();
     review(id, 1, { comments: [[7, 7, 'Rework this.']] });
-    expect((await cli.run(['resume', id, 'v1'])).stdout).toContain('Rework this.');
+    expect((await cli.run(['revise', id, 'v1'])).stdout).toContain('Rework this.');
 
     await cli.run(['capture', '--plan-id', id, '--parent', 'v1', '--stdin'], PLAN_V2);
-    const after = await cli.run(['resume', id, 'v2']);
+    const after = await cli.run(['revise', id, 'v2']);
     expect(after.stdout).toContain('No review of v2 yet');
   });
 });
@@ -375,7 +381,7 @@ describe('the generated reference', () => {
     expect(docs.code).toBe(0);
     for (const command of [
       'capture',
-      'resume',
+      'revise',
       'unlock',
       'diff',
       'show',

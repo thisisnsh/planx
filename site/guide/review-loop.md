@@ -11,10 +11,10 @@ agent                                     you
   |                                        → the diff against v1
   |                                        → select lines: feedback / lock
   |                                        → s to submit
-  |                                        → prints: /planx resume <id>
+  |                                        → prints: /planx revise <id>
   |                                        |
   |   ← you paste that back                |
-  | planx resume <id>                      |
+  | planx revise <id>                      |
   |   → the feedback, and the locks        |
   | revises → capture v3 → stops again     |
 ```
@@ -27,13 +27,13 @@ That is a deliberate change from how planx used to work. The agent used to block
 on a queue while you reviewed, which held a session hostage, burned turns
 re-polling, and had to work around a 600-second ceiling on tool calls. The
 review was never the thing that needed to be synchronous — the *feedback* is on
-disk either way, and `planx resume` reads it.
+disk either way, and `planx revise` reads it.
 
 ## Review whenever you like
 
 `planx` opens whether or not anything is waiting, because nothing ever is. Leave
 notes an hour later. Leave them in three sittings. They accumulate on the
-version, and whenever you hand the agent `planx resume`, it sees all of them.
+version, and whenever you hand the agent `planx revise`, it sees all of them.
 
 `planx <plan>` opens that plan directly — the id the agent printed is the
 argument, and prefixes work, so `planx guard-clock` is enough. Bare `planx`
@@ -59,7 +59,7 @@ with reality: comments on v2 are what you address to produce v3, and once v3
 exists they are history.
 
 Because capturing a new version retires the previous version's comments whether
-or not anything was done about them, `planx resume` checks. If the lines a
+or not anything was done about them, `planx revise` checks. If the lines a
 comment quoted are still present word for word, it says so:
 
 ```
@@ -74,7 +74,7 @@ changing something else entirely.
 ## The feedback payload
 
 This is the wire format — what the review writes into
-`~/.planx/plans/<id>/feedback/` and what `planx resume` reads back out.
+`~/.planx/plans/<id>/feedback/` and what `planx revise` reads back out.
 
 ```jsonc
 {
@@ -117,7 +117,7 @@ affects what you can select.
 
 ## What the agent sees
 
-`planx resume <id>` prints exactly this — one read with everything asked of the
+`planx revise <id>` prints exactly this — one read with everything asked of the
 plan, and nothing else:
 
 ````markdown

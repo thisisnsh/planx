@@ -21,7 +21,7 @@ shell command — printing it as one is what used to make the line read as noise
 The other two exits print the same way:
 
 ```
-s   Paste to your agent:  /planx resume guard-clock-regression-a3f9
+s   Paste to your agent:  /planx revise guard-clock-regression-a3f9
 x   Reopen it with:  planx guard-clock-regression-a3f9 v3
 ```
 

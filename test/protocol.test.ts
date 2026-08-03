@@ -254,8 +254,8 @@ describe('what the agent sees', () => {
 describe('the review hand-off', () => {
   it('sends a slash command to the agent and a bare command to the terminal', () => {
     setColorEnabled(false);
-    expect(handOffLine('agent', '/planx resume guard-clock-a3f9').trim()).toBe(
-      'Paste to your agent:  /planx resume guard-clock-a3f9',
+    expect(handOffLine('agent', '/planx revise guard-clock-a3f9').trim()).toBe(
+      'Paste to your agent:  /planx revise guard-clock-a3f9',
     );
     expect(handOffLine('agent', '/planx execute guard-clock-a3f9 v3').trim()).toBe(
       'Paste to your agent:  /planx execute guard-clock-a3f9 v3',
@@ -284,7 +284,7 @@ describe('the review hand-off', () => {
 
     expect(closingBlock('quit', 'guard-clock-a3f9', 4).join('\n')).not.toContain('Paste');
     expect(closingBlock('revise', 'guard-clock-a3f9', 4)[0]).toContain(
-      '/planx resume guard-clock-a3f9',
+      '/planx revise guard-clock-a3f9',
     );
     expect(closingBlock('approve', 'guard-clock-a3f9', 4, 6)).toEqual([
       '✓ Approved & sealed — guard-clock-a3f9 v4 (6 sections locked).',

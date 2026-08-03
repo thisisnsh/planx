@@ -45,9 +45,9 @@ export const COMMANDS: CommandSpec[] = [
     ],
   },
   {
-    name: 'resume',
+    name: 'revise',
     group: 'agent',
-    usage: 'planx resume <id> [version] [--json]',
+    usage: 'planx revise <id> [version] [--json]',
     summary: 'Pick a plan back up: the feedback on it, and its locks.',
     description:
       'One read with everything asked of the plan: each comment against the lines it quotes, ' +
@@ -55,7 +55,7 @@ export const COMMANDS: CommandSpec[] = [
       'already has it, and `planx show <id> --plain` is there for a session that does not. ' +
       'Comments left on an earlier version whose quoted text is still present word for word ' +
       'are reported as probably never addressed. Safe to run twice; it waits for nothing.',
-    examples: ['planx resume guard-clock-a3f9'],
+    examples: ['planx revise guard-clock-a3f9'],
   },
   {
     name: 'unlock',

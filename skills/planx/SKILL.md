@@ -1,6 +1,6 @@
 ---
 name: planx
-description: Plan something as a reviewable artifact the user annotates, or resume, execute or diff a plan they already have. Use for /planx and anything mentioning planx.
+description: Plan something as a reviewable artifact the user annotates, or revise, execute or diff a plan they already have. Use for /planx and anything mentioning planx.
 ---
 
 # planx
@@ -17,7 +17,7 @@ Match on what followed `/planx`:
 | `/planx` alone | print the hint line below, then ask what to plan |
 | `/planx on` | the same as bare `/planx` — it is always available |
 | `/planx off` | say it is disabled by hand, and how; change nothing |
-| `/planx resume <id>` | read `references/resume.md` |
+| `/planx revise <id>` | read `references/revise.md` |
 | `/planx execute <id>` | read `references/execute.md` |
 | `/planx diff <id>` | read `references/diff.md` |
 | `/planx <anything else>` | clarify, check, research, plan, capture |
@@ -26,7 +26,7 @@ Read only the file for the branch you took.
 
 The hint line, verbatim:
 
-> `/planx <task>` · `/planx resume <id>` · `/planx execute <id>` · `/planx diff <id>` · `/planx off`
+> `/planx <task>` · `/planx revise <id>` · `/planx execute <id>` · `/planx diff <id>` · `/planx off`
 
 For `/planx off`: there is no switch to throw. Tell them to disable the skill
 itself — remove or rename `~/.claude/skills/planx`, or turn it off wherever
@@ -82,7 +82,7 @@ decisions. Write the plan as markdown with an H1 title and `##` sections. The
 later collapse to save tokens.
 
 If the user already has an approved plan and is asking for a different one, this
-is a new plan. Do not resume the old one.
+is a new plan. Do not revise the old one.
 
 ## 3. Capture it
 
@@ -111,7 +111,7 @@ One line, verbatim, with no preamble and nothing after it:
 
 **Then stop and end your turn.** Nothing blocks and nothing polls. They review
 it, and the reviewer prints a command they paste back to you — usually
-`/planx resume <plan-id>`. That is what starts the next round.
+`/planx revise <plan-id>`. That is what starts the next round.
 
 Do not revise, do not re-capture, and do not ask whether they are done. There is
 nothing to act on until they come back.
