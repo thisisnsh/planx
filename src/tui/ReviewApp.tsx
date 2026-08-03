@@ -16,7 +16,7 @@ import {
 import type { RenderMode } from '../render/diff.js';
 import type { Annotation, Feedback } from '../store/types.js';
 import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO, topRule } from './frame.js';
-import { hintLine, orderHints, type Hint } from './hints.js';
+import { hintLines, orderHints, type Hint } from './hints.js';
 import { lockLines, unlockLines } from './locking.js';
 import { BOX_PADDING, buildModel, type ViewRow } from './model.js';
 import {
@@ -77,9 +77,16 @@ type Mode =
   | { kind: 'leave' }
   | { kind: 'help' };
 
-/** Top rule, the gaps above and below the body, the status and hint lines, the
- *  bottom rule. */
-const CHROME_HEIGHT = 7;
+/**
+ * Top rule, the gaps above and below the body, the status line, the bottom
+ * rule. Five rows, not the seven the old constant claimed — and the extra row
+ * it reserved is why the frame stopped one line short of the terminal and Ink
+ * added a newline under the bottom border.
+ *
+ * The hint bar is added on top of this, because it wraps: how many rows it
+ * takes is a function of the terminal's width.
+ */
+const CHROME_WITHOUT_HINTS = 5;
 const MIN_BODY = 5;
 const MIN_WIDTH = 48;
 /** The cursor arrow and the space after it. */
@@ -153,7 +160,6 @@ export function ReviewApp(props: ReviewAppProps) {
 
   const rows = model.rows;
   const textWidth = contentWidth - model.gutterWidth;
-  const bodyHeight = Math.max(MIN_BODY, (stdout?.rows ?? 24) - CHROME_HEIGHT);
   const hasFeedback =
     Object.values(byVersion).some((list) => list.length > 0) || general.trim().length > 0;
 
@@ -161,6 +167,19 @@ export function ReviewApp(props: ReviewAppProps) {
     const earlier = props.versions.filter((v) => v < versionB);
     return earlier.length ? Math.max(...earlier) : null;
   }, [props.versions, versionB]);
+
+  // Reserve, do not react. The hint set changes with the row under the cursor,
+  // so a body sized to whatever the bar happens to need right now would grow
+  // and shrink as the cursor moved — visibly worse than the truncation this
+  // replaces. The frame keeps room for the widest bar and pads the rest.
+  const reserveRows = hintLines(
+    widestHints({
+      canDiff: previousVersion !== null,
+      manyVersions: props.versions.length > 1,
+    }),
+    inner,
+  ).length;
+  const bodyHeight = Math.max(MIN_BODY, (stdout?.rows ?? 24) - CHROME_WITHOUT_HINTS - reserveRows);
 
   const move = useCallback(
     (delta: number) => {
@@ -532,7 +551,12 @@ export function ReviewApp(props: ReviewAppProps) {
 
   // Help replaces the document rather than sitting on top of it, so a long key
   // list can never push the frame past the bottom of the terminal.
-  const body =
+  //
+  // Both are then held to exactly `bodyHeight`. A plan shorter than the
+  // viewport would otherwise draw a frame shorter than the terminal, and Ink
+  // adds a newline under any frame that does not reach the bottom — the same
+  // gap the chrome constant was leaving.
+  const body = fit(
     mode.kind === 'help'
       ? helpLines(inner, previousVersion !== null)
       : rows.slice(offset, offset + bodyHeight).map((row, i) =>
@@ -543,7 +567,9 @@ export function ReviewApp(props: ReviewAppProps) {
             width: textWidth,
             indent: model.railColumn,
           }),
-        );
+        ),
+    bodyHeight,
+  );
 
   const message =
     mode.kind === 'confirm'
@@ -575,23 +601,24 @@ export function ReviewApp(props: ReviewAppProps) {
       ))}
       <Text>{frameLine('', inner)}</Text>
       <Text>{frameLine(message, inner)}</Text>
-      <Text>
-        {frameLine(
-          dim(
-            hintsFor(mode, rows[selection.cursor], {
-              hasFeedback,
-              locked: isCursorLocked(model, rows, selection),
-              annotated: Boolean(annotationAtCursor()),
-              selecting: selection.active,
-              plural: spanSize(rows, selection) > 1,
-              diffing: versionA !== null,
-              canDiff: previousVersion !== null,
-              manyVersions: props.versions.length > 1,
-            }),
-          ),
+      {fit(
+        hintLines(
+          hintsFor(mode, rows[selection.cursor], {
+            hasFeedback,
+            locked: isCursorLocked(model, rows, selection),
+            annotated: Boolean(annotationAtCursor()),
+            selecting: selection.active,
+            plural: spanSize(rows, selection) > 1,
+            diffing: versionA !== null,
+            canDiff: previousVersion !== null,
+            manyVersions: props.versions.length > 1,
+          }),
           inner,
-        )}
-      </Text>
+        ),
+        reserveRows,
+      ).map((line, i) => (
+        <Text key={i}>{frameLine(line ? dim(line) : '', inner)}</Text>
+      ))}
       <Text>{bottomRule(frameWidth, ` ★ ${REPO} `)}</Text>
     </Box>
   );
@@ -736,36 +763,37 @@ interface HintContext {
  *
  * `g G ^d ^u` are gone from here and stay in `?`. They are the keys you already
  * know from every pager, and they were the third of the line that never
- * changed — a hint that is always true is a hint nobody is reading.
+ * changed — a hint that is always true is a hint nobody is reading. `h` joins
+ * them for the same reason: folding every note at once is a thing you do once
+ * a session, and it was costing a hint on every row of every plan.
  */
-function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): string {
+function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[] {
   if (mode.kind === 'editing')
-    return hintLine([
+    return [
       ['enter', 'save'],
       ['esc', 'discard'],
-    ]);
+    ];
   // The yellow `Global Note:` label on the row above says what is being typed,
   // so the hint has nothing left to explain.
   if (mode.kind === 'note')
-    return hintLine([
+    return [
       ['enter', 'save'],
       ['esc', 'cancel'],
-    ]);
+    ];
   if (mode.kind === 'confirm')
-    return hintLine([
+    return [
       ['enter', 'approve'],
       ['esc', 'cancel'],
-    ]);
+    ];
   if (mode.kind === 'leave')
-    return hintLine([
+    return [
       ['enter', 'back'],
       ['esc', 'stay'],
-    ]);
-  if (mode.kind === 'help') return 'any key to close';
+    ];
+  if (mode.kind === 'help') return [['any key', 'to close']];
 
   const lines = ctx.plural ? 'lines' : 'line';
   const hints: Hint[] = [
-    ['h', 'fold notes'],
     ['n', 'note'],
     ['x', 'exit'],
     ['esc', 'back'],
@@ -786,7 +814,38 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): strin
   if (ctx.canDiff) hints.push(['d', ctx.diffing ? 'hide diff' : 'show diff']);
   if (ctx.manyVersions) hints.push(['←→', 'version']);
   hints.push(ctx.hasFeedback ? ['s', 'submit'] : ['a', 'approve'], ['?', 'help']);
-  return hintLine(hints);
+  return hints;
+}
+
+/**
+ * The widest bar browse mode can produce, for the height to be reserved from.
+ *
+ * It is one real hint set rather than the union of all of them: a document
+ * line that is not locked, with every either/or resolved to the longer side.
+ * That branch offers three keys of its own where the note and the collapsed
+ * run offer two, and it carries the longest labels — so nothing the cursor can
+ * land on needs more rows than this.
+ */
+function widestHints(ctx: Pick<HintContext, 'canDiff' | 'manyVersions'>): Hint[] {
+  const hints: Hint[] = [
+    ['n', 'note'],
+    ['x', 'exit'],
+    ['esc', 'back'],
+    ['v', 'unselect lines'],
+    ['f', 'feedback'],
+    ['l', 'lock lines'],
+  ];
+  if (ctx.canDiff) hints.push(['d', 'show diff']);
+  if (ctx.manyVersions) hints.push(['←→', 'version']);
+  hints.push(['a', 'approve'], ['?', 'help']);
+  return hints;
+}
+
+/** Exactly `height` lines: the tail cut, or blank rows added. */
+function fit(lines: readonly string[], height: number): string[] {
+  const out = lines.slice(0, height);
+  while (out.length < height) out.push('');
+  return out;
 }
 
 /** How many lines `f` and `l` would act on, for singular against plural. */

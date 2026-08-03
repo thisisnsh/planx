@@ -13,7 +13,7 @@ import {
 } from '../render/ansi.js';
 import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO, topRule } from './frame.js';
 import { fuzzyFilter } from './fuzzy.js';
-import { hintLine, type Hint } from './hints.js';
+import { hintLines, type Hint } from './hints.js';
 
 /** Matches the review's floor, so both frames narrow to the same width. */
 const MIN_WIDTH = 48;
@@ -222,16 +222,15 @@ export function Picker<T>({
     // The only thing between you and a permanent delete, so it names the target
     // in full rather than asking about "this".
     confirming === null ? '' : `  ${bold(red(`delete ${confirming}? this cannot be undone`))}`,
-    dim(
-      `  ${
-        confirming === null
-          ? hintLine(hints)
-          : hintLine([
-              ['enter', 'delete'],
-              ['esc', 'cancel'],
-            ])
-      }`,
-    ),
+    ...hintLines(
+      confirming === null
+        ? hints
+        : [
+            ['enter', 'delete'],
+            ['esc', 'cancel'],
+          ],
+      inner - 2,
+    ).map((line) => dim(`  ${line}`)),
   ];
 
   return (

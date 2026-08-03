@@ -123,9 +123,11 @@ function mount(
   versionB: number,
   versions: number[] = [versionB],
   columns = 100,
+  rows = 30,
 ): Harness {
   const stdout = new FakeStdout();
   stdout.columns = columns;
+  stdout.rows = rows;
   const stdin = new FakeStdin();
   let resolve!: (value: ReviewResult) => void;
   const result = new Promise<ReviewResult>((r) => (resolve = r));
@@ -256,6 +258,47 @@ describe('the review frame', () => {
     expect(lines[0]).toContain(id);
     expect(lines.at(-1)).toContain('github.com/thisisnsh/planx');
     expect(lines.at(-1)).toContain('╯');
+    app.unmount();
+  });
+
+  it('fills the terminal exactly, so Ink adds no newline under the bottom rule', async () => {
+    // Short enough that the plan does not reach the bottom on its own: the
+    // frame has to be padded to the terminal, not merely allowed to overflow.
+    const app = mount(seed(), null, 1, [1], 100, 24);
+    await app.ready();
+
+    const frame = app.stdout.lastFrame;
+    expect(frameRows(frame)).toHaveLength(24);
+    expect(frame.split('\n')).toHaveLength(24);
+    app.unmount();
+  });
+
+  it('does not change height as the cursor moves between kinds of row', async () => {
+    const app = mount(seedTwoVersions(), 1, 2, [1, 2]);
+    await app.ready();
+
+    // A note, so the walk below crosses all three kinds of row: the collapsed
+    // run the diff opens on, a line of the plan, and a feedback box.
+    await app.press(DOWN);
+    await app.press('f');
+    await app.press('height check');
+    await app.press(ENTER);
+    await app.press('g');
+
+    const heights = new Set<number>();
+    const bars = new Set<string>();
+    for (let i = 0; i < 6; i++) {
+      const rows = bodyRows(app.stdout.lastFrame);
+      heights.add(rows.length);
+      // What the bar offers is how the row under the cursor names itself.
+      bars.add(rows.slice(-2).map(inner).join(' · '));
+      await app.press(DOWN);
+    }
+
+    expect([...bars].some((bar) => bar.includes('space expand'))).toBe(true);
+    expect([...bars].some((bar) => bar.includes('space fold'))).toBe(true);
+    expect([...bars].some((bar) => bar.includes('l lock'))).toBe(true);
+    expect(heights.size).toBe(1);
     app.unmount();
   });
 
@@ -714,7 +757,34 @@ describe('the keys, and where they sit', () => {
     const keys = inner(bodyRows(app.stdout.lastFrame).at(-1)!)
       .split(' · ')
       .map((part) => part.split(' ')[0]!);
-    expect(keys).toEqual(['←→', 'a', 'd', 'f', 'h', 'l', 'n', 'v', 'x', 'esc', '?']);
+    expect(keys).toEqual(['←→', 'a', 'd', 'f', 'l', 'n', 'v', 'x', 'esc', '?']);
+    app.unmount();
+  });
+
+  it('keeps h out of the bar, and in the help', async () => {
+    const app = mount(seedTwoVersions(), 1, 2, [1, 2], 200);
+    await app.ready();
+    await app.press(DOWN);
+    await app.frame('f feedback');
+    expect(app.stdout.lastFrame).not.toContain('h fold notes');
+
+    await app.press('?');
+    await app.frame('planx review');
+    expect(app.stdout.lastFrame).toContain('fold or unfold every note at once');
+    app.unmount();
+  });
+
+  it('folds the bar at 80 columns instead of cutting the keys that end it', async () => {
+    const app = mount(seedTwoVersions(), 1, 2, [1, 2], 80);
+    await app.ready();
+    await app.press(DOWN);
+    await app.frame('f feedback');
+
+    // The five the fixed order always put last, and so always lost.
+    const bar = bodyRows(app.stdout.lastFrame).slice(-2).map(inner).join(' · ');
+    for (const pair of ['a approve', 'v select lines', 'x exit', 'esc back', '? help']) {
+      expect(bar).toContain(pair);
+    }
     app.unmount();
   });
 

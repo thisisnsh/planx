@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fuzzyFilter, fuzzyMatch } from '../src/tui/fuzzy.js';
-import { hintLine, orderHints, type Hint } from '../src/tui/hints.js';
+import { hintLine, hintLines, orderHints, type Hint } from '../src/tui/hints.js';
 import { wrapComment } from '../src/tui/model.js';
 import {
   initialSelection,
@@ -230,6 +230,53 @@ describe('the order every list of keys is printed in', () => {
         ['enter', 'save'],
       ]),
     ).toBe('enter save · esc cancel');
+  });
+});
+
+/** The browse bar at its widest — the set the 80-column report was about. */
+const BROWSE: Hint[] = [
+  ['←→', 'version'],
+  ['d', 'hide diff'],
+  ['f', 'feedback'],
+  ['l', 'lock lines'],
+  ['n', 'note'],
+  ['s', 'submit'],
+  ['v', 'unselect lines'],
+  ['x', 'exit'],
+  ['esc', 'back'],
+  ['?', 'help'],
+];
+
+describe('folding the hint bar', () => {
+  it('packs to the width without splitting a key from what it does', () => {
+    const rows = hintLines(BROWSE, 60);
+    for (const row of rows) {
+      expect(row.length).toBeLessThanOrEqual(60);
+      for (const pair of row.split(' · ')) expect(pair).toMatch(/^\S+ \S/);
+    }
+    // Every pair is still there, in the one order, just across rows.
+    expect(rows.join(' · ')).toBe(hintLine(BROWSE));
+  });
+
+  it('keeps the keys an 80-column terminal used to cut', () => {
+    const shown = hintLines(BROWSE, 75).join(' · ');
+    for (const pair of ['s submit', 'v unselect lines', 'x exit', 'esc back', '? help']) {
+      expect(shown).toContain(pair);
+    }
+  });
+
+  it('caps at three rows, and spends the last of them on ? help', () => {
+    const rows = hintLines(BROWSE, 20);
+    expect(rows.length).toBe(3);
+    expect(rows.at(-1)).toContain('? help');
+    expect(rows.at(-1)!.length).toBeLessThanOrEqual(20);
+    // Something had to go, and it came off the end rather than mid-hint.
+    expect(rows.join(' · ')).not.toContain('…');
+    expect(hintLine(BROWSE)).toContain(rows[0]!);
+  });
+
+  it('is the same thing as the single line when nothing has to fold', () => {
+    expect(hintLines(BROWSE, Infinity)).toEqual([hintLine(BROWSE)]);
   });
 });
 
