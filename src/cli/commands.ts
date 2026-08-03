@@ -43,7 +43,7 @@ import {
 } from '../store/plans.js';
 import { listFeedback } from '../store/feedback.js';
 import { brandTitle, frameBlock } from '../tui/frame.js';
-import { isInteractive, runPicker, runReview } from '../tui/run.js';
+import { clearScreen, isInteractive, runPicker, runReview } from '../tui/run.js';
 import { all, has, one, parseDuration, type ParsedArgs } from './args.js';
 
 export interface Ctx {
@@ -398,31 +398,20 @@ export function previousStoredVersion(id: string, n: number): number | null {
 }
 
 export async function cmdDiff(ctx: Ctx): Promise<number> {
-  const id = await resolvePlan(
-    ctx,
-    ctx.args.positionals[0],
-    'Which plan?',
-    'Pick one to review, or type to filter.',
-  );
+  const named = ctx.args.positionals[0];
+  const printOnly = has(ctx.args, '--print') || has(ctx.args, '--stat') || !isInteractive();
+
+  // Non-interactive wants one plan and one answer, so it resolves once. The
+  // interactive path is a loop and picks inside it.
+  if (!printOnly) return reviewLoop(ctx, named ? resolvePlanRef(named) : null);
+
+  const id = await resolvePlan(ctx, named, 'Which plan?', 'Pick one to review, or type to filter.');
   if (!id) return 1;
 
-  const latest = latestVersion(id);
   const [, refA, refB] = ctx.args.positionals;
+  const versionB = refA && refB ? resolveVersionRef(id, refB) : resolveVersionRef(id, refA);
+  const versionA = refA && refB ? resolveVersionRef(id, refA) : previousStoredVersion(id, versionB);
 
-  let versionA: number | null;
-  let versionB: number;
-  if (refA && refB) {
-    versionA = resolveVersionRef(id, refA);
-    versionB = resolveVersionRef(id, refB);
-  } else if (refA) {
-    versionB = resolveVersionRef(id, refA);
-    versionA = previousStoredVersion(id, versionB);
-  } else {
-    versionB = latest;
-    versionA = previousStoredVersion(id, latest);
-  }
-
-  const printOnly = has(ctx.args, '--print') || !isInteractive();
   const newText = requireVersionText(id, versionB);
   const rows =
     versionA === null
@@ -433,28 +422,69 @@ export async function cmdDiff(ctx: Ctx): Promise<number> {
     ctx.out(renderStatLine(rows));
     return 0;
   }
-
-  if (printOnly) {
-    if (ctx.json) {
-      ctx.out(JSON.stringify({ plan_id: id, versionA, versionB, rows }, null, 2));
-      return 0;
-    }
-    for (const line of renderUnified(rows, {
-      mode: ctx.mode,
-      oldLabel: versionA === null ? undefined : `${id} v${versionA}`,
-      newLabel: `${id} v${versionB}`,
-    })) {
-      ctx.out(line);
-    }
+  if (ctx.json) {
+    ctx.out(JSON.stringify({ plan_id: id, versionA, versionB, rows }, null, 2));
     return 0;
   }
-
-  // A version with a predecessor opens against it. You open v4 because v4 is
-  // new, and what is new about it is the diff — opening flat and making you
-  // press `d` had it backwards for the common case. v1 has nothing to diff
-  // against and opens as itself; `d` toggles either way.
-  return runInteractiveReview(ctx, id, versionA, versionB);
+  for (const line of renderUnified(rows, {
+    mode: ctx.mode,
+    oldLabel: versionA === null ? undefined : `${id} v${versionA}`,
+    newLabel: `${id} v${versionB}`,
+  })) {
+    ctx.out(line);
+  }
+  return 0;
 }
+
+/**
+ * The picker and the review, taking turns in one call.
+ *
+ * `esc` in the review means back to the list, and there has to be a list to go
+ * back to even when the review was opened straight from `planx <id>` — so the
+ * two loop rather than one calling the other once. Anything else the reviewer
+ * does ends the loop, because it has printed a command to paste back.
+ */
+async function reviewLoop(ctx: Ctx, named: string | null): Promise<number> {
+  let opened = named;
+  let returning = false;
+  for (;;) {
+    if (!opened) {
+      // The review is still on screen on the way back, and the list has to be
+      // the whole screen rather than something drawn over a plan.
+      if (returning) clearScreen();
+      opened = await resolvePlan(
+        ctx,
+        undefined,
+        'Which plan?',
+        'Pick one to review, or type to filter.',
+      );
+      if (!opened) return 0;
+    }
+
+    const [, refA, refB] = ctx.args.positionals;
+    // A version named on the command line applies to the plan it was named
+    // with, not to whatever you pick after coming back to the list.
+    const explicit = opened === named;
+    const versionB =
+      explicit && refA ? resolveVersionRef(opened, refB ?? refA) : latestVersion(opened);
+    const versionA =
+      explicit && refA && refB
+        ? resolveVersionRef(opened, refA)
+        : previousStoredVersion(opened, versionB);
+
+    // A version with a predecessor opens against it. You open v4 because v4 is
+    // new, and what is new about it is the diff — opening flat and making you
+    // press `d` had it backwards for the common case. v1 has nothing to diff
+    // against and opens as itself; `d` toggles either way.
+    const code = await runInteractiveReview(ctx, opened, versionA, versionB);
+    if (code !== BACK) return code;
+    opened = null;
+    returning = true;
+  }
+}
+
+/** Not an exit code: the review asking for the list again. */
+const BACK = -1;
 
 async function runInteractiveReview(
   ctx: Ctx,
@@ -478,6 +508,7 @@ async function runInteractiveReview(
     previous: listFeedback(id),
   });
 
+  if (result.action === 'back') return BACK;
   if (result.action === 'quit') {
     ctx.out(dim('nothing submitted'));
     return 0;

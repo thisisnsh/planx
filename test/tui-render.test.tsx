@@ -121,8 +121,10 @@ function mount(
   versionA: number | null,
   versionB: number,
   versions: number[] = [versionB],
+  columns = 100,
 ): Harness {
   const stdout = new FakeStdout();
+  stdout.columns = columns;
   const stdin = new FakeStdin();
   let resolve!: (value: ReviewResult) => void;
   const result = new Promise<ReviewResult>((r) => (resolve = r));
@@ -201,6 +203,8 @@ const ESC = '\x1b';
 const ENTER = '\r';
 const SPACE = ' ';
 const DOWN = '\x1b[B';
+const LEFT = '\x1b[D';
+const RIGHT = '\x1b[C';
 const BACKSPACE = '\x7f';
 const ARROW = '▸';
 /** The closing corner of a note box — the thing that used to be missing. */
@@ -629,6 +633,121 @@ describe('submitting and approving', () => {
     expect((await app.result).action).toBe('quit');
     app.unmount();
   });
+
+  it('esc asks before going back to the list, and esc again stays', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press(ESC);
+    await app.frame('Back to the list?');
+    await app.press(ESC);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(app.stdout.lastFrame).not.toContain('Back to the list?');
+
+    await app.press(ESC);
+    await app.press(ENTER);
+    expect((await app.result).action).toBe('back');
+    app.unmount();
+  });
+
+  it('warns that pending feedback goes with you', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('f');
+    await app.press('unsent');
+    await app.press(ENTER);
+    await app.frame('unsent');
+
+    await app.press(ESC);
+    await app.frame('will be lost');
+    app.unmount();
+  });
+});
+
+/** The text between the frame's two edges. */
+function inner(row: string): string {
+  return row.replace(/^│\s?/, '').replace(/\s*│$/, '').trimEnd();
+}
+
+// Wide enough that nothing is cut, so these are about the order rather than
+// about what happens to fall off the end of a narrow terminal.
+describe('the keys, and where they sit', () => {
+  it('puts the hints in one order: arrows, then a to z, then esc, then ?', async () => {
+    const app = mount(seedTwoVersions(), 1, 2, [1, 2], 200);
+    await app.ready();
+    // Off the collapsed run the diff opens on, onto a line of the plan.
+    await app.press(DOWN);
+    await app.frame('f feedback');
+
+    const keys = inner(bodyRows(app.stdout.lastFrame).at(-1)!)
+      .split(' · ')
+      .map((part) => part.split(' ')[0]!);
+    expect(keys).toEqual(['←→', 'a', 'd', 'f', 'h', 'l', 'n', 'v', 'x', 'esc', '?']);
+    app.unmount();
+  });
+
+  it('lists the same keys in the same order under ?', async () => {
+    const app = mount(seedTwoVersions(), 1, 2, [1, 2], 200);
+    await app.ready();
+
+    await app.press('?');
+    await app.frame('planx review');
+
+    const keys = bodyRows(app.stdout.lastFrame)
+      .map((row) =>
+        inner(row)
+          .split(/\s{2,}/)[0]!
+          .trim(),
+      )
+      // Prose rows — the heading, the closing note, the hint line — have no
+      // key column, so they come out as a whole sentence.
+      .filter((key) => key.length > 0 && key.length <= 5);
+    expect(keys).toEqual([
+      '←→',
+      '↑↓',
+      'a',
+      'd',
+      '^d ^u',
+      'f',
+      '^f ^b',
+      'g G',
+      'h',
+      'l',
+      'n',
+      's',
+      'space',
+      'v',
+      'x',
+      'esc',
+      '?',
+    ]);
+    app.unmount();
+  });
+
+  it('agrees with the size of what l would act on', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+    await app.frame('l lock line');
+    expect(app.stdout.lastFrame).not.toContain('l lock lines');
+
+    await app.press('v');
+    await app.press(DOWN);
+    await app.frame('l lock lines');
+    // And `v` now says how to undo itself, since esc no longer does.
+    expect(app.stdout.lastFrame).toContain('v unselect lines');
+    app.unmount();
+  });
+
+  it('says show diff and hide diff, not diff and plan', async () => {
+    const app = mount(seedTwoVersions(), 1, 2, [1, 2]);
+    await app.ready();
+    await app.frame('d hide diff');
+
+    await app.press('d');
+    await app.frame('d show diff');
+    app.unmount();
+  });
 });
 
 describe('the whole-plan note', () => {
@@ -738,16 +857,27 @@ describe('the plan, the diff and the versions', () => {
     app.unmount();
   });
 
-  it('[ steps back a version and the header follows', async () => {
+  it('← steps back a version, → forward, and the header follows', async () => {
     const app = mount(seedTwoVersions(), null, 2, [1, 2]);
     await app.ready();
 
-    await app.press('[');
+    await app.press(LEFT);
     await app.frame('10% then 50% then 100%');
     expect(frameRows(app.stdout.lastFrame)[0]).toContain('v1');
 
-    await app.press(']');
+    await app.press(RIGHT);
     await app.frame('1% then 10% then 100%');
+    app.unmount();
+  });
+
+  it('still answers to the brackets, which the hints no longer mention', async () => {
+    const app = mount(seedTwoVersions(), null, 2, [1, 2]);
+    await app.ready();
+    expect(app.stdout.lastFrame).toContain('←→ version');
+    expect(app.stdout.lastFrame).not.toContain('[ ]');
+
+    await app.press('[');
+    await app.frame('10% then 50% then 100%');
     app.unmount();
   });
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fuzzyFilter, fuzzyMatch } from '../src/tui/fuzzy.js';
+import { hintLine, orderHints, type Hint } from '../src/tui/hints.js';
 import { wrapComment } from '../src/tui/model.js';
 import {
   initialSelection,
@@ -188,6 +189,47 @@ describe('wrapping a note', () => {
     // down rather than dropping it.
     expect(wrapComment('ab    cd', 8).join('')).toBe('ab    cd');
     expect(wrapComment('a  b  c  d', 5).join('')).toBe('a  b  c  d');
+  });
+});
+
+describe('the order every list of keys is printed in', () => {
+  it('puts the arrows first, then a to z, then esc, then ?', () => {
+    const shuffled: Hint[] = [
+      ['?', 'help'],
+      ['x', 'exit'],
+      ['esc', 'back'],
+      ['a', 'approve'],
+      ['space', 'fold'],
+      ['←→', 'version'],
+      ['s', 'submit'],
+    ];
+    expect(orderHints(shuffled).map(([key]) => key)).toEqual([
+      '←→',
+      'a',
+      's',
+      'space',
+      'x',
+      'esc',
+      '?',
+    ]);
+  });
+
+  it('files a modified key under its letter, not under the caret', () => {
+    const keys: Hint[] = [
+      ['g G', 'ends'],
+      ['^d ^u', 'half a screen'],
+      ['f', 'feedback'],
+    ];
+    expect(orderHints(keys).map(([key]) => key)).toEqual(['^d ^u', 'f', 'g G']);
+  });
+
+  it('joins them into the grey line under the frame', () => {
+    expect(
+      hintLine([
+        ['esc', 'cancel'],
+        ['enter', 'save'],
+      ]),
+    ).toBe('enter save · esc cancel');
   });
 });
 

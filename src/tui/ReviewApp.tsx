@@ -2,10 +2,21 @@ import { Box, Text, useApp, useInput, useStdin, useStdout } from 'ink';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { contextSha } from '../locks/anchor.js';
 import { buildAnnotation } from '../protocol/submit.js';
-import { bold, dim, inverse, padEnd, signal, stripAnsi, truncate, yellow } from '../render/ansi.js';
+import {
+  bold,
+  dim,
+  inverse,
+  padEnd,
+  red,
+  signal,
+  stripAnsi,
+  truncate,
+  yellow,
+} from '../render/ansi.js';
 import type { RenderMode } from '../render/diff.js';
 import type { Annotation, Feedback } from '../store/types.js';
 import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO, topRule } from './frame.js';
+import { hintLine, orderHints, type Hint } from './hints.js';
 import { lockLines, unlockLines } from './locking.js';
 import { BOX_PADDING, buildModel, type ViewRow } from './model.js';
 import {
@@ -25,7 +36,8 @@ export interface FeedbackBatch {
 }
 
 export interface ReviewResult {
-  action: 'submit' | 'approve' | 'reject' | 'quit';
+  /** `back` means the reviewer wants the list again, with nothing submitted. */
+  action: 'submit' | 'approve' | 'reject' | 'quit' | 'back';
   /** Notes belong to the version they were written on, so they leave in groups. */
   batches: FeedbackBatch[];
   /** The version on screen when the reviewer finished. */
@@ -38,7 +50,7 @@ export interface ReviewAppProps {
   title: string;
   versionA: number | null;
   versionB: number;
-  /** Every stored version, ascending — what `[`, `]` and `d` can reach. */
+  /** Every stored version, ascending — what `←`, `→` and `d` can reach. */
   versions: number[];
   mode: RenderMode;
   /** planx's own version, for the frame. */
@@ -64,6 +76,7 @@ type Mode =
   | { kind: 'editing'; annotationId: string; draft: string; isNew: boolean }
   | { kind: 'note'; draft: string }
   | { kind: 'confirm' }
+  | { kind: 'leave' }
   | { kind: 'help' };
 
 /** Top rule, the gaps above and below the body, the status and hint lines, the
@@ -435,9 +448,16 @@ export function ReviewApp(props: ReviewAppProps) {
       if (input === 'g') return jumpTo(0);
       if (input === 'G') return jumpTo(rows.length - 1);
 
-      if (key.escape) {
-        return setSelection((s) => reduceSelection(s, { type: 'clear' }, rows));
-      }
+      // Right for newer, left for older, the way the versions are numbered.
+      if (key.leftArrow) return stepVersion(-1);
+      if (key.rightArrow) return stepVersion(1);
+      // The brackets that used to do it still work, undocumented, because
+      // fingers that learned them should not have to unlearn them.
+      if (input === '[') return stepVersion(-1);
+      if (input === ']') return stepVersion(1);
+
+      // `v` is what clears a selection now, so esc is free to mean back.
+      if (key.escape) return setMode({ kind: 'leave' });
       if (input === 'v') {
         return setSelection((s) => reduceSelection(s, { type: 'toggleVisual' }, rows));
       }
@@ -446,8 +466,6 @@ export function ReviewApp(props: ReviewAppProps) {
       if (input === 'f') return startFeedback();
       if (input === 'l') return toggleLock();
       if (input === 'd' && previousVersion !== null) return toggleDiff();
-      if (input === '[') return stepVersion(-1);
-      if (input === ']') return stepVersion(1);
       if (input === 'h') return setHiddenFeedback((on) => !on);
       if (input === 'n') return setMode({ kind: 'note', draft: general });
       if (input === 's') return finish('submit');
@@ -504,8 +522,12 @@ export function ReviewApp(props: ReviewAppProps) {
         if (key.return) return finish('approve');
         if (key.escape || input === 'n') setMode({ kind: 'browse' });
       }
+      if (mode.kind === 'leave') {
+        if (key.return) return finish('back');
+        if (key.escape || input === 'n') setMode({ kind: 'browse' });
+      }
     },
-    { isActive: mode.kind === 'help' || mode.kind === 'confirm' },
+    { isActive: mode.kind === 'help' || mode.kind === 'confirm' || mode.kind === 'leave' },
   );
 
   /**
@@ -561,13 +583,21 @@ export function ReviewApp(props: ReviewAppProps) {
   const message =
     mode.kind === 'confirm'
       ? bold(signal(`Approve v${versionB}? This seals the plan — every section becomes locked.`))
-      : statusLine({
-          status,
-          note: mode.kind === 'note' ? mode.draft : general,
-          typing: mode.kind === 'note',
-          previous: previousOn(props.previous, versionB),
-          width: inner,
-        });
+      : mode.kind === 'leave'
+        ? bold(
+            red(
+              hasFeedback
+                ? 'Back to the list? Your feedback has not been submitted and will be lost.'
+                : 'Back to the list?',
+            ),
+          )
+        : statusLine({
+            status,
+            note: mode.kind === 'note' ? mode.draft : general,
+            typing: mode.kind === 'note',
+            previous: previousOn(props.previous, versionB),
+            width: inner,
+          });
 
   return (
     <Box flexDirection="column">
@@ -587,6 +617,8 @@ export function ReviewApp(props: ReviewAppProps) {
               hasFeedback,
               locked: isCursorLocked(model, rows, selection),
               annotated: Boolean(annotationAtCursor()),
+              selecting: selection.active,
+              plural: spanSize(rows, selection) > 1,
               diffing: versionA !== null,
               canDiff: previousVersion !== null,
               manyVersions: props.versions.length > 1,
@@ -720,43 +752,82 @@ interface HintContext {
   hasFeedback: boolean;
   locked: boolean;
   annotated: boolean;
+  /** A selection is live, so `v` ends it rather than starting one. */
+  selecting: boolean;
+  /** What `l` would act on covers more than one line. */
+  plural: boolean;
   diffing: boolean;
   canDiff: boolean;
   manyVersions: boolean;
 }
 
 /**
- * The hints offer what this row can actually do.
+ * The hints offer what this row can actually do, in the one order.
  *
  * Feedback and approval are both conditional: you cannot comment on a locked
  * passage, and approving a plan you have notes on would seal the lines the
  * notes are about. `d` is missing on v1 rather than bound to an apology.
  * Showing keys that refuse to work teaches the wrong thing.
+ *
+ * `g G ^d ^u` are gone from here and stay in `?`. They are the keys you already
+ * know from every pager, and they were the third of the line that never
+ * changed — a hint that is always true is a hint nobody is reading.
  */
 function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): string {
-  if (mode.kind === 'editing') return 'enter save · esc discard';
+  if (mode.kind === 'editing')
+    return hintLine([
+      ['enter', 'save'],
+      ['esc', 'discard'],
+    ]);
   // The yellow `Global Note:` label on the row above says what is being typed,
   // so the hint has nothing left to explain.
-  if (mode.kind === 'note') return 'enter save · esc cancel';
-  if (mode.kind === 'confirm') return 'enter approve · esc cancel';
+  if (mode.kind === 'note')
+    return hintLine([
+      ['enter', 'save'],
+      ['esc', 'cancel'],
+    ]);
+  if (mode.kind === 'confirm')
+    return hintLine([
+      ['enter', 'approve'],
+      ['esc', 'cancel'],
+    ]);
+  if (mode.kind === 'leave')
+    return hintLine([
+      ['enter', 'back'],
+      ['esc', 'stay'],
+    ]);
   if (mode.kind === 'help') return 'any key to close';
 
-  const parts: string[] = [];
+  const lines = ctx.plural ? 'lines' : 'line';
+  const hints: Hint[] = [
+    ['h', 'fold notes'],
+    ['n', 'note'],
+    ['x', 'exit'],
+    ['esc', 'back'],
+  ];
+
   // Folding is offered on the box, which the cursor can now reach — a document
   // line beside a note is a line, and the note has a row of its own.
-  if (row?.kind === 'feedback') parts.push('space fold', 'f edit');
-  else if (ctx.annotated) parts.push('f edit');
-  else if (row?.gapIndex !== null && row?.gapIndex !== undefined) {
-    parts.push('space expand', 'v select');
+  if (row?.kind === 'feedback') {
+    hints.push(['space', 'fold'], ['f', 'edit']);
+  } else if (row?.gapIndex !== null && row?.gapIndex !== undefined) {
+    hints.push(['space', 'expand'], ['v', ctx.selecting ? 'unselect lines' : 'select lines']);
   } else {
-    parts.push('v select', ctx.locked ? 'l unlock' : 'f feedback · l lock');
+    hints.push(['v', ctx.selecting ? 'unselect lines' : 'select lines']);
+    if (ctx.locked) hints.push(['l', `unlock ${lines}`]);
+    else hints.push(['f', ctx.annotated ? 'edit' : 'feedback'], ['l', `lock ${lines}`]);
   }
-  parts.push('n note');
-  if (ctx.canDiff) parts.push(ctx.diffing ? 'd plan' : 'd diff');
-  if (ctx.manyVersions) parts.push('[ ] version');
-  parts.push('g/G ^d/^u move');
-  parts.push(ctx.hasFeedback ? 's submit' : 'a approve', 'x exit', '? help');
-  return parts.join(' · ');
+
+  if (ctx.canDiff) hints.push(['d', ctx.diffing ? 'hide diff' : 'show diff']);
+  if (ctx.manyVersions) hints.push(['←→', 'version']);
+  hints.push(ctx.hasFeedback ? ['s', 'submit'] : ['a', 'approve'], ['?', 'help']);
+  return hintLine(hints);
+}
+
+/** How many lines `f` and `l` would act on, for singular against plural. */
+function spanSize(rows: readonly ViewRow[], selection: SelectionState): number {
+  const span = spanAtCursor(rows, selection);
+  return span ? span.end - span.start + 1 : 1;
 }
 
 function isCursorLocked(
@@ -772,30 +843,39 @@ function isCursorLocked(
   return false;
 }
 
-/** `null` in the third slot means the key only exists on a plan with history. */
-const HELP: Array<[string, string, 'always' | 'versioned']> = [
-  ['↑ ↓', 'move a row at a time, notes included', 'always'],
-  ['^d ^u', 'half a screen down or up', 'always'],
-  ['^f ^b', 'a whole screen down or up', 'always'],
-  ['g G', 'the top and the bottom of the plan', 'always'],
-  ['v', 'start or end a selection, then ↑ ↓ to extend', 'always'],
-  ['f', 'feedback on the selection, or edit the note on this line', 'always'],
-  ['l', 'lock or unlock the selection — applied immediately', 'always'],
-  ['space', 'fold the note, or expand the collapsed run, under the cursor', 'always'],
-  ['h', 'fold or unfold every note at once', 'always'],
-  ['n', 'a note about the whole plan', 'always'],
-  ['d', 'show the diff against the previous version, or hide it', 'versioned'],
-  ['[ ]', 'the previous and next version of the plan', 'versioned'],
-  ['s', 'submit everything at once', 'always'],
-  ['a', 'approve — seals the plan, and only when you have no feedback', 'always'],
-  ['x', 'leave without submitting', 'always'],
+/**
+ * Every key, in the same order the hint line puts them.
+ *
+ * `versioned` marks the ones that only exist on a plan with history. The list
+ * is sorted through `orderHints` rather than written in order, so `?` and the
+ * hints cannot drift apart.
+ */
+const HELP: Array<[Hint, 'always' | 'versioned']> = [
+  [['←→', 'the previous and next version of the plan'], 'versioned'],
+  [['↑↓', 'move a row at a time, notes included'], 'always'],
+  [['a', 'approve — seals the plan, and only when you have no feedback'], 'always'],
+  [['d', 'show the diff against the previous version, or hide it'], 'versioned'],
+  [['f', 'feedback on the selection, or edit the note under the cursor'], 'always'],
+  [['g G', 'the top and the bottom of the plan'], 'always'],
+  [['^d ^u', 'half a screen down or up'], 'always'],
+  [['^f ^b', 'a whole screen down or up'], 'always'],
+  [['h', 'fold or unfold every note at once'], 'always'],
+  [['l', 'lock or unlock the selection — applied immediately'], 'always'],
+  [['n', 'a note about the whole plan'], 'always'],
+  [['s', 'submit everything at once'], 'always'],
+  [['space', 'fold the note, or expand the collapsed run, under the cursor'], 'always'],
+  [['v', 'start or end a selection, then ↑ ↓ to extend'], 'always'],
+  [['x', 'leave without submitting'], 'always'],
+  [['esc', 'back to the list'], 'always'],
+  [['?', 'this list'], 'always'],
 ];
 
 function helpLines(width: number, canDiff: boolean): string[] {
+  const shown = HELP.filter(([, when]) => when === 'always' || canDiff).map(([hint]) => hint);
   return [
     bold(signal('planx review')),
     '',
-    ...HELP.filter(([, , when]) => when === 'always' || canDiff).map(
+    ...orderHints(shown).map(
       ([keys, what]) => `${signal(padEnd(keys, 8))}${dim(truncate(what, width - 8))}`,
     ),
     '',
