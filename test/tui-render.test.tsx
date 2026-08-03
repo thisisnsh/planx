@@ -1154,7 +1154,29 @@ describe('the picker as a version tree', () => {
     const keys = inner(bodyRows(app.stdout.lastFrame).at(-1)!)
       .split(' · ')
       .map((part) => part.split(' ')[0]!);
-    expect(keys).toEqual(['↑↓', 'd', 'enter', 'esc']);
+    expect(keys).toEqual(['→', '↑↓', 'd', 'enter', 'esc']);
+    app.unmount();
+  });
+
+  it('says which way the tree goes, on the rows it goes there from', async () => {
+    const app = mountPicker(planRows());
+    await app.ready();
+    expect(app.stdout.lastFrame).toContain('→ versions');
+
+    await app.press(RIGHT);
+    await app.frame('← collapse');
+    expect(app.stdout.lastFrame).not.toContain('→ versions');
+
+    // On a version row it is still the parent that collapses, so the hint
+    // stays; and a filtered list draws everything collapsed with neither arrow
+    // doing anything, so it offers neither.
+    await app.press(DOWN);
+    await app.frame('← collapse');
+
+    await app.press('rail');
+    await app.frame('The annotation rail');
+    expect(app.stdout.lastFrame).not.toContain('→ versions');
+    expect(app.stdout.lastFrame).not.toContain('← collapse');
     app.unmount();
   });
 

@@ -198,6 +198,16 @@ export function Picker<T>({
     ['enter', 'open'],
     ['esc', 'cancel'],
   ];
+  // The tree is the only thing on this screen with no key on the bar saying it
+  // is there. Contextual, the way the review varies `d show diff` / `d hide
+  // diff`: a row offers the direction it can actually go, and a filtered list —
+  // which matches plans only, and draws every one of them collapsed — offers
+  // neither, because neither arrow does anything there.
+  const open = here !== undefined && rows.some((row) => row.parent === here.parent && row.child);
+  if (!query && here) {
+    if (open) hints.push(['←', 'collapse']);
+    else if (!here.child && here.item.children?.length) hints.push(['→', 'versions']);
+  }
   if (here?.item.deleteAs) hints.push(['d', 'delete']);
 
   const drawn = [
