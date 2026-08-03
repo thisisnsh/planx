@@ -24,6 +24,7 @@ import {
   isRowSelected,
   reduceSelection,
   scrollFor,
+  settleCursor,
   spanAtCursor,
   type LineSpan,
   type SelectionState,
@@ -449,9 +450,10 @@ export function ReviewApp(props: ReviewAppProps) {
     const note = annotationAtCursor();
     if (note) {
       const id = note.id;
-      // Folding from inside the box takes four rows down to one, so the cursor
-      // moves to the row the box is about to become rather than to whatever
-      // line happens to slide up underneath it.
+      // Folding from inside the box takes it down to one row, so the cursor
+      // moves to where the box starts rather than to whatever line happens to
+      // slide up underneath it. Unfolding lands there too, and the settling
+      // that follows a rebuild carries it onto the note's reopened first line.
       if (rows[selection.cursor]?.kind === 'feedback') {
         jumpTo(rows.findIndex((r) => r.kind === 'feedback' && r.annotationId === id));
       }
@@ -678,9 +680,11 @@ export function ReviewApp(props: ReviewAppProps) {
 
   // Folding notes takes rows out from under the cursor — `h` can take dozens —
   // and a cursor past the end draws no arrow at all until the next keypress.
+  // Unfolding is the same problem from the other side: the row the cursor was
+  // on becomes a box edge, which is not a row it may rest on.
   useEffect(() => {
-    if (selection.cursor < rows.length) return;
-    jumpTo(rows.length - 1);
+    const index = settleCursor(rows, selection.cursor);
+    if (index !== selection.cursor) jumpTo(index);
   }, [rows, selection.cursor, jumpTo]);
 
   // `j` names the annotation it is going to rather than a row index, because
@@ -1135,7 +1139,7 @@ function isCursorLocked(
  */
 const HELP: Array<[Hint, 'always' | 'versioned']> = [
   [['←→', 'the previous and next version of the plan'], 'versioned'],
-  [['↑↓', 'move a row at a time, notes included'], 'always'],
+  [['↑↓', 'move a row at a time — a note box is one stop, on its first line'], 'always'],
   [['a', 'approve — seals the plan, and only when you have no feedback'], 'always'],
   [['d', 'show the diff against the previous version, or hide it'], 'versioned'],
   [['f', 'feedback on the selection, or edit the note under the cursor'], 'always'],

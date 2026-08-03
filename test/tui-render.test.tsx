@@ -454,7 +454,7 @@ describe('feedback lives in the document', () => {
     await app.frame('fold me');
     expect(bodyRows(app.stdout.lastFrame).filter((l) => l.includes('╯'))).toHaveLength(1);
 
-    // From the annotated line itself: the cursor cannot get into the box.
+    // From the annotated line itself, without stepping into the box.
     await app.press(SPACE);
     await new Promise((r) => setTimeout(r, 120));
     // One row left, still naming itself so a folded note is not a mystery, and
@@ -566,12 +566,19 @@ describe('feedback lives in the document', () => {
     await app.press(ENTER);
     await app.frame('on line one');
 
-    // Off line 1: the box's top edge, then its text.
-    await app.press(DOWN);
+    // One press off line 1 lands on the note's own line. The box's top edge is
+    // drawn between them and passed over: a cursor beside `├───╮` points at a
+    // corner, and getting to the words cost a second press to say so.
     await app.press(DOWN);
     await new Promise((r) => setTimeout(r, 120));
-
     expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('on line one');
+
+    // And one more press is out the other side, however tall the box is.
+    await app.press(DOWN);
+    await new Promise((r) => setTimeout(r, 120));
+    const out = cursorRow(bodyRows(app.stdout.lastFrame))!;
+    expect(out).not.toContain('on line one');
+    expect(out).not.toContain('╯');
     app.unmount();
   });
 
@@ -607,7 +614,6 @@ describe('feedback lives in the document', () => {
     await app.frame('fold from within');
 
     await app.press(DOWN);
-    await app.press(DOWN);
     await app.frame('space fold');
 
     await app.press(SPACE);
@@ -619,6 +625,13 @@ describe('feedback lives in the document', () => {
     expect(folded).toContain('├─ ▸ fold from within');
     // Still under the cursor, so space puts it straight back.
     expect(cursorRow(rows)).toBe(folded);
+
+    // And back: the box reopens under a cursor that cannot rest on its top
+    // edge, so the note's first line is where it ends up.
+    await app.press(SPACE);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('fold from within');
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('│');
     app.unmount();
   });
 });

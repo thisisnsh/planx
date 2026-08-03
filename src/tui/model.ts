@@ -48,6 +48,11 @@ export interface FeedbackRow {
   last: boolean;
   /** Columns the box occupies, so the closing edge lands in the same column. */
   boxWidth: number;
+  /**
+   * Drawn, but not a row the cursor rests on. The whole box is one stop, taken
+   * on its first line of text — see `walk` in ./selection.ts.
+   */
+  skip: boolean;
   /** Feedback rows annotate lines but do not occupy one, so they never
    *  contribute to a selection span. */
   newLine: null;
@@ -379,7 +384,15 @@ export function feedbackRows(id: string, comment: string, opts: BoxOptions): Fee
     // closing corner to suggest anything was hidden sideways.
     const title = ` ▸ ${firstLine(comment)} `;
     const fill = Math.max(0, boxWidth - 2 - title.length);
-    return [{ ...base, part: 'collapsed', text: `├─${title}${'─'.repeat(fill)}`, last: true }];
+    return [
+      {
+        ...base,
+        part: 'collapsed',
+        text: `├─${title}${'─'.repeat(fill)}`,
+        last: true,
+        skip: false,
+      },
+    ];
   }
 
   // The caret needs a column of its own on the last line. Wrapping a column
@@ -387,15 +400,19 @@ export function feedbackRows(id: string, comment: string, opts: BoxOptions): Fee
   // an over-long word on one line until the next space was typed.
   const width = boxWidth - BOX_PADDING - (opts.editing ? 1 : 0);
   const body = comment.length ? wrapComment(comment, width) : [''];
+  // The first line of the note is the row the cursor stops on; the edges and
+  // the lines the text wrapped onto are passed over. They say nothing a cursor
+  // resting on them would add, and every one of them was a press.
   return [
-    { ...base, part: 'top', text: `├${rule}╮` },
+    { ...base, part: 'top', text: `├${rule}╮`, skip: true },
     ...body.map((text, i) => ({
       ...base,
       part: 'body' as const,
       text,
       last: i === body.length - 1,
+      skip: i > 0,
     })),
-    { ...base, part: 'bottom', text: `╰${rule}╯` },
+    { ...base, part: 'bottom', text: `╰${rule}╯`, skip: true },
   ];
 }
 

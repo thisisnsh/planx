@@ -16,6 +16,8 @@ export interface SelectableRow {
   newLine: number | null;
   /** Index of the collapsed gap this row stands for, or null. */
   gapIndex: number | null;
+  /** Drawn, but never rested on — the edges and the wrapped rows of a note box. */
+  skip?: boolean;
 }
 
 export interface SelectionState {
@@ -63,23 +65,55 @@ export function reduceSelection(
 }
 
 /**
- * Take `delta` rows, clamped to the list.
+ * Take `delta` rows, then land on a row the cursor can rest on.
  *
- * Every drawn row, notes included. The cursor used to step over them, which
- * left the box as scenery: the only way to fold a note was to press space on
- * the line above it, and nothing said so. A note is a thing on the screen, and
- * the way to act on a thing on the screen is to put the cursor on it.
+ * A note is one stop, not four. The cursor steps into the box — that is what
+ * left the box as scenery before, when the only way to fold a note was to press
+ * space on the line above it and nothing said so — but it rests on the note's
+ * first line of text and passes over the rest: an arrow beside `╰────╯` points
+ * at nothing, and a note that wrapped to six lines cost six presses to walk by.
+ *
+ * The landing runs in the direction of travel, so a box is entered at the same
+ * row from above and from below.
  *
  * Selection is unaffected — a feedback row carries `newLine: null`, so
  * `spanAtCursor` declines and neither a comment nor a lock can start there.
  */
 function walk(rows: readonly SelectableRow[], from: number, delta: number): number {
-  return settle(rows, from + delta);
+  return stopNear(rows, settle(rows, from + delta), delta < 0 ? -1 : 1) ?? from;
 }
 
 /** Clamp to the row list. */
 function settle(rows: readonly SelectableRow[], index: number): number {
   return Math.max(0, Math.min(rows.length - 1, index));
+}
+
+/**
+ * `index` itself, or the nearest row the cursor may rest on — looking the way
+ * it was heading first, then back the other way.
+ *
+ * The fallback is what keeps the last note in a plan reachable: `G` lands on
+ * the box's closing edge, and there is nothing below it to settle onto.
+ */
+function stopNear(rows: readonly SelectableRow[], index: number, direction: 1 | -1): number | null {
+  for (const step of [direction, -direction] as const) {
+    for (let i = index; i >= 0 && i < rows.length; i += step) {
+      if (!rows[i]?.skip) return i;
+    }
+  }
+  return null;
+}
+
+/**
+ * Where the cursor belongs after the rows have been rebuilt under it.
+ *
+ * Folding a note takes rows out from beneath the cursor and unfolding puts them
+ * back, so the row it was on can become one it may not rest on — or stop
+ * existing at all, which `h` can do dozens of times over.
+ */
+export function settleCursor(rows: readonly SelectableRow[], cursor: number): number {
+  const clamped = settle(rows, cursor);
+  return stopNear(rows, clamped, 1) ?? clamped;
 }
 
 /** The inclusive row-index range currently highlighted, or null. */

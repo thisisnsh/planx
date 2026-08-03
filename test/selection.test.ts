@@ -7,6 +7,7 @@ import {
   reduceSelection,
   scrollFor,
   selectedRows,
+  settleCursor,
   spanAtCursor,
   spanOf,
   type SelectableRow,
@@ -25,13 +26,17 @@ const ROWS: SelectableRow[] = [
   { newLine: 5, gapIndex: null },
 ];
 
-/** The same, with a three-row note box hanging off line 2. */
+/**
+ * The same, with a note box hanging off line 2: top edge, two lines of text,
+ * closing edge. Only the first line of the text is a row the cursor rests on.
+ */
 const ANNOTATED: SelectableRow[] = [
   { newLine: 1, gapIndex: null },
   { newLine: 2, gapIndex: null },
-  { newLine: null, gapIndex: null },
-  { newLine: null, gapIndex: null },
-  { newLine: null, gapIndex: null },
+  { newLine: null, gapIndex: null, skip: true }, // ├────╮
+  { newLine: null, gapIndex: null }, //             │ text
+  { newLine: null, gapIndex: null, skip: true }, // │ wrapped onto a second line
+  { newLine: null, gapIndex: null, skip: true }, // ╰────╯
   { newLine: 3, gapIndex: null },
 ];
 
@@ -75,7 +80,8 @@ describe('keyboard selection', () => {
 });
 
 describe('walking into notes', () => {
-  it('steps into the box rather than over it, and out the other side', () => {
+  it('steps into the box rather than over it, landing on the note itself', () => {
+    // The top edge is passed over: one press off line 2 is the note's text.
     const down = run(
       [
         { type: 'moveTo', index: 1 },
@@ -83,20 +89,48 @@ describe('walking into notes', () => {
       ],
       ANNOTATED,
     );
-    expect(down.cursor).toBe(2);
+    expect(down.cursor).toBe(3);
+  });
 
+  it('leaves the box in one press, from the row it came in on', () => {
     const out = run(
       [
-        { type: 'moveTo', index: 4 },
+        { type: 'moveTo', index: 3 },
         { type: 'move', delta: 1 },
       ],
       ANNOTATED,
     );
-    expect(out.cursor).toBe(5);
+    expect(out.cursor).toBe(6);
   });
 
-  it('counts drawn rows, so the box is four presses deep', () => {
-    expect(run([{ type: 'move', delta: 4 }], ANNOTATED).cursor).toBe(4);
+  it('enters at the same row from below as from above', () => {
+    const up = run(
+      [
+        { type: 'moveTo', index: 6 },
+        { type: 'move', delta: -1 },
+      ],
+      ANNOTATED,
+    );
+    expect(up.cursor).toBe(3);
+  });
+
+  it('counts a whole note as one stop, however many rows it is drawn in', () => {
+    // Three presses from the top: line 1, line 2, the note, line 3 — where the
+    // same walk over drawn rows would have spent five getting there.
+    const presses: SelectionEvent[] = [
+      { type: 'move', delta: 1 },
+      { type: 'move', delta: 1 },
+      { type: 'move', delta: 1 },
+    ];
+    expect(run(presses, ANNOTATED).cursor).toBe(6);
+  });
+
+  // A pager moves the viewport, so it travels in drawn rows and settles where
+  // it lands. Counting stops instead would send ^d past the bottom of the
+  // screen on any plan carrying a few notes.
+  it('pages by rows, then settles off any edge it lands on', () => {
+    expect(run([{ type: 'move', delta: 4 }], ANNOTATED).cursor).toBe(6);
+    expect(run([{ type: 'move', delta: 2 }], ANNOTATED).cursor).toBe(3);
   });
 
   it('starts no selection on a box row, which has no line to anchor to', () => {
@@ -105,9 +139,12 @@ describe('walking into notes', () => {
     expect(spanOf(ANNOTATED, state)).toBeNull();
   });
 
-  it('rests on the last row of a box that ends the list', () => {
-    const rows: SelectableRow[] = [...ANNOTATED.slice(0, 5)];
-    expect(run([{ type: 'move', delta: 99 }], rows).cursor).toBe(4);
+  it('rests on the note when a box ends the list, not on its closing edge', () => {
+    // `G` on a plan whose last row is `╰───╯` has nowhere below to settle, so
+    // it comes back up to the text rather than pointing at a corner.
+    expect(run([{ type: 'move', delta: 99 }], ANNOTATED.slice(0, 6)).cursor).toBe(3);
+    expect(settleCursor(ANNOTATED, 5)).toBe(6);
+    expect(settleCursor(ANNOTATED.slice(0, 6), 99)).toBe(3);
   });
 });
 
