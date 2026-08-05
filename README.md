@@ -2,215 +2,156 @@
 
 # planx
 
-**Your agent's plan, as a versioned artifact you can annotate and lock.**
+**Review your agent's plan like code — line by line, version by version.**
 
 [![npm](https://img.shields.io/npm/v/@thisisnsh/planx?color=ffd400&labelColor=0b0b0c)](https://www.npmjs.com/package/@thisisnsh/planx)
 [![ci](https://img.shields.io/github/actions/workflow/status/thisisnsh/planx/ci.yml?branch=main&labelColor=0b0b0c)](https://github.com/thisisnsh/planx/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-ffd400?labelColor=0b0b0c)](LICENSE)
 [![node](https://img.shields.io/node/v/@thisisnsh/planx?labelColor=0b0b0c)](https://nodejs.org)
 
-[**Documentation**](https://thisisnsh.github.io/planx) ·
+[**Docs**](https://thisisnsh.github.io/planx) ·
+[**Try the review in your browser**](https://thisisnsh.github.io/planx) ·
 [Install](https://thisisnsh.github.io/planx/install) ·
-[Review Loop](https://thisisnsh.github.io/planx/review-loop) ·
-[CLI reference](https://thisisnsh.github.io/planx/reference/cli)
+[CLI](https://thisisnsh.github.io/planx/reference/cli)
 
 </div>
 
 ---
 
-## The problem
-
-Reviewing an agent's plan today means reading a wall of markdown in a chat
-window and answering it with more prose. Nothing is anchored, so the agent
-re-reads the whole plan to guess which paragraph you meant. And **nothing you
-settle stays settled** — the next revision quietly rewrites the section you
-already agreed on, and you only notice three versions later.
-
-The failure isn't that agents write bad plans. It's that plan review has no
-artifact: no stable text to point at, no record of which version you saw, and no
-way to say *this part is finished* that survives the next generation.
-
-## What planx does
-
-The plan becomes a file with versions. The agent captures it and stops. You open
-it and work on the text directly — select the lines you disagree with, type
-feedback where it belongs, lock the sections you have settled, and submit once.
+Chat gives you one move on a plan: type a paragraph and hope. planx makes the
+plan a **file with versions** — so you point at lines, comment where it belongs,
+freeze what is settled, and hand it back.
 
 ```console
 $ planx
 ```
 
 ```
-╭─ planx v0.3.0  guard-clock-a3f9  v1 ────────────────────────────────────────────────────────────────╮
-│                                                                                                     │
-│      1   # Guard the clock regression                                                               │
-│      2                                                                                              │
-│      3   ## Approach                                                                                │
-│      4 │ Extend the existing snapshot-regression guard in `poller.ts`                               │
-│      5 │ to also reject a cross-period backward jump.                                               │
-│        ├──────────────────────────────────────────────────────────────────────╮                     │
-│        │ Wrong layer. This belongs in the R2 write path.                      │                     │
-│        ╰──────────────────────────────────────────────────────────────────────╯                     │
-│      6                                                                                              │
-│ ▸ ⚿  7   ## Rollout                                                                                 │
-│   ⚿  8   Deploy behind the `ff_clock_guard` flag, 10% then 50% then 100% over three days.           │
-│                                                                                                     │
-│                                                                                                     │
-│ l unlock line · n note · s submit · v select lines · x exit · esc back · ? help                     │
-╰────────────────────────────────────────────────────────────────────── ★ github.com/thisisnsh/planx ─╯
+╭─ planx v0.3.0  guard-clock-a3f9  v3 ◂ v2 ───────────────────────────────────────────╮
+│                                                                                     │
+│      1   # Guard the clock regression                                               │
+│      2                                                                              │
+│      3   ## Approach                                                                │
+│      4 │ Extend the existing snapshot-regression guard in `poller.ts`               │
+│      5 │ to also reject a cross-period backward jump.                               │
+│        ├────────────────────────────────────────────────────────╮                   │
+│        │ Wrong layer. This belongs in the R2 write path.         │                   │
+│        ╰────────────────────────────────────────────────────────╯                   │
+│          ⋯ 12 lines · 1 feedback (space to expand)                                  │
+│ ▸ ⚿ 18   ## Rollout                                                                 │
+│   ⚿ 19   Deploy behind the `ff_clock_guard` flag, 10% then 50% then 100%.           │
+│                                                                                     │
+│ l unlock · f feedback · j next · d diff · s submit · x exit · ? help                │
+╰──────────────────────────────────────────────────── ★ github.com/thisisnsh/planx ───╯
 ```
 
-Press `s`. It prints one command to paste back to your agent, which picks the
-plan up with every comment quoted against the exact lines it refers to. Press
-`a` when you are happy — the plan seals and every section locks. A version can
-be approved only when it carries no feedback and no note, which is why the bar
-offers `s submit` or `a approve` and never both.
+## What you get
 
-A note hangs off a rail that runs between the line number and the text, so its
-words start on the same left edge as the words they are about. A version with a
-predecessor opens as the diff against it; `d` shows the plan on its own.
+| | Key | |
+| --- | --- | --- |
+| **Anchored feedback** | `v` to select lines, `f` to comment | Reaches the agent quoted against the exact lines — no prose for it to re-interpret |
+| **Versions** | `←` `→` walk the history | Every revision is stored; you always know which one you saw |
+| **Diff by default** | `d` | A version with a predecessor opens *as* the diff — word-level, with the lock gutter |
+| **Fold to skim** | `space`, `j` | Collapse a whole section into one row, jump feedback to feedback, on a plan you have read before |
+| **Edit in place** | `e` | Rewrite a line yourself as raw markdown, instead of round-tripping through the agent |
+| **Approve** | `a` | Seals the plan and locks every section — only allowed when nothing is left unanswered |
+| **Execute** | `/planx execute <id>` | Builds the approved plan in the session you are already in |
+| **Locks** | `l` | `planx capture` **rejects** a version that mutates a locked block, so the agent has to stop and ask |
 
-Nothing blocks and nothing polls. The agent finishes its turn when it captures,
-and starts again when you hand it the command.
+Locks are enforced by the CLI, not by the prompt — a prompt is advice, and an
+unattended agent will eventually ignore it. They guard against agent drift, not
+a hostile agent: see [Locking](https://thisisnsh.github.io/planx/locking) and
+[SECURITY.md](SECURITY.md).
 
-## Why it stands out
-
-**A lock is enforced by the CLI, not by the prompt.** Locks have to hold even in
-bypass-permissions mode, which rules out enforcement by instruction — a prompt
-is advice, and an unattended agent will eventually ignore it. So `planx capture`
-refuses to write a version that mutates a locked block:
+## The loop
 
 ```
-✗ planx: locked block L2 ("## Rollout") was modified — version rejected.
-
-  - Deploy behind the `ff_clock_guard` flag, 10% → 50% → 100% over 3 days.
-  + Deploy directly to 100%; the flag adds no value here.
-
-  This block is locked. Nothing was written.
-  If you did not mean to touch it, use a [[planx:keep …]] marker instead.
-  If you did, explain the change to the user first. Only once they agree:
-      planx unlock guard-clock-a3f9 L2 --reason "..."
-  Then re-run capture.
+/planx add rate limiting to uploads   →  agent researches, writes, captures, stops
+planx                                 →  you comment, lock, press s
+/planx revise <id>                    →  agent revises  ⟳
+planx  →  press a                     →  sealed
+/planx execute <id>                   →  built
 ```
 
-The agent physically cannot land the change. It has to stop and explain itself
-first. The unlock it then issues grants exactly one capture, records the reason
-it gave, and the lock re-arms on whatever gets written.
+Nothing blocks and nothing polls. The agent's turn ends at capture and starts
+again when you paste the command back.
 
-> An agent issues that unlock itself, once you have agreed in chat — nothing
-> verifies the conversation happened. Locks stop *accidental* rewriting, not
-> *determined* rewriting, which is why the reason is on the record and visible
-> in `planx locks`.
-
-**Feedback is anchored to the text.** Comments reach the agent quoted against
-the lines they came from, not as a wall of prose it has to re-read the plan to
-interpret.
-
-**Files are the protocol.** Everything is `~/.planx` and a CLI — no server, no
-daemon, no MCP, no background process, nothing to keep alive between turns. Any
-agent that can run a command is a first-class citizen. Claude Code and Codex
-both work today through the same skill files, and neither is privileged.
-
-> Locks are an **integrity** mechanism against agent drift, not a security
-> boundary against a hostile agent. See [SECURITY.md](SECURITY.md).
-
-## Quickstart
+## Install
 
 ```bash
 npm install -g @thisisnsh/planx
 planx add-skills
 ```
 
-Node 20.19 or newer. npm installs the CLI and writes nothing else; `add-skills`
-writes one skill into `~/.claude/skills/` and `~/.codex/skills/`, showing each
-step as it goes. It does **not** touch `settings.json`, `config.toml`, or any
-other agent configuration — there is no hook to register. Run it again after an
-upgrade to refresh the skills.
+Node 20.19+. `add-skills` writes one skill into `~/.claude/skills/` and
+`~/.codex/skills/` and touches no agent config — there is no hook to register.
+Then type `/planx` in Claude Code or Codex.
 
-To remove it: `planx remove-skills`, which also offers to delete `~/.planx`,
-then `npm uninstall -g @thisisnsh/planx`.
-
-Then, in Claude Code or Codex:
-
-```
-/planx add rate limiting to the upload endpoint
-```
-
-The agent researches, writes a plan, captures it, and stops — printing a plan
-id. Then:
-
-```bash
-planx
-```
-
-Pick the plan, review it, submit. It prints the command to paste back.
+Removal: `planx remove-skills`, then `npm uninstall -g @thisisnsh/planx`.
 
 <details>
-<summary><b>Using planx without an agent</b></summary>
-
-planx is a normal CLI. The agent side is three commands:
-
-```bash
-# store a plan, then pick it back up after someone reviews it
-planx capture --stdin --title "Rate limit uploads" < plan.md
-planx revise <plan-id>
-
-# from anywhere else — a script, a hook, another editor
-planx <plan-id>                 # review it: comment, lock, submit or approve
-planx locks <plan-id>           # what is frozen, and any unlock an agent issued
-```
-
-`planx revise` waits for nothing and is safe to run twice: it reads the plan,
-the feedback on it and its locks straight out of the store.
-
-</details>
-
-### One skill
-
-`/planx` dispatches on what follows it, so you can be explicit or just describe
-what you want:
+<summary><b>One skill, five branches</b></summary>
 
 | Say | What happens |
 | --- | --- |
 | `/planx` | Say it is ready, then ask what to plan |
-| `/planx <anything>` | Clarify, check, research, write a plan, capture it |
+| `/planx <anything>` | Clarify, research, write a plan, capture it |
 | `/planx revise <id>` | Pick up the feedback and revise |
 | `/planx execute <id>` | Build the approved plan in this session |
-| `/planx diff <id>` | Print a diff between two versions, no commentary |
+| `/planx diff <id>` | Print a diff between two versions |
 
-### Channels
+</details>
+
+<details>
+<summary><b>Using planx without an agent</b></summary>
+
+It is a normal CLI, and **files are the protocol** — everything is `~/.planx`.
+No server, no daemon, no MCP, nothing alive between turns, so any agent that can
+run a command is a first-class citizen.
+
+```bash
+planx capture --stdin --title "Rate limit uploads" < plan.md
+planx <plan-id>          # review: comment, lock, submit or approve
+planx diff <plan-id>     # any two versions, TUI or piped
+planx locks <plan-id>    # what is frozen, and any unlock an agent issued
+planx revise <plan-id>   # hand feedback + locks back to whatever is building
+```
+
+</details>
+
+<details>
+<summary><b>Release channels</b></summary>
 
 ```bash
 npm install -g @thisisnsh/planx           # latest — stable
-npm install -g @thisisnsh/planx@staging   # staging — maintainer test builds
+npm install -g @thisisnsh/planx@staging   # maintainer test builds
 ```
 
-`planx --version` reports which one you are on, so a bug report says so too.
+`planx --version` reports which one you are on.
 
-## Documentation
+</details>
 
-Every explanation lives in exactly one place, and that place is the site. This
-README is the front door.
+## Docs
 
-**The review runs in the browser there.** Every page carries a live frame beside
-the feature it explains — the same rows, the same keys, the same rules — so you
-can select lines, comment, lock and submit before installing anything.
+Every explanation lives on the site — and **the review runs there in your
+browser**, beside the feature it explains. Same rows, same keys, same rules,
+nothing installed.
 
 ### → **[thisisnsh.github.io/planx](https://thisisnsh.github.io/planx)**
 
-| Page | What is there |
-| --- | --- |
-| [What planx is](https://thisisnsh.github.io/planx) | The problem, the answer, and the review to try |
-| [Install](https://thisisnsh.github.io/planx/install) | What the installer touches, channels, rollback |
-| [Claude Code](https://thisisnsh.github.io/planx/claude-code) · [Codex](https://thisisnsh.github.io/planx/codex) | Per-agent setup |
-| [Review Loop](https://thisisnsh.github.io/planx/review-loop) | Capture, review, revise, approve |
-| [Locking](https://thisisnsh.github.io/planx/locking) | How locks are enforced and lifted |
-| [CLI reference](https://thisisnsh.github.io/planx/reference/cli) | Every command and flag |
-| [Troubleshooting](https://thisisnsh.github.io/planx/troubleshooting) | When something does not behave |
+[Install](https://thisisnsh.github.io/planx/install) ·
+[Claude Code](https://thisisnsh.github.io/planx/claude-code) ·
+[Codex](https://thisisnsh.github.io/planx/codex) ·
+[Review Loop](https://thisisnsh.github.io/planx/review-loop) ·
+[Locking](https://thisisnsh.github.io/planx/locking) ·
+[Diffing](https://thisisnsh.github.io/planx/diffing) ·
+[Executing](https://thisisnsh.github.io/planx/executing) ·
+[CLI reference](https://thisisnsh.github.io/planx/reference/cli) ·
+[Troubleshooting](https://thisisnsh.github.io/planx/troubleshooting)
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). The most likely useful contribution is
-**a new agent adapter**, which is usually a config entry rather than code.
+See [CONTRIBUTING.md](CONTRIBUTING.md) — the most useful contribution is usually
+**a new agent adapter**, which is a config entry rather than code.
 
 MIT licensed.
