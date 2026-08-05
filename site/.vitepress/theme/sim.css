@@ -1,0 +1,665 @@
+/*
+ * The demos: a terminal drawn in the page, and the controls around it.
+ *
+ * The palette is the CLI's, one for one — yellow is planx telling you
+ * something, green is code, red is what destroys or what was removed — so a
+ * reader who has used the tool recognises the screen, and a reader who has not
+ * arrives already knowing what the colours mean.
+ *
+ * Everything is sized in characters measured from this font. The frame is
+ * redrawn at whatever width the column happens to be, which is why there is no
+ * separate mobile layout: a phone gets a narrow planx, the way a narrow
+ * terminal does.
+ */
+
+.pnx-demo {
+  margin: 30px 0 36px;
+}
+
+.pnx-demo-lede {
+  margin: 0 0 12px;
+  color: var(--pnx-ink-2);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.pnx-demo-lede code {
+  font-size: 0.88em;
+}
+
+.pnx-demo-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* --- the screen ------------------------------------------------------ */
+
+.pnx-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pnx-term {
+  position: relative;
+  border: 1px solid var(--pnx-line);
+  border-radius: 8px;
+  background: #08080a;
+  padding: 10px 8px 8px;
+  transition: border-color 0.15s ease;
+}
+
+.pnx-term:focus {
+  outline: none;
+}
+
+.pnx-term.is-focused,
+.pnx-term:focus-visible {
+  border-color: rgba(255, 212, 0, 0.55);
+  box-shadow: 0 0 0 1px rgba(255, 212, 0, 0.25);
+}
+
+.pnx-screen {
+  position: relative;
+  min-width: 0;
+  overflow-x: auto;
+  /* The symbol fonts are for `⚿` and the box drawing, which not every mono
+     face carries — see `.lock` below for what keeps the cell one column. */
+  font-family:
+    var(--vp-font-family-mono), 'Apple Symbols', 'Segoe UI Symbol', 'Noto Sans Symbols 2';
+  font-size: 13px;
+  line-height: 1.42;
+  color: var(--pnx-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+.pnx-line {
+  white-space: pre;
+  tab-size: 2;
+}
+
+/* One glyph, measured rather than assumed — everything else is drawn to it. */
+.pnx-ruler {
+  position: absolute;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  white-space: pre;
+  pointer-events: none;
+}
+
+.pnx-term-hint {
+  margin: 8px 0 0;
+  font-family: var(--vp-font-family-mono);
+  font-size: 11px;
+  color: var(--pnx-ink-3);
+}
+
+/* --- the CLI's own colours ------------------------------------------- */
+
+.pnx-screen .sig,
+.pnx-capture-out .sig {
+  color: var(--pnx-signal);
+}
+
+.pnx-screen .dim,
+.pnx-capture-out .dim {
+  color: var(--pnx-ink-3);
+}
+
+.pnx-screen .bold {
+  font-weight: 700;
+}
+
+.pnx-screen .italic {
+  font-style: italic;
+}
+
+.pnx-screen .link {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.pnx-screen .code,
+.pnx-screen .green,
+.pnx-capture-out .green {
+  color: #7fd88f;
+}
+
+.pnx-screen .red,
+.pnx-capture-out .red {
+  color: #ff6b5a;
+}
+
+.pnx-screen .warn {
+  color: #ffb020;
+}
+
+/* A removed line: struck through, the way the terminal draws it. */
+.pnx-screen .delline {
+  color: #ff6b5a;
+  text-decoration: line-through;
+}
+
+/* The words that actually changed on a paired line. */
+.pnx-screen .bgadd {
+  background: rgba(80, 200, 120, 0.26);
+  color: #d8ffe4;
+}
+
+.pnx-screen .bgdel {
+  background: rgba(255, 107, 90, 0.24);
+  color: #ffdcd6;
+  text-decoration: line-through;
+}
+
+/* Inverse video: a selected line, and the picker's highlighted row. */
+.pnx-screen .inv {
+  background: var(--pnx-ink);
+  color: #08080a;
+}
+
+/* The lock marker, held to exactly one cell whatever font draws it. */
+.pnx-screen .lock {
+  display: inline-block;
+  width: 1ch;
+  overflow: hidden;
+  text-align: center;
+  vertical-align: bottom;
+}
+
+/* The block cursor, in the one colour that means "planx is waiting on you". */
+.pnx-screen .caret {
+  background: var(--pnx-signal);
+  color: #08080a;
+}
+
+/* --- keys ------------------------------------------------------------- */
+
+.pnx-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pnx-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 4px 10px;
+  border: 1px solid var(--pnx-line);
+  border-radius: 6px;
+  background: var(--pnx-panel);
+  color: var(--pnx-ink-2);
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.pnx-key b {
+  color: var(--pnx-signal);
+  font-weight: 600;
+}
+
+.pnx-key:hover {
+  border-color: rgba(255, 212, 0, 0.45);
+  color: var(--pnx-ink);
+}
+
+.pnx-key:active {
+  background: var(--pnx-panel-2);
+}
+
+.pnx-key.wide {
+  min-height: 38px;
+  padding: 8px 14px;
+  color: var(--pnx-ink);
+}
+
+.pnx-key.ghost {
+  background: transparent;
+  color: var(--pnx-ink-2);
+}
+
+/* --- typing ----------------------------------------------------------- */
+
+.pnx-typing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px dashed rgba(255, 212, 0, 0.4);
+  border-radius: 6px;
+  color: var(--pnx-ink-2);
+  font-size: 12px;
+  cursor: text;
+}
+
+.pnx-typing b {
+  color: var(--pnx-signal);
+  font-family: var(--vp-font-family-mono);
+}
+
+/* The input is the phone's way in; the words being typed are drawn in the
+   frame, inside the box they belong to, where they will be on a real screen. */
+.pnx-typing input {
+  flex: 1;
+  min-width: 0;
+  width: 1px;
+  border: none;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  outline: none;
+  font-size: 16px; /* iOS zooms a focused input under 16px. */
+}
+
+/* --- try-it checklist -------------------------------------------------- */
+
+.pnx-tasks h4 {
+  margin: 0 0 8px;
+  font-family: var(--pnx-font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pnx-ink-3);
+}
+
+.pnx-tasks ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 4px 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pnx-tasks li {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding: 2px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--pnx-ink-2);
+}
+
+.pnx-tasks .pnx-tick {
+  width: 1em;
+  color: var(--pnx-ink-3);
+  font-family: var(--vp-font-family-mono);
+}
+
+.pnx-tasks li.done {
+  color: var(--pnx-ink);
+}
+
+.pnx-tasks li.done .pnx-tick {
+  color: var(--pnx-signal);
+}
+
+/* --- the hand-off ------------------------------------------------------ */
+
+.pnx-handoff {
+  margin-top: 16px;
+  border: 1px solid var(--pnx-line);
+  border-left: 3px solid var(--pnx-signal);
+  border-radius: 0 8px 8px 0;
+  background: var(--pnx-panel);
+  padding: 14px 16px;
+}
+
+.pnx-handoff h4 {
+  margin: 0 0 10px;
+  font-family: var(--pnx-font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pnx-ink-3);
+}
+
+.pnx-handoff pre {
+  margin: 0;
+  overflow-x: auto;
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--pnx-ink-2);
+  white-space: pre;
+}
+
+/* --- the capture walkthrough ------------------------------------------- */
+
+.pnx-capture {
+  margin: 26px 0 32px;
+}
+
+.pnx-capture ol.pnx-capture-steps {
+  list-style: none;
+}
+
+.pnx-capture-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  color: var(--pnx-ink-3);
+}
+
+.pnx-capture .pnx-capture-steps li {
+  margin: 0;
+}
+
+.pnx-capture .pnx-capture-steps li.now {
+  color: var(--pnx-signal);
+}
+
+.pnx-capture-out {
+  margin: 0 0 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--pnx-line);
+  border-radius: 8px;
+  background: #08080a;
+  overflow-x: auto;
+  font-family: var(--vp-font-family-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--pnx-ink);
+  white-space: pre;
+}
+
+.pnx-capture-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* --- narrow ------------------------------------------------------------ */
+
+@media (max-width: 720px) {
+  .pnx-screen {
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .pnx-term {
+    padding: 8px 6px 6px;
+  }
+
+  .pnx-key {
+    min-height: 38px;
+  }
+
+  .pnx-capture-out {
+    font-size: 11px;
+  }
+
+  /* The hand-off is prose, not a frame: wrap it rather than asking a phone to
+     scroll a panel sideways to read the command at the end of it. */
+  .pnx-handoff pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 420px) {
+  .pnx-screen {
+    font-size: 10px;
+  }
+}
+
+/* The floor: 48 columns is the narrowest frame planx draws, and on a screen
+   this size the type has to come down to it rather than the frame scrolling
+   sideways inside its own box. */
+@media (max-width: 360px) {
+  .pnx-screen {
+    font-size: 9px;
+  }
+
+  .pnx-term {
+    padding: 6px 4px 4px;
+  }
+
+  /* Borrow the page's own gutter rather than shrinking the type again. */
+  .pnx-demo,
+  .pnx-capture {
+    margin-inline: -10px;
+  }
+}
+
+/* --- the loop diagram --------------------------------------------------- */
+
+/*
+ * Two sides and a rail. On a wide screen the rail runs down the middle with
+ * the agent on one side and you on the other, which is the shape of a hand-off;
+ * on a phone it runs down the left and the cards stack, because the order of
+ * the steps is the argument and it has to survive the column collapsing.
+ */
+.pnx-loop {
+  --rail: rgba(255, 212, 0, 0.35);
+  margin: 26px 0 34px;
+}
+
+.pnx-loop-heads {
+  display: none;
+}
+
+.pnx-loop ol.pnx-loop-steps,
+.pnx-loop .pnx-loop-card ul {
+  list-style: none;
+}
+
+.pnx-loop ol.pnx-loop-steps {
+  position: relative;
+  margin: 0;
+  padding: 0;
+}
+
+/* The rail itself: one line behind every step. */
+.pnx-loop-steps::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 7px;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, var(--rail) 8%, var(--rail) 92%, transparent);
+}
+
+.pnx-loop ol.pnx-loop-steps > li {
+  position: relative;
+  margin: 0;
+  padding: 0 0 0 30px;
+}
+
+/* The dot where a step joins the rail. */
+.pnx-loop-steps > li::before {
+  content: '';
+  position: absolute;
+  top: 18px;
+  left: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--pnx-signal);
+}
+
+.pnx-loop-card {
+  border: 1px solid var(--pnx-line);
+  border-radius: 8px;
+  background: var(--pnx-panel);
+  padding: 11px 14px;
+  margin: 4px 0 0;
+}
+
+.pnx-loop-steps > li.you .pnx-loop-card {
+  border-color: rgba(255, 212, 0, 0.32);
+}
+
+.pnx-loop-who {
+  margin: 0 0 6px;
+  font-family: var(--pnx-font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--pnx-ink-3);
+}
+
+.pnx-loop-steps > li.you .pnx-loop-who {
+  color: var(--pnx-signal);
+}
+
+.pnx-loop-cmd {
+  margin: 0;
+  font-family: var(--vp-font-family-mono);
+  font-size: 13px;
+  color: var(--pnx-ink);
+  overflow-wrap: anywhere;
+}
+
+.pnx-loop .pnx-loop-card ul {
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.pnx-loop .pnx-loop-card li {
+  margin: 0;
+  padding: 1px 0 1px 14px;
+  position: relative;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--pnx-ink-2);
+}
+
+.pnx-loop .pnx-loop-card li::before {
+  content: '→';
+  position: absolute;
+  left: 0;
+  color: var(--pnx-ink-3);
+  font-family: var(--vp-font-family-mono);
+}
+
+/* What crosses between the two sides, said on the rail rather than in a card. */
+.pnx-loop-hand {
+  margin: 8px 0 18px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  color: var(--pnx-signal);
+}
+
+.pnx-loop-again {
+  margin: 4px 0 0;
+  padding-left: 30px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  color: var(--pnx-ink-3);
+}
+
+.pnx-loop-again b {
+  color: var(--pnx-signal);
+  font-weight: 600;
+}
+
+@media (min-width: 760px) {
+  .pnx-loop-heads {
+    display: grid;
+    grid-template-columns: 1fr 44px 1fr;
+    gap: 0;
+    margin-bottom: 10px;
+    font-family: var(--pnx-font-display);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--pnx-ink-3);
+  }
+
+  /* Both labels sit against the rail, which is the thing they are labelling. */
+  .pnx-loop-heads span:first-child {
+    text-align: right;
+  }
+
+  .pnx-loop-heads span:last-child {
+    grid-column: 3;
+    color: var(--pnx-signal);
+  }
+
+  /* The column says whose step it is, so the card stops repeating it. */
+  .pnx-loop-who {
+    display: none;
+  }
+
+  .pnx-loop-steps::before {
+    left: 50%;
+  }
+
+  .pnx-loop ol.pnx-loop-steps > li {
+    display: grid;
+    grid-template-columns: 1fr 44px 1fr;
+    padding: 0;
+  }
+
+  .pnx-loop-steps > li::before {
+    top: 22px;
+    left: calc(50% - 3px);
+  }
+
+  /* Cards hug the rail rather than filling the column: the diagram is the
+     conversation across the middle, not two lists side by side. */
+  .pnx-loop-card {
+    max-width: 26rem;
+    margin: 0;
+  }
+
+  .pnx-loop-steps > li.agent .pnx-loop-card,
+  .pnx-loop-steps > li.agent .pnx-loop-hand {
+    grid-column: 1;
+    justify-self: end;
+    text-align: right;
+  }
+
+  .pnx-loop-steps > li.you .pnx-loop-card,
+  .pnx-loop-steps > li.you .pnx-loop-hand {
+    grid-column: 3;
+    justify-self: start;
+  }
+
+  .pnx-loop-hand {
+    max-width: 26rem;
+    margin: 8px 0 22px;
+  }
+
+  .pnx-loop-steps > li:last-child .pnx-loop-card {
+    margin-bottom: 0;
+  }
+
+  .pnx-loop-steps > li.agent .pnx-loop-card li {
+    padding: 1px 14px 1px 0;
+    text-align: right;
+  }
+
+  .pnx-loop-steps > li.agent .pnx-loop .pnx-loop-card li::before {
+    content: '←';
+    left: auto;
+    right: 0;
+  }
+
+  .pnx-loop-again {
+    padding-left: 0;
+    text-align: center;
+  }
+}

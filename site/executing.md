@@ -25,6 +25,13 @@ s   Paste to your agent:  /planx revise guard-clock-regression-a3f9
 x   Reopen it with:  planx guard-clock-regression-a3f9 v3
 ```
 
+## What a sealed plan looks like
+
+Every section carries a lock, `e` refuses, and the only key left that changes
+anything is `l` — if you really have to open one back up.
+
+<PlanxSim scenario="sealed" :rows="14" />
+
 ## In this session, not a new process
 
 planx used to be able to spawn a fresh agent for you. It no longer does, and the

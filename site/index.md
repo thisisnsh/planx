@@ -5,8 +5,9 @@ title: What planx is
 # What planx is
 
 planx turns the plan your coding agent writes into a versioned artifact you can
-annotate line by line, lock in place, and hand back. The agent blocks until you
-are done, and it cannot change a section you locked without asking you first.
+annotate line by line, lock in place, and hand back. Nothing blocks and nothing
+polls — and the agent cannot change a section you locked without asking you
+first.
 
 <div class="pnx-lede">
 
@@ -17,6 +18,38 @@ settle stays settled** — the next revision quietly rewrites the section you
 already agreed on, and you only notice three versions later.
 
 </div>
+
+## The review, here, now
+
+This is the real thing: the same rows, the same keys, the same rules. Click it
+and use your keyboard, or tap the keys underneath. Nothing is written anywhere —
+`s` prints the hand-off it would have printed, and shows you the markdown your
+agent would receive.
+
+<PlanxSim scenario="playground" :rows="17" />
+
+Every page on this site carries one of these beside the feature it explains.
+
+## What each key does
+
+| Key | What it does | Where it is explained |
+| --- | --- | --- |
+| `↑` `↓` | Move a row at a time. A note box is one stop, on its first line. | [Review Loop](/review-loop) |
+| `v` | Start a selection; `↑` `↓` extend it. Selection is always whole lines. | [Review Loop](/review-loop#selection-is-line-based-everywhere) |
+| `f` | Feedback on the selection, anchored to those exact lines. `f` on a note edits it; empty it to delete it. | [Review Loop](/review-loop) |
+| `e` | Rewrite the line yourself, in place, as raw markdown. | [Review Loop](/review-loop#rewrite-a-line-yourself-with-e) |
+| `l` | Lock the selection, or lift a lock. Applied the moment you press it. | [Locking](/locking) |
+| `space` | Fold the section, or the note, or expand a collapsed run. | [Review Loop](/review-loop#getting-around-a-plan-you-have-read-before) |
+| `j` `h` | Walk the feedback; fold every note at once. | [Review Loop](/review-loop) |
+| `d` `←` `→` | The diff against the previous version, and the history. | [Diffing](/diffing) |
+| `n` | One note about the whole plan. | [Review Loop](/review-loop) |
+| `s` | Submit everything at once, and print the command to paste back. | [Review Loop](/review-loop#what-the-agent-sees) |
+| `a` | Approve — seals the plan and locks every section. | [Executing](/executing) |
+| `?` | Every key, in the same order the hint bar puts them. | — |
+
+The hint bar along the bottom of the frame only ever offers keys that work on
+the row you are pointing at. `f` disappears on a locked passage, `d` is missing
+on v1, and `s submit` and `a approve` are never on the bar at the same time.
 
 ## The problem, concretely
 
@@ -38,44 +71,23 @@ no way to say "this part is finished" that survives the next generation.
 The plan becomes a file with versions. You open it in a second terminal tab and
 work on the text directly:
 
-- **Point at lines.** Drag-select or press `V`, type feedback, select three more
-  spots, submit once. Every comment reaches the agent quoted against the exact
-  lines it refers to.
+- **Point at lines.** Press `v`, extend with the arrows, type feedback, select
+  three more spots, submit once. Every comment reaches the agent quoted against
+  the exact lines it refers to.
+- **Rewrite what you can say yourself.** `e` opens a line as its source and what
+  you type is what the plan says — no round trip through an agent that has to
+  guess which word you meant.
 - **Lock what is settled.** Select lines, press `l`. Locked blocks come back to
-  the agent as `[[planx:keep L2]]` markers it must reproduce verbatim.
+  the agent as `[[planx:keep L1]]` markers it must reproduce verbatim.
 - **Approve when you are done.** The plan seals and every section locks.
-
-```console
-$ planx guard-clock-regression-a3f9
-```
-
-```
-╭─ planx v0.3.0  guard-clock-a3f9  v1 ────────────────────────────────────────────────────────────────╮
-│                                                                                                     │
-│      1   # Guard the clock regression                                                               │
-│      2                                                                                              │
-│      3   ## Approach                                                                                │
-│      4 │ Extend the existing snapshot-regression guard in `poller.ts`                               │
-│      5 │ to also reject a cross-period backward jump.                                               │
-│        ├──────────────────────────────────────────────────────────────────────╮                     │
-│        │ Wrong layer. This belongs in the R2 write path.                      │                     │
-│        ╰──────────────────────────────────────────────────────────────────────╯                     │
-│      6                                                                                              │
-│ ▸ ⚿  7   ## Rollout                                                                                 │
-│   ⚿  8   Deploy behind the `ff_clock_guard` flag, 10% then 50% then 100% over three days.           │
-│                                                                                                     │
-│                                                                                                     │
-│ h fold notes · l unlock line · n note · s submit · v select lines · x exit · esc back · ? help      │
-╰────────────────────────────────────────────────────────────────────── ★ github.com/thisisnsh/planx ─╯
-```
 
 A note hangs off a rail that runs down the lines it is about, between the line
 number and the text, so it is never a comment floating near a passage — it is
 attached to one, and its words start on the same left edge as theirs.
 
-A version with a predecessor opens as the diff against it: you opened v4
-because v4 is new, and what is new about it is the diff. `d` shows the plan on
-its own instead, and `←` and `→` walk the history.
+A version with a predecessor opens as the diff against it: you opened v3 because
+v3 is new, and what is new about it is the diff. `d` shows the plan on its own
+instead, and `←` and `→` walk the history.
 
 You press `s`. It prints a command to paste back to your agent, which picks the
 plan up with your annotations attached to the lines they came from, and it
@@ -84,31 +96,33 @@ revises.
 ## Why a lock is different from an instruction
 
 Enforcement lives in the storage layer, not in the prompt. `planx capture`
-refuses to write a version that mutates a locked block:
+refuses to write a version that mutates a locked block — so the agent physically
+cannot land the change, and has one path forward, which is to ask you.
 
-```
-✗ planx: locked block L2 ("## Rollout") was modified — version rejected.
+Walk it:
 
-  - Deploy behind the `ff_clock_guard` flag, 10% → 50% → 100% over 3 days.
-  + Deploy directly to 100%; the flag adds no value here.
-
-  This block is locked. To change it:
-      planx unlock guard-clock-a3f9 L2 --reason "..."
-  Then re-run capture. Nothing was written.
-```
+<PlanxCapture />
 
 That distinction is the whole point. A prompt is advice, and an unattended agent
 in bypass-permissions mode will eventually ignore it. A rejected write is not
-advice. The agent has one path forward, which is to ask you — and your answer
-grants exactly one capture before the lock re-arms.
+advice, and the unlock you then agree to grants exactly one capture before the
+lock re-arms.
 
 Locks are an integrity mechanism against agent drift, not a security boundary
-against a hostile agent. See [Locking](/guide/locking).
+against a hostile agent. See [Locking](/locking).
+
+## Every plan you have, in one list
+
+Bare `planx` opens the picker rather than a plan: every plan in the store,
+newest first, `→` into its versions, and `d` on the row in front of you to
+delete it.
+
+<PlanxPicker />
 
 ## Files are the protocol
 
-Everything is `~/.planx` and a blocking subprocess. No server, no daemon, no
-MCP, no lifecycle to manage:
+Everything is `~/.planx` and a CLI. No server, no daemon, no MCP, no lifecycle
+to manage:
 
 ```
 ~/.planx/plans/guard-clock-a3f9/
@@ -125,11 +139,12 @@ privileged over the other.
 
 ```bash
 npm install -g @thisisnsh/planx
+planx add-skills
 ```
 
 Then type `/planx` in Claude Code or Codex.
 
-- [Install](/guide/install) — what the installer touches, channels, rollback
-- [The review loop](/guide/review-loop) — capture, review, revise, approve
-- [Locking](/guide/locking) — how locks are enforced and lifted
+- [Install](/install) — what the installer touches, channels, rollback
+- [Review Loop](/review-loop) — capture, review, revise, approve
+- [Locking](/locking) — how locks are enforced and lifted
 - [CLI reference](/reference/cli) — every command and flag

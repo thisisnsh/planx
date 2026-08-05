@@ -27,8 +27,12 @@ Exactly as everywhere else, in a second terminal tab:
 planx <plan-id>
 ```
 
+Leave a comment, press `s`, and paste the line it prints back into Codex:
+
+<PlanxSim scenario="agents" :rows="14" />
+
 ## Executing
 
 planx does not launch Codex for you. Approving a plan prints one command to
 paste into whichever session you want to build it in — see
-[Executing](/guide/executing).
+[Executing](/executing).

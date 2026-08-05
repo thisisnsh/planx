@@ -12,6 +12,8 @@ Because a locked passage is settled, the review will not take feedback on one:
 `f` is dropped from the hints and refuses if pressed. Unlock it first, then say
 what you wanted to say.
 
+<PlanxSim scenario="locking" :rows="15" />
+
 ## Enforcement is in the CLI, not in the prompt
 
 This is the critical design decision.
@@ -21,18 +23,11 @@ enforcement by instruction — a prompt is advice, and an unattended agent will
 eventually ignore it.
 
 So `planx capture` refuses to write a version that mutates a locked region. It
-exits non-zero and prints the offending diff:
+exits non-zero and prints the offending diff. This is the one part of planx you
+cannot try from the frame above, because it happens on the agent's side — so
+walk it here:
 
-```
-✗ planx: locked block L2 ("## Rollout") was modified — version rejected.
-
-  - Deploy behind the `ff_clock_guard` flag, 10% → 50% → 100% over 3 days.
-  + Deploy directly to 100%; the flag adds no value here.
-
-  This block is locked. To change it:
-      planx unlock guard-clock-regression-a3f9 L2 --reason "..."
-  Then re-run capture. Nothing was written.
-```
+<PlanxCapture />
 
 The agent physically cannot land the change. It has one path forward: ask.
 

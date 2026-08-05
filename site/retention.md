@@ -13,6 +13,8 @@ Open bare `planx`, put the cursor on what you want gone, and press `d`.
 - On a **version row** — press `→` on a plan to open its versions — that is
   that one version.
 
+<PlanxPicker />
+
 A red line at the foot names the target in full before anything happens:
 
 ```
@@ -41,7 +43,7 @@ Two version rows refuse, and say so by not offering `d`:
   read path assumes one exists.
 - **A version a lock was cut from.** `--splice` re-reads a locked block's source
   text out of the version it was recorded in, so deleting that version would
-  break the marker path. See [Locking](/guide/locking).
+  break the marker path. See [Locking](/locking).
 
 Deleting the plan itself is always allowed. If you want it gone, the locks go
 with it.

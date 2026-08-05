@@ -6,7 +6,8 @@
 /planx add rate limiting to the upload endpoint
 ```
 
-Claude researches, writes the plan, captures it, prints the id, and blocks.
+Claude researches, writes the plan, captures it, prints the id, and stops. Its
+turn is over — nothing is waiting on a queue, and nothing is polling.
 
 ::: tip If you were already in plan mode
 The skill calls `ExitPlanMode` immediately with a one-line stub — not with a
@@ -21,22 +22,26 @@ phase. One keypress buys you one flow instead of two half-flows.
 In a second terminal tab:
 
 ```bash
-planx diff <plan-id>
+planx <plan-id>
 ```
 
-Drag to select lines, or press `V` and move with `j`/`k`. Then:
+Press `v` to start a selection, extend it with the arrows, and then:
 
 | Key | What it does |
 | --- | --- |
-| `c` | Comment on the selection |
-| `l` | Lock the selection |
-| `u` | Unlock (splits a lock if partial) |
-| `n` | A general note about the whole plan |
+| `f` | Feedback on the selection — or edit the note under the cursor |
+| `e` | Rewrite the line yourself, in place |
+| `l` | Lock the selection, or lift a lock |
+| `n` | A note about the whole plan |
+| `d` `←` `→` | The diff against the previous version, and the history |
 | `s` | Submit everything at once |
 | `a` | Approve — seals the plan |
-| `?` | Full key list |
+| `?` | Every key |
 
-Claude picks the feedback up wherever it is in the loop and revises.
+<PlanxSim scenario="agents" :rows="14" />
+
+`s` prints one line to paste back into the Claude Code session. Claude picks the
+feedback up wherever it is in the loop and revises.
 
 ## Nothing blocks, so nothing has to be resumed
 
@@ -70,4 +75,4 @@ decision reviewable later in `planx locks`.
 Approving seals the plan and prints one command to paste back — no questions
 about agents or models. planx cannot switch a running session's model and no
 agent CLI lets it, so it prints the command and you run it wherever you like.
-See [Executing](/guide/executing).
+See [Executing](/executing).

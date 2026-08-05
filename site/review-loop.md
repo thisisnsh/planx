@@ -1,23 +1,6 @@
-# The review loop
+# Review Loop
 
-```
-agent                                     you
-  |                                        |
-  | planx capture --stdin --title "..."    |
-  |   → writes v2.md, prints id + version  |
-  |   → says "open planx <id> v2", stops   |
-  |                                        |
-  |                                      planx <id> v2
-  |                                        → the diff against v1
-  |                                        → select lines: feedback / lock
-  |                                        → s to submit
-  |                                        → prints: /planx revise <id>
-  |                                        |
-  |   ← you paste that back                |
-  | planx revise <id>                      |
-  |   → the feedback, and the locks        |
-  | revises → capture v3 → stops again     |
-```
+<PlanxLoop />
 
 **Nothing blocks and nothing polls.** There is no daemon, no background process
 and no waiting subprocess. The agent's turn ends when it captures; the next turn
@@ -28,6 +11,14 @@ on a queue while you reviewed, which held a session hostage, burned turns
 re-polling, and had to work around a 600-second ceiling on tool calls. The
 review was never the thing that needed to be synchronous — the *feedback* is on
 disk either way, and `planx revise` reads it.
+
+## The whole loop, on one screen
+
+Everything below is in this frame. Select lines and comment on them, rewrite a
+line yourself, leave one note about the plan, then press `s` — the markdown your
+agent receives is printed underneath.
+
+<PlanxSim scenario="review" :rows="16" />
 
 ## Review whenever you like
 

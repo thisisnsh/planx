@@ -10,8 +10,8 @@
 [![node](https://img.shields.io/node/v/@thisisnsh/planx?labelColor=0b0b0c)](https://nodejs.org)
 
 [**Documentation**](https://thisisnsh.github.io/planx) ·
-[Install](https://thisisnsh.github.io/planx/guide/install) ·
-[The review loop](https://thisisnsh.github.io/planx/guide/review-loop) ·
+[Install](https://thisisnsh.github.io/planx/install) ·
+[Review Loop](https://thisisnsh.github.io/planx/review-loop) ·
 [CLI reference](https://thisisnsh.github.io/planx/reference/cli)
 
 </div>
@@ -192,15 +192,19 @@ npm install -g @thisisnsh/planx@staging   # staging — maintainer test builds
 Every explanation lives in exactly one place, and that place is the site. This
 README is the front door.
 
+**The review runs in the browser there.** Every page carries a live frame beside
+the feature it explains — the same rows, the same keys, the same rules — so you
+can select lines, comment, lock and submit before installing anything.
+
 ### → **[thisisnsh.github.io/planx](https://thisisnsh.github.io/planx)**
 
 | Page | What is there |
 | --- | --- |
-| [What planx is](https://thisisnsh.github.io/planx) | The problem, and the shape of the answer |
-| [Install](https://thisisnsh.github.io/planx/guide/install) | What the installer touches, channels, rollback |
-| [Claude Code](https://thisisnsh.github.io/planx/guide/claude-code) · [Codex](https://thisisnsh.github.io/planx/guide/codex) | Per-agent setup |
-| [The review loop](https://thisisnsh.github.io/planx/guide/review-loop) | Capture, review, revise, approve |
-| [Locking](https://thisisnsh.github.io/planx/guide/locking) | How locks are enforced and lifted |
+| [What planx is](https://thisisnsh.github.io/planx) | The problem, the answer, and the review to try |
+| [Install](https://thisisnsh.github.io/planx/install) | What the installer touches, channels, rollback |
+| [Claude Code](https://thisisnsh.github.io/planx/claude-code) · [Codex](https://thisisnsh.github.io/planx/codex) | Per-agent setup |
+| [Review Loop](https://thisisnsh.github.io/planx/review-loop) | Capture, review, revise, approve |
+| [Locking](https://thisisnsh.github.io/planx/locking) | How locks are enforced and lifted |
 | [CLI reference](https://thisisnsh.github.io/planx/reference/cli) | Every command and flag |
 | [Troubleshooting](https://thisisnsh.github.io/planx/troubleshooting) | When something does not behave |
 

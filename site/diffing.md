@@ -11,6 +11,11 @@ planx diff <id> --stat       # just the summary line
 Piping implies `--print`, so `planx diff <id> | less` does what you expect
 without being told.
 
+`d` toggles the diff, `←` and `→` walk the history, and `space` on a `⋯` row
+opens the unchanged lines it stands for:
+
+<PlanxSim scenario="diffing" :rows="16" />
+
 ## Rich and plain
 
 | Flag | Rendering |
@@ -83,7 +88,7 @@ Accepted anywhere a version is named:
 The hints along the bottom offer only what the row under the cursor can do, so
 `s` and `a` are never both on screen: `a` while you have nothing to say, `s`
 once you do. A locked passage offers `l unlock` and no `f` at all — see
-[Locking](/guide/locking).
+[Locking](/locking).
 
 All lowercase, and there is no `c`: it sits next to `ctrl-c`, which is how you
 leave a terminal program.

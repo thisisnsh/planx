@@ -32,14 +32,14 @@ export default defineConfig({
       {
         text: 'Guide',
         items: [
-          { text: 'Install', link: '/guide/install' },
-          { text: 'Claude Code', link: '/guide/claude-code' },
-          { text: 'Codex', link: '/guide/codex' },
-          { text: 'The review loop', link: '/guide/review-loop' },
-          { text: 'Locking', link: '/guide/locking' },
-          { text: 'Diffing', link: '/guide/diffing' },
-          { text: 'Executing', link: '/guide/executing' },
-          { text: 'Deleting', link: '/guide/retention' },
+          { text: 'Install', link: '/install' },
+          { text: 'Claude Code', link: '/claude-code' },
+          { text: 'Codex', link: '/codex' },
+          { text: 'Review Loop', link: '/review-loop' },
+          { text: 'Locking', link: '/locking' },
+          { text: 'Diffing', link: '/diffing' },
+          { text: 'Executing', link: '/executing' },
+          { text: 'Deleting', link: '/retention' },
         ],
       },
       {

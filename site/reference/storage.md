@@ -29,7 +29,7 @@ That works in Claude Code, Codex, Gemini CLI, Cursor, Amp — anything that can
 run a subprocess. No server, no lifecycle, nothing to install alongside.
 
 Its one real weakness was the timeout ceiling, which is gone now that nothing
-resumable. See [The review loop](/guide/review-loop).
+resumable. See [Review Loop](/review-loop).
 
 ## Plans are global
 

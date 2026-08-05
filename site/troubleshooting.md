@@ -114,7 +114,7 @@ delete the named `.lock` file.
 
 It is gone. There is no trash and nothing to restore from — `d` in the picker
 deletes permanently, which is what the red confirmation naming the plan in full
-is there to say. See [Deleting](/guide/retention).
+is there to say. See [Deleting](/retention).
 
 The one thing that survives is a version you deleted from a plan you kept: the
 plan, its other versions and its locks are all still there.
