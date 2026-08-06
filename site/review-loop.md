@@ -27,9 +27,13 @@ notes an hour later. Leave them in three sittings. They accumulate on the
 version, and whenever you hand the agent `planx revise`, it sees all of them.
 
 `planx <plan>` opens that plan directly — the id the agent printed is the
-argument, and prefixes work, so `planx guard-clock` is enough. Bare `planx`
-opens the list instead: every plan, newest first, and `→` on one opens it into
-its versions. `esc` in a review takes you back to that list.
+argument, in full. **A plan reference is the exact id and nothing else.** A
+prefix used to resolve to whichever plan happened to start with it, so `planx
+gu` opened `guard-clock-a3f9` while it was the only one, and something else the
+week a second one landed; a refusal is visible and the wrong plan is not. Bare
+`planx` opens the list instead: every plan, newest first, `→` on one opens it
+into its versions, and typing filters. `esc` in a review takes you back to that
+list.
 
 ## The plan first, the diff on `d`
 

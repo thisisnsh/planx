@@ -398,30 +398,22 @@ function requireVersion(id: string, versions: VersionsFile, n: number, ref: stri
 /* ------------------------------------------------------------- plan refs */
 
 /**
- * Resolve a user-typed plan reference: exact id, unique id prefix, or unique
- * case-insensitive substring of the id or title.
+ * Resolve a user-typed plan reference: the exact id, and nothing else.
+ *
+ * It used to try a prefix and then a substring of the id or the title, which
+ * meant `planx gu` opened `guard-clock-a3f9` while it happened to be the only
+ * plan starting with `gu` — and opened something else the week a second one
+ * landed. A reference that resolves to a different plan depending on what else
+ * is in the store is worse than one that refuses, because the refusal is
+ * visible and the wrong plan is not.
+ *
+ * One rule for the whole CLI: `planx <id>`, `diff`, `show`, `revise` and
+ * `capture --plan-id` all come through here, so there is no command where a
+ * partial word resolves to a whole plan. Nothing can be ambiguous any more, so
+ * the ambiguity error went with the guessing.
  */
 export function resolvePlanRef(ref: string): string {
   if (planExists(ref)) return ref;
-  const index = readIndex();
-  const ids = Object.keys(index.plans).length ? Object.keys(index.plans) : listPlanDirs();
-  const needle = ref.toLowerCase();
-
-  const prefix = ids.filter((id) => id.toLowerCase().startsWith(needle));
-  if (prefix.length === 1) return prefix[0]!;
-
-  const substring = ids.filter((id) => {
-    const title = index.plans[id]?.title ?? '';
-    return id.toLowerCase().includes(needle) || title.toLowerCase().includes(needle);
-  });
-  if (substring.length === 1) return substring[0]!;
-
-  const ambiguous = prefix.length > 1 ? prefix : substring;
-  if (ambiguous.length > 1) {
-    throw new Error(
-      `planx: "${ref}" matches ${ambiguous.length} plans:\n  ${ambiguous.slice(0, 10).join('\n  ')}`,
-    );
-  }
   throw new PlanNotFoundError(ref);
 }
 

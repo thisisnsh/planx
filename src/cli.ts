@@ -172,9 +172,9 @@ export async function main(argv: readonly string[]): Promise<number> {
   if (dir) setStoreRoot(dir);
   if (has(args, '--no-color')) setColorEnabled(false);
 
-  // After `--dir`, or the lookup would run against the wrong store. An
-  // ambiguous reference keeps its own message — naming the candidates helps
-  // more than being told the word was not a command.
+  // After `--dir`, or the lookup would run against the wrong store. The word
+  // has to be an exact plan id: a partial one that resolved to whichever plan
+  // happened to start with it would open a different plan next week.
   if (planRef !== null) {
     try {
       args.positionals[0] = resolvePlanRef(planRef);

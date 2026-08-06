@@ -122,11 +122,21 @@ describe('the CLI as a real process', () => {
     expect(shorthand.code).toBe(0);
     expect(shorthand.stdout).toBe(spelled.stdout);
 
-    // A prefix resolves the same way it does everywhere else, and a version
-    // positional lands where it would after `diff`.
-    const prefix = await cli.run([id.slice(0, 8), 'v1', '--print', '--plain']);
-    expect(prefix.code).toBe(0);
-    expect(prefix.stdout).toContain('v1');
+    // A version positional lands where it would after `diff`.
+    const versioned = await cli.run([id, 'v1', '--print', '--plain']);
+    expect(versioned.code).toBe(0);
+    expect(versioned.stdout).toContain('v1');
+  });
+
+  // `planx gu` used to open guard-clock-a3f9 while it was the only plan
+  // starting with `gu`, and something else the week a second one landed.
+  it('refuses a prefix rather than resolving it to a whole plan', async () => {
+    const id = await seed();
+
+    const result = await cli.run([id.slice(0, 8), '--print', '--plain']);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('is not a command or a stored plan');
+    expect(result.stderr).toContain('planx list');
   });
 
   it('keeps box-drawing characters out of piped output', async () => {

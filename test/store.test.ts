@@ -140,17 +140,21 @@ describe('version refs', () => {
 });
 
 describe('plan refs', () => {
-  it('resolves by exact id, prefix and title substring', () => {
+  it('resolves the exact id, and only that', () => {
     const id = seed('Guard clock regression');
     expect(resolvePlanRef(id)).toBe(id);
-    expect(resolvePlanRef('guard-clock')).toBe(id);
-    expect(resolvePlanRef('CLOCK REGRESSION')).toBe(id);
   });
 
-  it('refuses an ambiguous prefix rather than guessing', () => {
-    createPlan({ title: 'a', content: 'x', name: 'shared-prefix-one' });
-    createPlan({ title: 'b', content: 'y', name: 'shared-prefix-two' });
-    expect(() => resolvePlanRef('shared-prefix')).toThrow(/matches 2 plans/);
+  /**
+   * A prefix resolved to whichever plan happened to be the only one starting
+   * with it, so the same reference opened a different plan the week a second
+   * one landed. A refusal is visible; the wrong plan is not.
+   */
+  it('refuses a prefix and a title substring rather than guessing', () => {
+    const id = seed('Guard clock regression');
+    expect(() => resolvePlanRef('guard-clock')).toThrow(PlanNotFoundError);
+    expect(() => resolvePlanRef('CLOCK REGRESSION')).toThrow(PlanNotFoundError);
+    expect(() => resolvePlanRef(id.slice(0, -1))).toThrow(PlanNotFoundError);
   });
 
   it('reports a missing plan clearly', () => {

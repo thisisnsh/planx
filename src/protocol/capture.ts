@@ -3,7 +3,6 @@ import {
   addVersion,
   createPlan,
   latestVersion,
-  planExists,
   readMeta,
   reindex,
   resolvePlanRef,
@@ -74,7 +73,7 @@ export function capture(opts: CaptureOptions): CaptureResult {
 
   let planId: string;
   if (opts.planId) {
-    planId = planExists(opts.planId) ? opts.planId : resolvePlanRef(opts.planId);
+    planId = resolvePlanRef(opts.planId);
   } else {
     planId = createPlan({
       title,
