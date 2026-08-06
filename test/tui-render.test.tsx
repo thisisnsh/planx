@@ -2271,11 +2271,73 @@ describe('the picker as a version tree', () => {
   });
 });
 
+describe('the picker says what was built', () => {
+  /** The plan row goes green with its latest, and the version says the word. */
+  function builtRows(): Array<PickerItem<Pick>> {
+    const items = planRows();
+    items[0]!.tone = 'executed';
+    items[0]!.children![0]!.tone = 'executed';
+    items[0]!.children![0]!.hint = '1h ago · executed';
+    return items;
+  }
+
+  it('says it in words on the version row, not only in colour', async () => {
+    const app = mountPicker(builtRows());
+    await app.ready();
+
+    await app.press(RIGHT);
+    await app.frame('v3');
+    const row = bodyRows(app.stdout.lastFrame).find((l) => /\bv3\b/.test(l))!;
+    expect(row).toContain('1h ago · executed');
+    // The version that was not built says nothing.
+    expect(bodyRows(app.stdout.lastFrame).find((l) => /\bv2\b/.test(l))).not.toContain('executed');
+    app.unmount();
+  });
+
+  it('keeps the green under the cursor, where the highlight would swallow it', async () => {
+    setColorEnabled(true);
+    const app = mountPicker(builtRows());
+    await app.ready();
+    await app.frame('Guard the clock');
+
+    // The highlighted row is inverse *and* green — `signal` over it would paint
+    // the executed row the same yellow as every other.
+    const raw = app.stdout.frames.join('');
+    expect(raw).toMatch(/\x1b\[7m\x1b\[32m/);
+    setColorEnabled(false);
+    app.unmount();
+  });
+});
+
 describe('deleting from the picker', () => {
   /** The word, one character at a time, the way a person types it. */
   async function typeWord(app: { press: (input: string) => Promise<void> }, word = 'delete') {
     for (const character of word) await app.press(character);
   }
+
+  /**
+   * Drawn after the whole list, the red line was nowhere near the plan it
+   * named — and the frame grew a row the moment it appeared.
+   */
+  it('opens directly under its target, without changing the height', async () => {
+    const app = mountPicker(planRows(), () => []);
+    await app.ready();
+    await app.press(RIGHT);
+    await app.press(DOWN);
+    await app.press(DOWN);
+    await app.frame('v2');
+    const before = bodyRows(app.stdout.lastFrame).length;
+
+    await app.press(CTRL_D);
+    await app.frame('delete guard-clock v2? this cannot be undone');
+
+    const rows = bodyRows(app.stdout.lastFrame);
+    expect(rows).toHaveLength(before);
+    const target = rows.findIndex((l) => l.includes('❯'));
+    expect(rows[target + 1]).toContain('delete guard-clock v2?');
+    expect(rows[target + 2]).toContain('type delete to confirm:');
+    app.unmount();
+  });
 
   it('names the target in full and takes esc as a no', async () => {
     const app = mountPicker(planRows(), () => []);

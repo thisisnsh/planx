@@ -101,10 +101,15 @@ function planItems(): Array<PickerItem<PlanChoice>> {
     hint: `${padEnd(ago(plan.updated), 9)}${plan.id}`,
     searchable: plan.id,
     deleteAs: plan.id,
+    // A plan whose latest version is newer than the one that was built goes
+    // back to normal: what was executed is no longer the plan. The child row
+    // for that older version stays green, which is where the history is.
+    tone: plan.executed === plan.latest ? 'executed' : undefined,
     children: storedVersions(plan.id).map((v) => ({
       value: { id: plan.id, version: v.n, row: 'version' },
       label: `v${v.n}`,
-      hint: ago(v.created),
+      hint: v.n === plan.executed ? `${ago(v.created)} · executed` : ago(v.created),
+      tone: v.n === plan.executed ? ('executed' as const) : undefined,
       // The latest is the plan itself, so it never offers a delete.
       deleteAs: v.n === plan.latest ? undefined : `${plan.id} v${v.n}`,
     })),

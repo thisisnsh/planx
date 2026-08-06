@@ -1,6 +1,16 @@
 import { Box, Text, useApp, useInput, useStdout } from 'ink';
 import { useMemo, useState } from 'react';
-import { bold, dim, inverse, padEnd, red, signal, stripAnsi, truncate } from '../render/ansi.js';
+import {
+  bold,
+  dim,
+  green,
+  inverse,
+  padEnd,
+  red,
+  signal,
+  stripAnsi,
+  truncate,
+} from '../render/ansi.js';
 import { EXIT_PROMPT, useDoubleCtrlC } from './exit.js';
 import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO, topRule } from './frame.js';
 import { fuzzyFilter } from './fuzzy.js';
@@ -18,6 +28,8 @@ export interface PickerItem<T> {
   searchable?: string;
   /** Rows revealed by `→`. A row with none is a leaf. */
   children?: Array<PickerItem<T>>;
+  /** `executed` paints the row green: this is the version that was built. */
+  tone?: 'executed';
   /**
    * How this row is named in a delete confirmation — `guard-clock-a3f9 v3`.
    * Absent means the row cannot be deleted, and `^d` is not offered on it.
@@ -62,8 +74,28 @@ interface Confirming {
 /** The word, and the only thing that turns `enter` back into a delete. */
 const CONFIRM_WORD = 'delete';
 
+/** What the confirmation costs the list: the question, and the line you type. */
+const CONFIRM_ROWS = 2;
+
+/** Past the mark and the label column, so it reads as belonging to the row. */
+const CONFIRM_INSET = '      ';
+
 function confirmed(state: Confirming): boolean {
   return state.typed.trim().toLowerCase() === CONFIRM_WORD;
+}
+
+/**
+ * The two rows under the row being deleted.
+ *
+ * The only thing between you and a permanent delete, so it names the target in
+ * full rather than asking about "this". Red, not bold: the colour is what says
+ * destructive, and every confirmation planx draws reads the same.
+ */
+function confirmRows(state: Confirming): string[] {
+  return [
+    `${CONFIRM_INSET}${red(`delete ${state.target}? this cannot be undone`)}`,
+    `${CONFIRM_INSET}${dim(`type ${CONFIRM_WORD} to confirm:`)} ${state.typed}${inverse(' ')}`,
+  ];
 }
 
 /**
@@ -135,32 +167,23 @@ export function Picker<T>({
 
   const here = rows[cursor];
 
-  /**
-   * The confirmation, and the red row an armed ctrl+c draws — the rows between
-   * the list and the hint bar.
-   *
-   * There is always at least one, so the frame is the same height whether or
-   * not anything is being asked.
-   */
-  const messageRows = [
-    // The only thing between you and a permanent delete, so it names the target
-    // in full rather than asking about "this". Red, not bold: the colour is
-    // what says destructive, and every confirmation planx draws reads the same.
-    ...(confirming === null
-      ? []
-      : [
-          `  ${red(`delete ${confirming.target}? this cannot be undone`)}`,
-          `  ${dim(`type ${CONFIRM_WORD} to confirm:`)} ${confirming.typed}${inverse(' ')}`,
-        ]),
-    ...(leaving ? [`  ${red(EXIT_PROMPT)}`] : confirming === null ? [''] : []),
-  ];
+  // One row between the list and the hint bar: the red line an armed ctrl+c
+  // draws, or nothing. It is always there, so the frame does not change height
+  // the moment you press one.
+  const messageRows = [leaving ? `  ${red(EXIT_PROMPT)}` : ''];
 
-  // The frame costs four rows of chrome above the list and three below it, on
-  // top of whatever is being asked.
+  // The frame costs four rows of chrome above the list and three below it, plus
+  // the message row.
   const chrome = 8 + messageRows.length;
   const height = Math.max(3, Math.min(rows.length, (stdout?.rows ?? 24) - chrome));
-  const start = Math.max(0, Math.min(cursor - Math.floor(height / 2), rows.length - height));
-  const visible = rows.slice(start, start + height);
+  // The confirmation is two rows spliced into the list under its own target, so
+  // the list gives up two while it is open and the frame is the same either way.
+  const listHeight = confirming === null ? height : Math.max(1, height - CONFIRM_ROWS);
+  const start = Math.max(
+    0,
+    Math.min(cursor - Math.floor(listHeight / 2), rows.length - listHeight),
+  );
+  const visible = rows.slice(start, start + listHeight);
 
   function collapse(parent: number) {
     setExpanded((set) => {
@@ -268,18 +291,27 @@ export function Picker<T>({
     `  ${bold(title)}`,
     subtitleRow,
     '',
-    ...visible.map((row) => {
+    ...visible.flatMap((row) => {
       const active = rows.indexOf(row) === cursor;
       const indent = row.child ? '   ' : '';
       const mark = active ? '❯ ' : '  ';
       const width = labelWidth - indent.length;
-      const label = padEnd(truncate(row.item.label, width), width);
+      const built = truncate(row.item.label, width);
+      // Built, and it is still the plan: green says so, and the version rows
+      // say it in words as well, because colour alone is a legend nobody was
+      // given.
+      const label = padEnd(row.item.tone === 'executed' ? green(built) : built, width);
       const hint = row.item.hint ? dim(`  ${truncate(row.item.hint, inner - labelWidth - 6)}`) : '';
       const line = `${mark}${indent}${label}${hint}`;
       // Inverse video has to own the whole row: a dim hint inside an inverse
       // run closes its own style and leaves the rest painted normally, which
-      // reads as a highlight that stops half way.
-      return `  ${active ? inverse(signal(padEnd(stripAnsi(line), inner - 2))) : line}`;
+      // reads as a highlight that stops half way. Under the cursor, an executed
+      // row keeps its colour — `signal` over it would swallow the green.
+      const paint = row.item.tone === 'executed' ? green : signal;
+      const drawnRow = `  ${active ? inverse(paint(padEnd(stripAnsi(line), inner - 2))) : line}`;
+      // The confirmation sits directly under what it is about. Drawn after the
+      // whole list, the red line was nowhere near the plan it named.
+      return active && confirming !== null ? [drawnRow, ...confirmRows(confirming)] : [drawnRow];
     }),
     ...(rows.length ? [] : [dim('  no matches')]),
     ...messageRows,
