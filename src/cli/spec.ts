@@ -35,6 +35,11 @@ export const COMMANDS: CommandSpec[] = [
       { name: '--source', arg: 'NAME', summary: 'Which agent produced this (claude, codex, …).' },
       { name: '--note', arg: 'N', summary: 'One line about what changed in this version.' },
       { name: '--agent', arg: 'NAME', summary: 'Agent identifier recorded on the version.' },
+      {
+        name: '--session-id',
+        arg: 'ID',
+        summary: 'The agent session that wrote this, so planx can fork it.',
+      },
     ],
     examples: [
       'planx capture --stdin --title "Guard the clock regression" < plan.md',

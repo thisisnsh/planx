@@ -23,6 +23,8 @@ export interface CaptureOptions {
   name?: string | null;
   agent?: string | null;
   sessionId?: string | null;
+  /** The agent's own command line, so a fork of this session lands the same way. */
+  agentArgv?: readonly string[];
   author?: 'agent' | 'human' | 'import';
   cwd?: string;
   tags?: string[];
@@ -87,11 +89,16 @@ export function capture(opts: CaptureOptions): CaptureResult {
     }).id;
   }
 
+  // Every version carries the session that produced it, not just the first:
+  // `meta.session_id` is the session that started the plan, and the one worth
+  // forking is the one that wrote the version being reviewed.
   const added = addVersion(planId, opts.text, {
     author: opts.author ?? 'agent',
     agent: opts.agent ?? null,
     parent: resolveParent(planId, opts.parent),
     note: opts.note ?? null,
+    sessionId: opts.sessionId ?? null,
+    agentArgv: opts.agentArgv ?? [],
   });
 
   // Feedback is answered by the existence of a newer version, so closing it

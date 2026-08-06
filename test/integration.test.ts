@@ -161,6 +161,20 @@ describe('the CLI as a real process', () => {
     expect(JSON.parse(list.stdout)[0].id).toBe(id);
   });
 
+  it('records the session on every version, not only the first', async () => {
+    const id = await seed();
+    await cli.run(
+      ['capture', '--plan-id', id, '--stdin', '--source', 'claude', '--session-id', 'sess-9'],
+      PLAN_V2,
+    );
+
+    const versions = inStore(() => readVersions(id).versions);
+    expect(versions.find((v) => v.n === 2)).toMatchObject({
+      session_id: 'sess-9',
+      agent: 'claude',
+    });
+  });
+
   it('is a no-op when the same content is captured twice', async () => {
     const id = await seed();
     const again = await cli.run(['capture', '--plan-id', id, '--stdin'], PLAN_V1);

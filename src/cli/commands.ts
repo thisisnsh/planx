@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { diffVersions, rowsForSingleVersion } from '../diff/lines.js';
+import { agentProcess } from '../exec/launch.js';
 import { runInstall, runUninstall } from '../install/install.js';
 import { capture } from '../protocol/capture.js';
 import { carriedOver, collapseEdits, presentResume } from '../protocol/present.js';
@@ -160,6 +161,11 @@ function requireVersionText(id: string, version: number): string {
 export function cmdCapture(ctx: Ctx): number {
   ensureStore();
   const text = readPlanText(ctx.args);
+  const source = one(ctx.args, '--source') ?? 'unknown';
+  // How this tab was started, read off planx's own process tree rather than
+  // taken as a flag: it is a fact about planx's parents, not something the
+  // agent knows about itself.
+  const here = agentProcess();
 
   const result = capture({
     text,
@@ -167,9 +173,13 @@ export function cmdCapture(ctx: Ctx): number {
     title: one(ctx.args, '--title') ?? null,
     name: one(ctx.args, '--name') ?? null,
     parent: one(ctx.args, '--parent') ?? null,
-    source: one(ctx.args, '--source') ?? 'unknown',
+    source,
     note: one(ctx.args, '--note') ?? null,
-    agent: one(ctx.args, '--agent') ?? null,
+    // `--source claude` already says which agent wrote this, so a skill that
+    // passes one gets something for the launcher to dispatch on for free.
+    agent: one(ctx.args, '--agent') ?? source,
+    sessionId: one(ctx.args, '--session-id') ?? null,
+    agentArgv: here.argv,
   });
 
   if (ctx.json) {
