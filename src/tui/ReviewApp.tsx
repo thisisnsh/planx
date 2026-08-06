@@ -1,5 +1,5 @@
 import { Box, Text, useApp, useInput, useStdout, type Key } from 'ink';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildAnnotation } from '../protocol/submit.js';
 import {
   bold,
@@ -20,6 +20,7 @@ import { EXIT_PROMPT, useDoubleCtrlC } from './exit.js';
 import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO, topRule } from './frame.js';
 import { hintLines, orderHints, type Hint } from './hints.js';
 import { BOX_PADDING, buildModel, foldEnd, wrapComment, type ViewRow } from './model.js';
+import { pressArrow, type HeldRun } from './repeat.js';
 import {
   initialSelection,
   isRowSelected,
@@ -93,6 +94,11 @@ export interface ReviewAppProps {
   launchable?: Launchable;
   /** What a second ctrl+c does. Defaults to ending the process with 130. */
   onQuit?: () => void;
+  /**
+   * The clock the held-arrow curve is measured against. A test drives it
+   * itself; fake timers would fight Ink's render loop for the same one.
+   */
+  now?: () => number;
   onDone: (result: ReviewResult) => void;
 }
 
@@ -176,6 +182,12 @@ export function ReviewApp(props: ReviewAppProps) {
   const [status, setStatus] = useState<string | null>(null);
   /** An annotation `j` is on its way to, once the rows have caught up. */
   const [pendingJump, setPendingJump] = useState<string | null>(null);
+  /**
+   * The arrow run in progress. A ref rather than state: it is read on the next
+   * keypress and never drawn, and re-rendering the document on every repeat of
+   * a held key is exactly what the acceleration exists to avoid.
+   */
+  const heldArrow = useRef<HeldRun | null>(null);
 
   const frameWidth = Math.max(MIN_WIDTH, (stdout?.columns ?? 100) - 1);
   /** Columns between the two frame edges. */
@@ -646,8 +658,18 @@ export function ReviewApp(props: ReviewAppProps) {
     (input, key) => {
       setStatus(null);
 
-      if (key.downArrow) return move(1);
-      if (key.upArrow) return move(-1);
+      // Held arrows take more rows the longer they are held, so a plan of two
+      // hundred rows is not two hundred repeats. It applies while a selection
+      // is live too: that is the same arrow extending the same cursor.
+      if (key.downArrow || key.upArrow) {
+        const clock = props.now ?? Date.now;
+        const { run, step } = pressArrow(heldArrow.current, key.upArrow ? 'up' : 'down', clock());
+        heldArrow.current = run;
+        return move(key.upArrow ? -step : step);
+      }
+      // Anything else ends the run — a held `↓` that is let go of and pressed
+      // again starts back at one row.
+      heldArrow.current = null;
 
       // Half a screen and a whole one, the keys every pager already uses. On a
       // Mac keyboard PageUp is fn+arrow, which in practice means it does not
@@ -1390,7 +1412,7 @@ function spanSize(rows: readonly ViewRow[], selection: SelectionState): number {
  */
 const HELP: Array<[Hint, 'always' | 'versioned']> = [
   [['←→', 'the previous and next version of the plan'], 'versioned'],
-  [['↑↓', 'move a row at a time — a note box is one stop, on its first line'], 'always'],
+  [['↑↓', 'a row at a time — held, 2 rows after 1.5s and 5 after 4s'], 'always'],
   [['d', 'show the diff against the previous version, or hide it'], 'versioned'],
   [['e', 'rewrite the line, or every line of the selection, in place'], 'always'],
   [['f', 'feedback on the selection, or edit the note under the cursor'], 'always'],
@@ -1417,6 +1439,7 @@ function helpLines(width: number, canDiff: boolean): string[] {
       ([keys, what]) => `${signal(padEnd(keys, 8))}${dim(truncate(what, width - 8))}`,
     ),
     '',
+    dim('a note box is one stop for the cursor, on its first line of text.'),
     dim('inside a note or a line: ← → ⌥← ⌥→ move the caret, ^a ^e reach its ends.'),
     dim('a note is deleted by emptying it: f, clear the text, enter.'),
   ];

@@ -134,6 +134,7 @@ function mount(
   rows = 30,
   previous: Feedback[] = [],
   launchable?: Launchable,
+  now?: () => number,
 ): Harness {
   const stdout = new FakeStdout();
   stdout.columns = columns;
@@ -154,6 +155,7 @@ function mount(
       version="9.9.9"
       previous={previous}
       launchable={launchable}
+      now={now}
       onQuit={() => quits.push(Date.now())}
       onDone={resolve}
     />,
@@ -1856,6 +1858,41 @@ describe('getting around a long plan', () => {
     await new Promise((r) => setTimeout(r, 120));
     expect(app.stdout.lastFrame).not.toContain('# A long plan');
     expect(app.stdout.lastFrame).toContain('step ');
+    app.unmount();
+  });
+
+  /**
+   * A held arrow is a run of presses with no gap wide enough to be a release,
+   * so the clock is driven from here rather than by holding a key for real.
+   */
+  it('takes more rows the longer the arrow is held', async () => {
+    let clock = 0;
+    const app = mount(seedLongPlan(), null, 1, [1], 100, 30, [], undefined, () => clock);
+    await app.ready();
+
+    const lineNow = () => Number(/\d+/.exec(cursorRow(bodyRows(app.stdout.lastFrame))!)![0]);
+    // The first press starts the run, and the operating system's own pause
+    // before it repeats is the one wide gap the run allows.
+    for (const at of [0, 600, 750, 900, 1050, 1200]) {
+      clock = at;
+      await app.press(DOWN);
+    }
+    const before = lineNow();
+
+    // Still inside 1.5s: one row.
+    clock = 1350;
+    await app.press(DOWN);
+    expect(lineNow()).toBe(before + 1);
+
+    // Past it: two.
+    clock = 1500;
+    await app.press(DOWN);
+    expect(lineNow()).toBe(before + 3);
+
+    // Let go, press again: back to one, however long the last hold ran.
+    clock = 4000;
+    await app.press(DOWN);
+    expect(lineNow()).toBe(before + 4);
     app.unmount();
   });
 });
