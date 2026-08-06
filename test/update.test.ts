@@ -183,10 +183,10 @@ describe('running the check', () => {
 });
 
 describe('the notice text', () => {
-  it('says what is out and what to run', () => {
+  it('says what is available and what to run', () => {
     expect(noticeFor('0.5.0')).toEqual({
-      long: 'v0.5.0 is out · run planx update',
-      short: 'v0.5.0 is out',
+      long: 'v0.5.0 is available · run planx update',
+      short: 'v0.5.0 is available',
     });
   });
 });

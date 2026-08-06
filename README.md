@@ -81,7 +81,7 @@ into `~/.claude/skills/` and `~/.codex/skills/` and touches no agent config —
 there is no hook to register. Then type `/planx` in Claude Code or Codex.
 
 Upgrading: `planx update`, which planx offers on its own border when a newer
-release is out. Removal: `planx remove-skills`, then
+release is available. Removal: `planx remove-skills`, then
 `npm uninstall -g @thisisnsh/planx`.
 
 <details>

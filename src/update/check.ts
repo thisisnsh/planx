@@ -115,14 +115,17 @@ export function readUpdate(current: string): string | null {
 /* --------------------------------------------------------------- notice */
 
 export interface UpdateNotice {
-  /** `v0.5.0 is out · run planx update` */
+  /** `v0.5.0 is available · run planx update` */
   long: string;
-  /** `v0.5.0 is out`, for a rule with no room for the rest. */
+  /** `v0.5.0 is available`, for a rule with no room for the rest. */
   short: string;
 }
 
 export function noticeFor(latest: string): UpdateNotice {
-  return { long: `v${latest} is out · run planx update`, short: `v${latest} is out` };
+  return {
+    long: `v${latest} is available · run planx update`,
+    short: `v${latest} is available`,
+  };
 }
 
 let notice: UpdateNotice | null = null;

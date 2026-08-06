@@ -72,15 +72,19 @@ Run it by hand whenever you install an agent planx did not find last time.
 
 ## Staying current
 
-planx tells you when a newer release is out, on the border of whatever it is
-already drawing:
+planx tells you when a newer release is available, on the border of whatever it
+is already drawing:
 
 ```
-╭─ planx v0.4.0 ───────────────────────── v0.5.0 is out · run planx update ─╮
-│                                                                          │
-│  Which plan?                                                             │
-│  Pick one to review, → for its versions.                           3/3   │
+╭─ planx v0.4.0 · v0.5.0 is available · run planx update ───────────────────╮
+│                                                                           │
+│  Which plan?                                                              │
+│  Pick one to review, → for its versions.                            3/3   │
 ```
+
+It sits directly after the wordmark. Right-aligned at the far end of the rule —
+where it used to be — a wide terminal put it a screen's width away from the
+version it is about.
 
 The check that produces it never happens while you wait. Each run shows what
 the *last* run found and fires a detached check for the next one, at most once

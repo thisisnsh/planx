@@ -34,7 +34,7 @@ export const FRAME_PADDING = 4;
 /** Narrow enough to still be a frame, wide enough for a gutter and some text. */
 export const MIN_FRAME_WIDTH = 40;
 
-/** Dashes that must survive between the wordmark and the update notice. */
+/** Dashes that must survive between the notice and the closing corner. */
 const NOTICE_GAP = 2;
 
 /**
@@ -46,19 +46,23 @@ const NOTICE_GAP = 2;
  */
 function noticeFitting(width: number, titleWidth: number, notice: UpdateNotice): string | null {
   for (const text of [notice.long, notice.short]) {
-    const padded = ` ${text} `;
-    if (width - 4 - titleWidth - padded.length >= NOTICE_GAP) return padded;
+    // The middot joins it to the wordmark the same way the notice's own parts
+    // are joined, so the rule reads as one run rather than two things abutting.
+    const padded = `· ${text} `;
+    if (width - 3 - titleWidth - padded.length >= NOTICE_GAP) return padded;
   }
   return null;
 }
 
 /**
- * `╭─ planx v0.4.0 ──────── v0.5.0 is out · run planx update ─╮`
+ * `╭─ planx v0.4.0 · v0.5.0 is available · run planx update ─────────╮`
  *
- * The notice is right-aligned on the rule, the way the repo is on the bottom
- * one, and blue — the one thing on a frame that is not planx's own yellow. It
- * defaults to the process-wide notice so every bordered layout picks it up
- * without being told; the parameter is there for tests.
+ * The notice sits directly after the wordmark, and blue — the one thing on a
+ * frame that is not planx's own yellow. It used to be right-aligned at the far
+ * end of the rule, which on a wide terminal put it a screen's width away from
+ * the version it is about. It defaults to the process-wide notice so every
+ * bordered layout picks it up without being told; the parameter is there for
+ * tests.
  */
 export function topRule(
   width: number,
@@ -70,8 +74,8 @@ export function topRule(
     const fill = Math.max(0, width - 3 - visible(title));
     return `${signal('╭─')}${title}${signal(`${'─'.repeat(fill)}╮`)}`;
   }
-  const fill = width - 4 - visible(title) - text.length;
-  return `${signal('╭─')}${title}${signal('─'.repeat(fill))}${blue(text)}${signal('─╮')}`;
+  const fill = width - 3 - visible(title) - text.length;
+  return `${signal('╭─')}${title}${blue(text)}${signal(`${'─'.repeat(fill)}╮`)}`;
 }
 
 export function bottomRule(width: number, footer: string): string {

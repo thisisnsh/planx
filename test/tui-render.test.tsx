@@ -1783,15 +1783,18 @@ describe('the update notice on the border', () => {
 
   it('is absent until there is something to say', () => {
     const rule = stripAnsi(topRule(80, title, null));
-    expect(rule).not.toContain('is out');
+    expect(rule).not.toContain('is available');
     expect(rule).toHaveLength(80);
     expect(rule.endsWith('╮')).toBe(true);
   });
 
-  it('rides right-aligned on the rule, and the rule keeps its width', () => {
+  /**
+   * It used to be right-aligned at the far end of the rule, which on a wide
+   * terminal put it a screen's width away from the version it is about.
+   */
+  it('sits directly after the wordmark, and the rule keeps its width', () => {
     const rule = stripAnsi(topRule(90, title, notice));
-    expect(rule).toContain('v0.5.0 is out · run planx update');
-    expect(rule).toContain('planx v0.4.0');
+    expect(rule).toContain('planx v0.4.0 · v0.5.0 is available · run planx update ─');
     expect(rule).toHaveLength(90);
     expect(rule.endsWith('─╮')).toBe(true);
   });
@@ -1802,7 +1805,7 @@ describe('the update notice on the border', () => {
    */
   it('falls back to the short form, then drops out entirely', () => {
     const short = stripAnsi(topRule(50, title, notice));
-    expect(short).toContain('v0.5.0 is out');
+    expect(short).toContain('v0.5.0 is available');
     expect(short).not.toContain('run planx update');
     expect(short).toHaveLength(50);
 
@@ -1812,7 +1815,7 @@ describe('the update notice on the border', () => {
     const busy = brandTitle('0.4.0', 'guard-the-clock-regression-0e67  v3 ◂ v2');
     const tight = stripAnsi(busy).length + 6;
     const none = stripAnsi(topRule(tight, busy, notice));
-    expect(none).not.toContain('is out');
+    expect(none).not.toContain('is available');
     expect(none).toContain('planx v0.4.0');
     expect(none).toHaveLength(tight);
   });
@@ -1831,14 +1834,14 @@ describe('the update notice on the border', () => {
     setUpdateNotice(notice);
     const app = mountPicker(planRows());
     await app.ready();
-    await app.frame('v0.5.0 is out');
+    await app.frame('v0.5.0 is available');
     app.unmount();
 
     setUpdateNotice(null);
     const quiet = mountPicker(planRows());
     await quiet.ready();
     await quiet.frame('Which plan?');
-    expect(quiet.stdout.lastFrame).not.toContain('is out');
+    expect(quiet.stdout.lastFrame).not.toContain('is available');
     quiet.unmount();
   });
 
@@ -1846,7 +1849,7 @@ describe('the update notice on the border', () => {
     setUpdateNotice(notice);
     const app = mount(seed(), null, 1);
     await app.ready();
-    await app.frame('v0.5.0 is out');
+    await app.frame('v0.5.0 is available');
     app.unmount();
   });
 });
