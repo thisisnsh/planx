@@ -154,7 +154,11 @@ export async function runSteps<T>(
     return body(controller);
   }
 
-  clearScreen();
+  // No `clearScreen()`. `add-skills` is a handful of lines and has no reason to
+  // take the screen — wiping the scrollback took whatever the user was reading
+  // when they decided to run it. Ink redraws its own frame in place, so the
+  // steps still tick over as they happen; they just do it below what is already
+  // there.
   const width = terminalWidth();
   const draw = () =>
     instance.rerender(
