@@ -56,6 +56,26 @@ interface Row<T> {
 }
 
 /**
+ * A delete waiting on the word.
+ *
+ * There is no trash behind this and no `restore` command, so the last thing
+ * between a keystroke and a plan that is gone used to be one press of `enter`.
+ * Typing the word costs six characters and cannot be done by accident.
+ */
+interface Confirming {
+  /** The row named in full: `guard-clock-a3f9 v3`. */
+  target: string;
+  typed: string;
+}
+
+/** The word, and the only thing that turns `enter` back into a delete. */
+const CONFIRM_WORD = 'delete';
+
+function confirmed(state: Confirming): boolean {
+  return state.typed.trim().toLowerCase() === CONFIRM_WORD;
+}
+
+/**
  * Flatten the tree to the rows that are actually on screen.
  *
  * Expansion is a set of top-level indices, the same shape the review's
@@ -106,7 +126,7 @@ export function Picker<T>({
   const [query, setQuery] = useState('');
   const [cursor, setCursor] = useState(0);
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set());
-  const [confirming, setConfirming] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<Confirming | null>(null);
 
   const rows = useMemo(() => {
     if (!query) return flatten(items, expanded);
@@ -118,8 +138,10 @@ export function Picker<T>({
 
   const here = rows[cursor];
 
-  // The frame costs four rows of chrome above the list and three below it.
-  const height = Math.max(3, Math.min(rows.length, (stdout?.rows ?? 24) - 9));
+  // The frame costs four rows of chrome above the list and three below it, and
+  // the confirmation takes one more for the line you type into.
+  const chrome = confirming === null ? 9 : 10;
+  const height = Math.max(3, Math.min(rows.length, (stdout?.rows ?? 24) - chrome));
   const start = Math.max(0, Math.min(cursor - Math.floor(height / 2), rows.length - height));
   const visible = rows.slice(start, start + height);
 
@@ -146,8 +168,16 @@ export function Picker<T>({
 
   useInput((input, key) => {
     if (confirming !== null) {
-      if (key.return) return remove(here!.item);
-      if (key.escape || input === 'n') setConfirming(null);
+      if (key.escape) return setConfirming(null);
+      // Anything short of the word is not an answer, so enter is not one
+      // either — it does nothing at all rather than doing the thing.
+      if (key.return) return confirmed(confirming) ? remove(here!.item) : undefined;
+      if (key.backspace || key.delete) {
+        return setConfirming({ ...confirming, typed: confirming.typed.slice(0, -1) });
+      }
+      if (input && !key.ctrl && !key.meta) {
+        setConfirming({ ...confirming, typed: confirming.typed + input });
+      }
       return;
     }
 
@@ -171,7 +201,9 @@ export function Picker<T>({
       return collapse(here.parent);
     }
     if (key.return) return onDone(here ? [here.item.value] : []);
-    if (input === 'd' && here?.item.deleteAs) return setConfirming(here.item.deleteAs);
+    if (input === 'd' && here?.item.deleteAs) {
+      return setConfirming({ target: here.item.deleteAs, typed: '' });
+    }
 
     if (key.backspace || key.delete) {
       setCursor(0);
@@ -232,14 +264,23 @@ export function Picker<T>({
     // The only thing between you and a permanent delete, so it names the target
     // in full rather than asking about "this". Red, not bold: the colour is
     // what says destructive, and every confirmation planx draws reads the same.
-    confirming === null ? '' : `  ${red(`delete ${confirming}? this cannot be undone`)}`,
+    ...(confirming === null
+      ? ['']
+      : [
+          `  ${red(`delete ${confirming.target}? this cannot be undone`)}`,
+          `  ${dim(`type ${CONFIRM_WORD} to confirm:`)} ${confirming.typed}${inverse(' ')}`,
+        ]),
     ...hintLines(
       confirming === null
         ? hints
-        : [
-            ['enter', 'delete'],
-            ['esc', 'cancel'],
-          ],
+        : // `enter delete` appears the moment the word does. The bar says what
+          // the gate wants, and then says it has it.
+          confirmed(confirming)
+          ? ([
+              ['enter', 'delete'],
+              ['esc', 'cancel'],
+            ] satisfies Hint[])
+          : ([['esc', 'cancel']] satisfies Hint[]),
       inner - 2,
     ).map((line) => dim(`  ${line}`)),
   ];

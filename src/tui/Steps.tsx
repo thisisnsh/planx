@@ -1,6 +1,6 @@
 import { Box, Text, useInput } from 'ink';
 import { homedir } from 'node:os';
-import { dim, green, padEnd, signal, truncate, yellow } from '../render/ansi.js';
+import { dim, green, inverse, padEnd, red, signal, truncate } from '../render/ansi.js';
 import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO, topRule } from './frame.js';
 
 /**
@@ -12,8 +12,9 @@ import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO, topRule } from 
  * the review and the picker use, so the one thing planx draws looks like one
  * thing.
  *
- * It owns no state. The rows are handed in and redrawn, because the work is a
- * plain async function and the screen is a view of it — not the other way round.
+ * It owns no state — including what has been typed into the prompt. The rows
+ * are handed in and redrawn, because the work is a plain async function and the
+ * screen is a view of it, not the other way round.
  */
 export interface StepRow {
   /** The heading this row sits under: `Detecting agents`. */
@@ -26,6 +27,22 @@ export interface StepRow {
   ok: boolean;
 }
 
+/**
+ * A question you answer by typing the word, not by pressing a key.
+ *
+ * The only one of these deletes the whole store. `enter` alone is one keystroke
+ * away from every plan you ever wrote, so the word is the gate — and `typed`
+ * lives with the caller, because this component holds no state.
+ */
+export interface StepsPrompt {
+  question: string;
+  /** What has to be typed for `enter` to mean yes. */
+  word: string;
+  typed: string;
+  onType: (next: string) => void;
+  onAnswer: (yes: boolean) => void;
+}
+
 export interface StepsProps {
   /** The subcommand, shown on the top rule beside the wordmark. */
   command: string;
@@ -33,37 +50,47 @@ export interface StepsProps {
   rows: readonly StepRow[];
   /** The last line: what this leaves you with. */
   closing: string | null;
-  /** A yes/no question, asked on the same screen rather than in a dialog. */
-  prompt: { question: string; onAnswer: (yes: boolean) => void } | null;
+  prompt: StepsPrompt | null;
   width: number;
 }
 
-export function Steps(props: StepsProps) {
-  const inner = props.width - FRAME_PADDING;
+function matches(prompt: StepsPrompt): boolean {
+  return prompt.typed.trim().toLowerCase() === prompt.word;
+}
 
+export function Steps(props: StepsProps) {
   useInput(
     (input, key) => {
-      if (!props.prompt) return;
-      if (key.return) return props.prompt.onAnswer(true);
-      if (key.escape || input === 'n' || input === 'q') return props.prompt.onAnswer(false);
+      const prompt = props.prompt;
+      if (!prompt) return;
+      if (key.escape) return prompt.onAnswer(false);
+      // Anything short of the word is not an answer, so enter is not one either.
+      if (key.return) return matches(prompt) ? prompt.onAnswer(true) : undefined;
+      if (key.backspace || key.delete) return prompt.onType(prompt.typed.slice(0, -1));
+      if (input && !key.ctrl && !key.meta) return prompt.onType(prompt.typed + input);
     },
     { isActive: props.prompt !== null },
   );
+
+  const inner = props.width - FRAME_PADDING;
+  const lines: string[] = [...stepLines(props.rows, inner)];
+  if (props.closing !== null) lines.push(`  ${props.closing}`);
+  if (props.prompt !== null) {
+    lines.push(
+      `  ${red(props.prompt.question)}`,
+      `  ${dim(`type ${props.prompt.word} to confirm:`)} ${props.prompt.typed}${inverse(' ')}`,
+      '',
+      dim(matches(props.prompt) ? '  enter delete · esc keep' : '  esc keep'),
+    );
+  }
 
   return (
     <Box flexDirection="column">
       <Text>{topRule(props.width, brandTitle(props.version, props.command))}</Text>
       <Text>{frameLine('', inner)}</Text>
-      {stepLines(props.rows, inner).map((line, i) => (
+      {lines.map((line, i) => (
         <Text key={i}>{frameLine(line, inner)}</Text>
       ))}
-      {props.closing === null ? null : <Text>{frameLine(`  ${props.closing}`, inner)}</Text>}
-      {props.prompt === null ? null : (
-        <>
-          <Text>{frameLine(`  ${yellow(props.prompt.question)}`, inner)}</Text>
-          <Text>{frameLine(dim('  enter delete · esc keep'), inner)}</Text>
-        </>
-      )}
       <Text>{frameLine('', inner)}</Text>
       <Text>{bottomRule(props.width, ` ★ ${REPO} `)}</Text>
     </Box>

@@ -714,7 +714,7 @@ export async function cmdRemoveSkills(ctx: Ctx): Promise<number> {
       const question = `Delete the store too? ${paths.root()} holds ${count} plan${
         count === 1 ? '' : 's'
       }. This cannot be undone.`;
-      if (!plain && (await screen.confirm(question))) {
+      if (!plain && (await screen.confirm(question, 'delete'))) {
         purgeStore();
         await screen.close(`Done. ${paths.root()} is gone.`);
         return { ...report, storeDeleted: true };

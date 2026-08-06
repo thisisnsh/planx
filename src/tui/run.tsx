@@ -108,8 +108,12 @@ const STEP_HOLD_MS = 100;
 export interface StepsController {
   /** Hand to `runInstall`; it reports each step through here. */
   onStep: StepRunner;
-  /** Ask on the same screen. Always false when there is no terminal. */
-  confirm: (question: string) => Promise<boolean>;
+  /**
+   * Ask on the same screen, answered by typing `word`. Always false when there
+   * is no terminal: nobody is there to type, and the answer this would have to
+   * assume cannot be undone.
+   */
+  confirm: (question: string, word: string) => Promise<boolean>;
   /** The last line, drawn under everything else. */
   close: (line: string) => Promise<void>;
 }
@@ -188,17 +192,20 @@ export async function runSteps<T>(
         row.ok = outcome.ok !== false;
         draw();
       },
-      confirm: (question) =>
+      confirm: (question, word) =>
         new Promise<boolean>((resolve) => {
-          prompt = {
-            question,
-            onAnswer: (yes) => {
-              prompt = null;
-              draw();
-              resolve(yes);
-            },
+          const answer = (yes: boolean) => {
+            prompt = null;
+            draw();
+            resolve(yes);
           };
-          draw();
+          // What has been typed lives here, so `Steps` can stay a pure view of
+          // it the way it already is for the rows.
+          const retype = (typed: string) => {
+            prompt = { question, word, typed, onType: retype, onAnswer: answer };
+            draw();
+          };
+          retype('');
         }),
       close: async (line) => {
         closing = line;

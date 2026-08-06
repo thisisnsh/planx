@@ -127,8 +127,14 @@ Then it asks about your plans:
 
 ```
   Delete the store too? ~/.planx holds 14 plans. This cannot be undone.
-  enter delete · esc keep
+  type delete to confirm: ▌
+
+  esc keep
 ```
+
+You type the word — `enter` does nothing until you have. That is the same gate
+the review picker puts in front of deleting a plan, and for the same reason:
+there is no trash behind either of them.
 
 Decline and it prints the path so you can do it yourself later. A
 non-interactive run never deletes and never asks.

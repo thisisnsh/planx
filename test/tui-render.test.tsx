@@ -10,7 +10,7 @@ import type { Feedback } from '../src/store/types.js';
 import { Picker, type PickerItem } from '../src/tui/Picker.js';
 import { ReviewApp, type ReviewResult } from '../src/tui/ReviewApp.js';
 import { brandTitle, MIN_FRAME_WIDTH, topRule } from '../src/tui/frame.js';
-import { stepLines } from '../src/tui/Steps.js';
+import { Steps, stepLines } from '../src/tui/Steps.js';
 import { noticeFor, setUpdateNotice } from '../src/update/check.js';
 import { SAMPLE_PLAN, tempStore } from './helpers.js';
 
@@ -1639,6 +1639,116 @@ describe('the step-by-step screen', () => {
       expect(line.trimEnd().endsWith('written')).toBe(true);
     }
   });
+
+  it('takes the word before enter deletes the store', async () => {
+    const stdout = new FakeStdout();
+    const stdin = new FakeStdin();
+    const answers: boolean[] = [];
+    let typed = '';
+
+    const draw = () =>
+      instance.rerender(
+        <Steps
+          command="remove-skills"
+          version="0.4.0"
+          rows={rows}
+          closing={null}
+          width={80}
+          prompt={{
+            question: 'Delete the store too? ~/.planx holds 7 plans. This cannot be undone.',
+            word: 'delete',
+            typed,
+            onType: (next) => {
+              typed = next;
+              draw();
+            },
+            onAnswer: (yes) => answers.push(yes),
+          }}
+        />,
+      );
+
+    const instance = render(
+      <Steps
+        command="remove-skills"
+        version="0.4.0"
+        rows={rows}
+        closing={null}
+        prompt={null}
+        width={80}
+      />,
+      { stdout: stdout as never, stdin: stdin as never, patchConsole: false },
+    );
+    draw();
+
+    await waitFor(() => stdout.lastFrame.includes('type delete to confirm:'));
+    expect(stdout.lastFrame).not.toContain('enter delete');
+
+    // Enter is not an answer until the word is.
+    stdin.send('\r');
+    await waitFor(() => false, 100);
+    expect(answers).toEqual([]);
+
+    for (const character of 'delete') stdin.send(character);
+    await waitFor(() => stdout.lastFrame.includes('enter delete · esc keep'));
+    expect(stdout.lastFrame).toContain('enter delete · esc keep');
+
+    stdin.send('\r');
+    await waitFor(() => answers.length > 0);
+    expect(answers).toEqual([true]);
+
+    instance.unmount();
+  });
+
+  it('takes esc as keep, whatever has been typed', async () => {
+    const stdout = new FakeStdout();
+    const stdin = new FakeStdin();
+    const answers: boolean[] = [];
+    let typed = '';
+
+    const draw = () =>
+      instance.rerender(
+        <Steps
+          command="remove-skills"
+          version="0.4.0"
+          rows={rows}
+          closing={null}
+          width={80}
+          prompt={{
+            question: 'Delete the store too?',
+            word: 'delete',
+            typed,
+            onType: (next) => {
+              typed = next;
+              draw();
+            },
+            onAnswer: (yes) => answers.push(yes),
+          }}
+        />,
+      );
+
+    const instance = render(
+      <Steps
+        command="remove-skills"
+        version="0.4.0"
+        rows={rows}
+        closing={null}
+        prompt={null}
+        width={80}
+      />,
+      { stdout: stdout as never, stdin: stdin as never, patchConsole: false },
+    );
+    draw();
+    await waitFor(() => stdout.lastFrame.includes('type delete to confirm:'));
+
+    for (const character of 'delete') stdin.send(character);
+    await waitFor(() => stdout.lastFrame.includes('enter delete'));
+
+    stdin.send(ESC);
+    await waitFor(() => answers.length > 0);
+    expect(answers).toEqual([false]);
+
+    instance.unmount();
+  });
 });
 
 /* ------------------------------------------------------------ update notice */
@@ -1922,13 +2032,20 @@ describe('the picker as a version tree', () => {
 });
 
 describe('deleting from the picker', () => {
+  /** The word, one character at a time, the way a person types it. */
+  async function typeWord(app: { press: (input: string) => Promise<void> }, word = 'delete') {
+    for (const character of word) await app.press(character);
+  }
+
   it('names the target in full and takes esc as a no', async () => {
     const app = mountPicker(planRows(), () => []);
     await app.ready();
 
     await app.press('d');
     await app.frame('delete guard-clock? this cannot be undone');
-    await app.frame('enter delete · esc cancel');
+    await app.frame('type delete to confirm:');
+    // Nothing is typed yet, so enter is not on offer.
+    expect(app.stdout.lastFrame).not.toContain('enter delete');
 
     await app.press(ESC);
     await new Promise((r) => setTimeout(r, 120));
@@ -1937,7 +2054,7 @@ describe('deleting from the picker', () => {
     app.unmount();
   });
 
-  it('deletes the whole plan from a plan row', async () => {
+  it('deletes the whole plan once the word is typed', async () => {
     const deleted: string[] = [];
     const app = mountPicker(planRows(), (item) => {
       deleted.push(`${item.value.id}:${item.value.row}`);
@@ -1947,11 +2064,54 @@ describe('deleting from the picker', () => {
 
     await app.press('d');
     await app.frame('cannot be undone');
+    await typeWord(app);
+    // The bar says the gate has what it wanted.
+    await app.frame('enter delete');
     await app.press(ENTER);
     await new Promise((r) => setTimeout(r, 120));
 
     expect(deleted).toEqual(['guard-clock:plan']);
     expect(app.stdout.lastFrame).not.toContain('Guard the clock');
+    app.unmount();
+  });
+
+  it('does nothing on enter until the word is complete', async () => {
+    const deleted: string[] = [];
+    const app = mountPicker(planRows(), (item) => {
+      deleted.push(item.value.id);
+      return [];
+    });
+    await app.ready();
+
+    await app.press('d');
+    await app.frame('cannot be undone');
+    await typeWord(app, 'del');
+    await app.press(ENTER);
+    await new Promise((r) => setTimeout(r, 120));
+
+    expect(deleted).toEqual([]);
+    expect(app.stdout.lastFrame).toContain('cannot be undone');
+    expect(app.stdout.lastFrame).toContain('Guard the clock');
+    app.unmount();
+  });
+
+  it('takes esc as a no even once the word is typed', async () => {
+    const deleted: string[] = [];
+    const app = mountPicker(planRows(), (item) => {
+      deleted.push(item.value.id);
+      return [];
+    });
+    await app.ready();
+
+    await app.press('d');
+    await app.frame('cannot be undone');
+    await typeWord(app);
+    await app.frame('enter delete');
+    await app.press(ESC);
+    await new Promise((r) => setTimeout(r, 120));
+
+    expect(deleted).toEqual([]);
+    expect(app.stdout.lastFrame).toContain('Guard the clock');
     app.unmount();
   });
 
@@ -1969,6 +2129,7 @@ describe('deleting from the picker', () => {
     await app.press(DOWN);
     await app.press('d');
     await app.frame('delete guard-clock v2? this cannot be undone');
+    await typeWord(app);
     await app.press(ENTER);
     await new Promise((r) => setTimeout(r, 120));
 
