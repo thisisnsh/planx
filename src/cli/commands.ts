@@ -13,7 +13,7 @@ import { runInstall, runUninstall } from '../install/install.js';
 import { capture } from '../protocol/capture.js';
 import { carriedOver, collapseEdits, presentResume } from '../protocol/present.js';
 import { submitFeedback } from '../protocol/submit.js';
-import { bold, dim, green, padEnd, red, signal, yellow } from '../render/ansi.js';
+import { blue, bold, dim, green, padEnd, red, signal, yellow } from '../render/ansi.js';
 import { renderDocument, renderStatLine, renderUnified, type RenderMode } from '../render/diff.js';
 import { listFeedback } from '../store/feedback.js';
 import { paths } from '../store/paths.js';
@@ -416,11 +416,18 @@ async function runInteractiveReview(
     });
     if (batch.annotations.length || batch.general.trim()) carried = true;
 
-    ctx.out(
-      green(
-        `Submitted ${countFeedback(batch.annotations.length)} on ${bold(id)} v${batch.version}.`,
-      ),
-    );
+    // A review that asked for nothing has nothing to announce — but a version
+    // whose last comment was just deleted does, because the record was
+    // rewritten and the comment is gone for good. So the line is suppressed on
+    // a version that was never touched, not on every batch that happens to be
+    // empty.
+    if (batch.annotations.length || batch.general.trim() || batch.touched) {
+      ctx.out(
+        green(
+          `Submitted ${countFeedback(batch.annotations.length)} on ${bold(id)} v${batch.version}.`,
+        ),
+      );
+    }
   }
 
   if (result.handoff === 'agent') {
@@ -512,12 +519,19 @@ function countFeedback(n: number): string {
  * outright, on every line.
  *
  * The commands are not padded into a shared column. Alignment was there to tie
- * three adjacent lines together; with a blank line between each of them there is
- * nothing left to tie, and a ragged right edge of labels reads worse than a
- * ragged left edge of commands.
+ * three adjacent lines together, and a ragged right edge of labels reads worse
+ * than a ragged left edge of commands.
+ *
+ * The label is grey on every line, so the command is what the eye lands on, and
+ * the tone is what tells the commands apart: the way back is grey with its
+ * label, and the two next steps carry a colour each.
  */
-export function handOffLine(label: string, command: string): string {
-  return `${label}:  ${yellow(command)}`;
+export function handOffLine(
+  label: string,
+  command: string,
+  tone: (text: string) => string = dim,
+): string {
+  return `${dim(`${label}:`)}  ${tone(command)}`;
 }
 
 /**
@@ -532,26 +546,23 @@ export function handOffLine(label: string, command: string): string {
  * nothing is the reviewer saying the plan is fine, so it takes one. Quitting
  * passes nothing at all, and gets the reopen line every block already opens on.
  *
- * One blank line between every entry. They ran together as a wall before, and
- * each is a separate thing to do — which reads as one with air around it.
+ * No blank lines between the entries. The air was there to give each command
+ * room; four adjacent lines read as one block, which is what they are.
+ *
+ * `Execute it in your agent` carries no qualifier: the order already says the
+ * feedback comes first, because revise is the line above it.
  */
 export function closingBlock(planId: string, version: number, carried?: boolean): string[] {
   const lines = [handOffLine('Reopen it in your terminal', `planx ${planId} v${version}`)];
 
   if (carried === true) {
     lines.push(
-      '',
-      handOffLine('Revise this plan in your agent', `/planx revise ${planId}`),
-      '',
-      handOffLine(
-        'Execute it in your agent, once the feedback is addressed',
-        `/planx execute ${planId} v${version}`,
-      ),
+      handOffLine('Revise this plan in your agent', `/planx revise ${planId}`, yellow),
+      handOffLine('Execute it in your agent', `/planx execute ${planId} v${version}`, blue),
     );
   } else if (carried === false) {
     lines.push(
-      '',
-      handOffLine('Execute this plan in your agent', `/planx execute ${planId} v${version}`),
+      handOffLine('Execute this plan in your agent', `/planx execute ${planId} v${version}`, blue),
     );
   }
 

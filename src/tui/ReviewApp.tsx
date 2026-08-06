@@ -44,6 +44,15 @@ export interface FeedbackBatch {
   annotations: Annotation[];
   /** The note about the whole plan, written on this version. */
   general: string;
+  /**
+   * Whether the reviewer changed this version's feedback at all.
+   *
+   * An empty batch is two different things: the version you happened to finish
+   * on, which has nothing to announce, and one whose last comment you deleted,
+   * which is a write worth reporting — the record was rewritten and the comment
+   * is gone for good.
+   */
+  touched: boolean;
 }
 
 /** Per version: whether planx could start an agent for each intent. */
@@ -683,6 +692,7 @@ export function ReviewApp(props: ReviewAppProps) {
         version,
         annotations: byVersion[version] ?? [],
         general: generalByVersion[version] ?? '',
+        touched: touched.has(version),
       }));
     props.onDone({
       action,

@@ -260,29 +260,44 @@ describe('the review hand-off', () => {
     setColorEnabled(false);
     expect(closingBlock('guard-clock-a3f9', 3, false)).toEqual([
       'Reopen it in your terminal:  planx guard-clock-a3f9 v3',
-      '',
       'Execute this plan in your agent:  /planx execute guard-clock-a3f9 v3',
       '',
     ]);
   });
 
+  // The execute label carries no qualifier: revise is the line above it, which
+  // is the order saying the feedback comes first.
   it('offers revise then execute when the submit carried feedback', () => {
     setColorEnabled(false);
     expect(closingBlock('guard-clock-a3f9', 3, true)).toEqual([
       'Reopen it in your terminal:  planx guard-clock-a3f9 v3',
-      '',
       'Revise this plan in your agent:  /planx revise guard-clock-a3f9',
-      '',
-      'Execute it in your agent, once the feedback is addressed:  /planx execute guard-clock-a3f9 v3',
+      'Execute it in your agent:  /planx execute guard-clock-a3f9 v3',
       '',
     ]);
   });
 
-  // One blank line between every entry — each is a separate thing to do.
-  it('separates every entry with exactly one blank line', () => {
+  // Four adjacent lines read as one block, which is what they are.
+  it('runs the entries together, with no blank line between them', () => {
     setColorEnabled(false);
     const block = closingBlock('guard-clock-a3f9', 3, true);
-    expect(block.filter((line) => line === '')).toHaveLength(3);
-    expect(block.join('\n')).not.toContain('\n\n\n');
+    expect(block.filter((line) => line === '')).toHaveLength(1);
+    expect(block.slice(0, -1).every((line) => line !== '')).toBe(true);
+  });
+
+  /**
+   * Colour is what tells the three apart at a glance: the way back is grey
+   * throughout, and the two next steps carry one each.
+   */
+  it('paints the way back grey, revise yellow and execute blue', () => {
+    setColorEnabled(true);
+    const [reopen, revise, execute] = closingBlock('guard-clock-a3f9', 3, true);
+    // Grey label, grey command: this is the way back, not the next step.
+    expect(reopen).toContain(`\x1b[2mplanx guard-clock-a3f9 v3\x1b[22m`);
+    expect(revise).toContain(`\x1b[33m/planx revise guard-clock-a3f9\x1b[39m`);
+    expect(execute).toContain(`\x1b[34m/planx execute guard-clock-a3f9 v3\x1b[39m`);
+    // The labels are grey on every line, so the command is what stands out.
+    for (const line of [reopen, revise, execute]) expect(line).toContain('\x1b[2m');
+    setColorEnabled(false);
   });
 });

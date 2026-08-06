@@ -1215,7 +1215,8 @@ describe('submitting', () => {
     await app.press('1');
     const result = await app.result;
     expect(result.action).toBe('execute');
-    expect(result.batches).toEqual([{ version: 1, annotations: [], general: '' }]);
+    // Untouched, so there is nothing for the submit to announce.
+    expect(result.batches).toEqual([{ version: 1, annotations: [], general: '', touched: false }]);
     app.unmount();
   });
 
