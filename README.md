@@ -27,7 +27,7 @@ $ planx
 ```
 
 ```
-╭─ planx v0.3.0  guard-clock-a3f9  v3 ◂ v2 ───────────────────────────────────────────╮
+╭─ planx v0.4.0  guard-clock-a3f9  v3 ◂ v2 ───────────────────────────────────────────╮
 │                                                                                     │
 │      1   # Guard the clock regression                                               │
 │      2                                                                              │
