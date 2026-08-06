@@ -1,28 +1,27 @@
 import { bold, cyan, dim, yellow } from '../render/ansi.js';
-import { brandTitle, frameBlock } from '../tui/frame.js';
 import type { CommandSpec } from './args.js';
 import { COMMANDS, GLOBAL_FLAGS } from './spec.js';
 
 /**
- * Frame help only when a person is going to read it.
+ * Help is printed flat, framed nowhere.
  *
- * Piped output ends up in an agent's context or in a file, and box-drawing
- * characters there are noise wrapped around the only part that matters.
+ * The border is the review's chrome — it belongs to the one screen you sit in
+ * and read. A box drawn around a wall of usage text is decoration on something
+ * you are scanning for one line, and it made `planx --help` and `planx` look
+ * like the same kind of thing when only one of them is.
  */
-function forPerson(lines: string[], version?: string): string {
-  if (!process.stdout.isTTY) return lines.join('\n');
-  return frameBlock(lines, { title: brandTitle(version) });
+function lay(lines: string[]): string {
+  return lines.join('\n');
 }
 
 /**
  * Sections, in the order someone reading this needs them.
  *
- * Most of these commands exist for an agent to call. Listing all twenty flat
- * made the handful a person actually types impossible to pick out, so the ones
- * you run by hand come first and the rest are labelled for what they are.
+ * Every command here is either something an agent calls or something you run
+ * once. The everyday thing — reviewing — is bare `planx`, spelt out above these
+ * sections, so there is no third group of things a person types day to day.
  */
-const GROUPS: Array<{ key: 'common' | 'agent' | 'maintenance'; title: string }> = [
-  { key: 'common', title: 'Everyday' },
+const GROUPS: Array<{ key: 'agent' | 'maintenance'; title: string }> = [
   { key: 'agent', title: 'Run by your agent' },
   { key: 'maintenance', title: 'Housekeeping' },
 ];
@@ -55,10 +54,10 @@ export function topLevelHelp(version: string): string {
     out.push(`  ${yellow(flagLabel(flag.name, flag.arg).padEnd(width + 2))}  ${dim(flag.summary)}`);
   }
   out.push('', dim('  planx <command> --help for detail.'));
-  return forPerson(out, version);
+  return lay(out);
 }
 
-export function commandHelp(spec: CommandSpec, version?: string): string {
+export function commandHelp(spec: CommandSpec): string {
   const out: string[] = [`${bold(spec.name)} — ${spec.summary}`, '', `  ${dim(spec.usage)}`];
 
   if (spec.description) {
@@ -75,7 +74,7 @@ export function commandHelp(spec: CommandSpec, version?: string): string {
     out.push('', dim('  Examples:'));
     for (const example of spec.examples) out.push(`    ${example}`);
   }
-  return forPerson(out, version);
+  return lay(out);
 }
 
 function flagLabel(name: string, arg?: string): string {

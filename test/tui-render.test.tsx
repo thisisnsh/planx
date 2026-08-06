@@ -1636,15 +1636,15 @@ describe('the step-by-step screen', () => {
   /**
    * These two commands are the ones npm runs during an install, where the
    * output is already inside npm's. A box drawn around part of somebody else's
-   * log is worse than no box.
+   * log is worse than no box — and with no border there is nowhere for the
+   * wordmark to ride, so it is not printed at all rather than echoed back as a
+   * line under the command the user just typed.
    */
-  it('draws no border at any width, and says which planx is talking', async () => {
+  it('draws no border and no header at any width', async () => {
     for (const width of [40, 80, 200]) {
       const stdout = new FakeStdout();
       const instance = render(
         <Steps
-          command="add-skills"
-          version="0.4.0"
           rows={rows}
           closing="Done. /planx is available in claude."
           prompt={null}
@@ -1659,7 +1659,8 @@ describe('the step-by-step screen', () => {
       for (const edge of ['╭', '╮', '╰', '╯', '│']) {
         expect(frame, `${edge} at ${width}`).not.toContain(edge);
       }
-      expect(frame).toContain('planx v0.4.0  add-skills');
+      expect(frame).not.toMatch(/planx v\d/);
+      expect(frame.trimStart().startsWith('Detecting agents')).toBe(true);
       expect(frame).toContain('Done. /planx is available in claude.');
     }
   });
@@ -1673,8 +1674,6 @@ describe('the step-by-step screen', () => {
     const draw = () =>
       instance.rerender(
         <Steps
-          command="remove-skills"
-          version="0.4.0"
           rows={rows}
           closing={null}
           width={80}
@@ -1691,17 +1690,11 @@ describe('the step-by-step screen', () => {
         />,
       );
 
-    const instance = render(
-      <Steps
-        command="remove-skills"
-        version="0.4.0"
-        rows={rows}
-        closing={null}
-        prompt={null}
-        width={80}
-      />,
-      { stdout: stdout as never, stdin: stdin as never, patchConsole: false },
-    );
+    const instance = render(<Steps rows={rows} closing={null} prompt={null} width={80} />, {
+      stdout: stdout as never,
+      stdin: stdin as never,
+      patchConsole: false,
+    });
     draw();
 
     await waitFor(() => stdout.lastFrame.includes('type delete to confirm:'));
@@ -1732,8 +1725,6 @@ describe('the step-by-step screen', () => {
     const draw = () =>
       instance.rerender(
         <Steps
-          command="remove-skills"
-          version="0.4.0"
           rows={rows}
           closing={null}
           width={80}
@@ -1750,17 +1741,11 @@ describe('the step-by-step screen', () => {
         />,
       );
 
-    const instance = render(
-      <Steps
-        command="remove-skills"
-        version="0.4.0"
-        rows={rows}
-        closing={null}
-        prompt={null}
-        width={80}
-      />,
-      { stdout: stdout as never, stdin: stdin as never, patchConsole: false },
-    );
+    const instance = render(<Steps rows={rows} closing={null} prompt={null} width={80} />, {
+      stdout: stdout as never,
+      stdin: stdin as never,
+      patchConsole: false,
+    });
     draw();
     await waitFor(() => stdout.lastFrame.includes('type delete to confirm:'));
 

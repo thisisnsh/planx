@@ -1,7 +1,6 @@
 import { Box, Text, useInput } from 'ink';
 import { homedir } from 'node:os';
 import { dim, green, inverse, padEnd, red, signal, truncate } from '../render/ansi.js';
-import { brandTitle } from './frame.js';
 
 /**
  * A command that does several things, drawn while it does them.
@@ -14,6 +13,11 @@ import { brandTitle } from './frame.js';
  * the output is already sitting inside npm's, and a frame around it would be a
  * box drawn around part of somebody else's log. Without one the drawn form and
  * the piped form are the same rows, which is what they always were.
+ *
+ * And no header either. Without a border there is nowhere for the wordmark to
+ * ride, so it was printed as a line — which put `planx v0.4.0 add-skills` one
+ * row under the `planx add-skills` the user had just typed. The groups are the
+ * headings; the work starts at the first one.
  *
  * It owns no state — including what has been typed into the prompt. The rows
  * are handed in and redrawn, because the work is a plain async function and the
@@ -47,9 +51,6 @@ export interface StepsPrompt {
 }
 
 export interface StepsProps {
-  /** The subcommand, shown beside the wordmark on the one header line. */
-  command: string;
-  version: string;
   rows: readonly StepRow[];
   /** The last line: what this leaves you with. */
   closing: string | null;
@@ -75,11 +76,7 @@ export function Steps(props: StepsProps) {
     { isActive: props.prompt !== null },
   );
 
-  const lines: string[] = [
-    ` ${brandTitle(props.version, props.command)}`,
-    '',
-    ...stepLines(props.rows, props.width),
-  ];
+  const lines: string[] = [...stepLines(props.rows, props.width)];
   if (props.closing !== null) lines.push(`  ${props.closing}`);
   if (props.prompt !== null) {
     lines.push(

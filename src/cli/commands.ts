@@ -25,7 +25,6 @@ import {
   rewriteVersion,
 } from '../store/plans.js';
 import type { VersionRecord } from '../store/types.js';
-import { brandTitle, frameBlock } from '../tui/frame.js';
 import type { PickerItem } from '../tui/Picker.js';
 import { clearScreen, isInteractive, runPicker, runReview, runSteps } from '../tui/run.js';
 import {
@@ -129,22 +128,6 @@ async function pickPlan(ctx: Ctx): Promise<PlanChoice | null> {
     },
   });
   return chosen ?? null;
-}
-
-/**
- * Print a block of lines inside the frame, when a person is going to read them.
- *
- * `--json` and a redirected stdout both mean the output is being consumed by
- * something that has no use for box-drawing characters — and `show`, `capture`
- * and `diff --print` never come through here at all, because those go straight
- * into an agent's context.
- */
-function framed(ctx: Ctx, lines: string[]): void {
-  if (ctx.json || !process.stdout.isTTY) {
-    for (const line of lines) ctx.out(line);
-    return;
-  }
-  ctx.out(frameBlock(lines, { title: brandTitle(ctx.version) }));
 }
 
 /**
@@ -495,14 +478,15 @@ export function cmdList(ctx: Ctx): number {
     return 0;
   }
 
+  // No frame. The border is the review's, and `list` is a table you read one
+  // row out of — most often piped, or read by an agent that wants the rows and
+  // nothing around them.
   const idWidth = Math.min(38, Math.max(...plans.map((p) => p.id.length)));
-  framed(
-    ctx,
-    plans.map(
-      (plan) =>
-        `  ${cyan(padEnd(plan.id, idWidth))}  ${dim(padEnd(`v${plan.latest}`, 5))} ${dim(padEnd(ago(plan.updated), 9))}${plan.title}`,
-    ),
-  );
+  for (const plan of plans) {
+    ctx.out(
+      `  ${cyan(padEnd(plan.id, idWidth))}  ${dim(padEnd(`v${plan.latest}`, 5))} ${dim(padEnd(ago(plan.updated), 9))}${plan.title}`,
+    );
+  }
   return 0;
 }
 
@@ -519,8 +503,6 @@ export function cmdList(ctx: Ctx): number {
 export async function cmdAddSkills(ctx: Ctx): Promise<number> {
   const report = await runSteps(
     {
-      command: 'add-skills',
-      version: ctx.version,
       // `--json` asked for one document on stdout, so the steps are swallowed
       // rather than printed above it — the report says everything they would.
       out: ctx.json ? () => {} : ctx.out,
@@ -565,38 +547,30 @@ function closingFor(agents: readonly string[]): string {
 export async function cmdRemoveSkills(ctx: Ctx): Promise<number> {
   const plain = ctx.json || !isInteractive();
 
-  const report = await runSteps(
-    {
-      command: 'remove-skills',
-      version: ctx.version,
-      out: ctx.json ? () => {} : ctx.out,
-      plain,
-    },
-    async (screen) => {
-      const report = await runUninstall({
-        local: has(ctx.args, '--local'),
-        onStep: screen.onStep,
-      });
-      if (!report.removed.length && !report.kept.length) {
-        await screen.close('Nothing to remove — no planx skills were installed.');
-        return { ...report, storeDeleted: false };
-      }
-
-      // A non-interactive run never deletes and never asks: there is nobody
-      // there to answer, and the answer this would assume is unrecoverable.
-      const count = listPlans().length;
-      const question = `Delete the store too? ${paths.root()} holds ${count} plan${
-        count === 1 ? '' : 's'
-      }. This cannot be undone.`;
-      if (!plain && (await screen.confirm(question, 'delete'))) {
-        purgeStore();
-        await screen.close(`Done. ${paths.root()} is gone.`);
-        return { ...report, storeDeleted: true };
-      }
-      await screen.close(`Done. ${paths.root()} was left alone — delete it yourself later.`);
+  const report = await runSteps({ out: ctx.json ? () => {} : ctx.out, plain }, async (screen) => {
+    const report = await runUninstall({
+      local: has(ctx.args, '--local'),
+      onStep: screen.onStep,
+    });
+    if (!report.removed.length && !report.kept.length) {
+      await screen.close('Nothing to remove — no planx skills were installed.');
       return { ...report, storeDeleted: false };
-    },
-  );
+    }
+
+    // A non-interactive run never deletes and never asks: there is nobody
+    // there to answer, and the answer this would assume is unrecoverable.
+    const count = listPlans().length;
+    const question = `Delete the store too? ${paths.root()} holds ${count} plan${
+      count === 1 ? '' : 's'
+    }. This cannot be undone.`;
+    if (!plain && (await screen.confirm(question, 'delete'))) {
+      purgeStore();
+      await screen.close(`Done. ${paths.root()} is gone.`);
+      return { ...report, storeDeleted: true };
+    }
+    await screen.close(`Done. ${paths.root()} was left alone — delete it yourself later.`);
+    return { ...report, storeDeleted: false };
+  });
 
   if (ctx.json) ctx.out(JSON.stringify(report, null, 2));
   return 0;

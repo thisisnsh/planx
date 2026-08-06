@@ -119,9 +119,6 @@ export interface StepsController {
 }
 
 export interface RunStepsOptions {
-  /** The subcommand, for the top rule. */
-  command: string;
-  version: string;
   /** Where the plain-text form goes when there is no terminal to draw on. */
   out: (line: string) => void;
   /** `--json` and a pipe both mean: print lines, draw nothing. */
@@ -161,28 +158,11 @@ export async function runSteps<T>(
   // there.
   const width = terminalWidth();
   const draw = () =>
-    instance.rerender(
-      <Steps
-        command={opts.command}
-        version={opts.version}
-        rows={[...rows]}
-        closing={closing}
-        prompt={prompt}
-        width={width}
-      />,
-    );
+    instance.rerender(<Steps rows={[...rows]} closing={closing} prompt={prompt} width={width} />);
 
-  const instance = render(
-    <Steps
-      command={opts.command}
-      version={opts.version}
-      rows={[]}
-      closing={null}
-      prompt={null}
-      width={width}
-    />,
-    { exitOnCtrlC: true },
-  );
+  const instance = render(<Steps rows={[]} closing={null} prompt={null} width={width} />, {
+    exitOnCtrlC: true,
+  });
 
   try {
     return await body({

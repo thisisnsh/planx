@@ -14,11 +14,12 @@ export interface CommandSpec {
   flags?: FlagSpec[];
   examples?: string[];
   /**
-   * Which section of `--help` this appears under. Most of these commands exist
-   * for an agent to call, not for anyone to type, and one flat list of twenty
-   * made the handful a human actually runs impossible to find.
+   * Which section of `--help` this appears under. Every one of these exists for
+   * an agent to call or for the odd bit of housekeeping — the everyday thing a
+   * person types is bare `planx`, which is not a subcommand at all and is spelt
+   * out above the sections rather than listed inside one.
    */
-  group?: 'common' | 'agent' | 'maintenance';
+  group?: 'agent' | 'maintenance';
   /** Kept out of `--help` and the generated reference. */
   hidden?: boolean;
 }

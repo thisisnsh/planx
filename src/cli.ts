@@ -157,14 +157,14 @@ export async function main(argv: readonly string[]): Promise<number> {
   const args = parseArgs(commandArgv, spec, GLOBAL_FLAGS);
 
   if (has(args, '--help')) {
-    process.stdout.write(`${commandHelp(spec, version)}\n`);
+    process.stdout.write(`${commandHelp(spec)}\n`);
     return 0;
   }
   if (args.unknown.length) {
     process.stderr.write(
       red(`planx: unknown flag ${args.unknown.join(', ')} for \`planx ${command}\`.\n`),
     );
-    process.stderr.write(`${commandHelp(spec, version)}\n`);
+    process.stderr.write(`${commandHelp(spec)}\n`);
     return 2;
   }
 
