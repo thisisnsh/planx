@@ -105,6 +105,44 @@ describe('plan lifecycle', () => {
     expect(back.version).toBe(3);
   });
 
+  it('carries the session that wrote a version, and how it was started', () => {
+    const id = seed();
+    const v2 = addVersion(id, `${SAMPLE_PLAN}\nextra\n`, {
+      sessionId: 'sess-42',
+      agent: 'claude',
+      agentArgv: ['--model', 'opus'],
+    });
+    expect(v2.record).toMatchObject({
+      session_id: 'sess-42',
+      agent: 'claude',
+      agent_argv: ['--model', 'opus'],
+    });
+
+    // Off disk, not out of the return value: forking happens in another process.
+    const stored = readVersions(id).versions.find((v) => v.n === 2);
+    expect(stored).toMatchObject({ session_id: 'sess-42', agent_argv: ['--model', 'opus'] });
+  });
+
+  /**
+   * The three fields are optional with a default for the same reason `edits`
+   * was: a store written by an older planx still parses under this one, so
+   * nothing here is a `FORMAT_VERSION` bump.
+   */
+  it('parses a store written before any of them existed', () => {
+    const id = seed();
+    writeFileSync(
+      paths.versions(id),
+      JSON.stringify({
+        format_version: 1,
+        versions: [{ n: 1, sha256: 'abc', created: '2020-01-01T00:00:00.000Z' }],
+      }),
+    );
+    expect(readVersions(id).versions[0]).toMatchObject({ session_id: null, agent_argv: [] });
+
+    writeFileSync(paths.meta(id), JSON.stringify({ id, title: 'Old', created: 'x', updated: 'x' }));
+    expect(readMeta(id)?.executed).toBe(null);
+  });
+
   it('honours an explicit --name over the hashed id', () => {
     const meta = createPlan({ title: 'Whatever', content: 'x', name: 'My Pinned Name' });
     expect(meta.id).toBe('my-pinned-name');

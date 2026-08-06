@@ -72,6 +72,7 @@ function indexEntryFor(meta: PlanMeta, versions: VersionsFile): IndexEntry {
     created: meta.created,
     updated: meta.updated,
     latest: latestVersionNumber(versions),
+    executed: meta.executed?.version ?? null,
   };
 }
 
@@ -220,6 +221,10 @@ export interface AddVersionOptions {
   agent?: string | null;
   parent?: number | null;
   note?: string | null;
+  /** The agent session that wrote this version, so planx can fork it later. */
+  sessionId?: string | null;
+  /** That session's own command line, so a fork lands in the same state. */
+  agentArgv?: readonly string[];
 }
 
 export interface AddVersionResult {
@@ -263,6 +268,8 @@ export function addVersion(
     parent: opts.parent ?? (latest > 0 ? latest : null),
     note: opts.note ?? null,
     edits: [],
+    session_id: opts.sessionId ?? null,
+    agent_argv: [...(opts.agentArgv ?? [])],
   };
 
   writeAtomic(paths.versionFile(id, n), body);
@@ -447,6 +454,7 @@ export function listPlans(filter: ListFilter = {}): PlanSummary[] {
       created: meta.created,
       updated: meta.updated,
       latest: latestVersion(id),
+      executed: meta.executed?.version ?? null,
     });
   }
 

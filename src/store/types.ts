@@ -24,6 +24,18 @@ export const PlanMetaSchema = z.object({
   /** Recorded as metadata and filterable (`list --here`), never as a boundary. */
   cwd: z.string().default(''),
   session_id: z.string().nullable().default(null),
+  /**
+   * The version that was actually built, and when.
+   *
+   * Written by `planx executed`, which the execute skill runs before its first
+   * edit — so it is true whichever route reached the build: the agent planx
+   * launched, a command pasted somewhere by hand, or `/planx execute` typed
+   * from scratch.
+   */
+  executed: z
+    .object({ version: z.number().int(), at: z.string(), agent: z.string().nullable() })
+    .nullable()
+    .default(null),
   tags: z.array(z.string()).default([]),
 });
 export type PlanMeta = z.infer<typeof PlanMetaSchema>;
@@ -60,6 +72,10 @@ export const VersionRecordSchema = z.object({
    * breaks on it, and it goes in the release notes instead.
    */
   edits: z.array(EditRecordSchema).default([]),
+  /** The agent session that captured this version, for forking. */
+  session_id: z.string().nullable().default(null),
+  /** How that session was started, so the fork lands in the same state. */
+  agent_argv: z.array(z.string()).default([]),
 });
 export type VersionRecord = z.infer<typeof VersionRecordSchema>;
 
@@ -77,6 +93,12 @@ export const IndexEntrySchema = z.object({
   created: z.string(),
   updated: z.string(),
   latest: z.number().int(),
+  /**
+   * The version that was built, or null. Just the number: the picker draws
+   * every plan in the store on every keystroke, and opening each `meta.json` to
+   * colour a row would be a read per plan per frame.
+   */
+  executed: z.number().int().nullable().default(null),
 });
 export type IndexEntry = z.infer<typeof IndexEntrySchema>;
 
