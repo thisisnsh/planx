@@ -1,4 +1,4 @@
-import { Box, Text, useApp, useInput, useStdout } from 'ink';
+import { Box, Text, useApp, useInput, useStdout, type Key } from 'ink';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { buildAnnotation } from '../protocol/submit.js';
 import {
@@ -88,8 +88,8 @@ export interface ReviewAppProps {
  */
 type Mode =
   | { kind: 'browse' }
-  | { kind: 'editing'; annotationId: string; draft: string; isNew: boolean }
-  | { kind: 'note'; draft: string }
+  | { kind: 'editing'; annotationId: string; draft: string; caret: number; isNew: boolean }
+  | { kind: 'note'; draft: string; caret: number }
   /**
    * One line of the document, open for rewriting. `queue` is what is left of a
    * selection being walked — the lines that open, one at a time, behind this one.
@@ -162,6 +162,7 @@ export function ReviewApp(props: ReviewAppProps) {
   const shownEdits = versionB === latest ? edits : NO_EDITS;
   const draftId = mode.kind === 'editing' ? mode.annotationId : null;
   const draftText = mode.kind === 'editing' ? mode.draft : '';
+  const draftCaret = mode.kind === 'editing' ? mode.caret : 0;
 
   const model = useMemo(
     () =>
@@ -180,7 +181,8 @@ export function ReviewApp(props: ReviewAppProps) {
         // Feeding the half-typed note through the model is what makes the box
         // grow line by line as it is written, instead of the text vanishing off
         // the right edge of a box sized for what was there before.
-        draft: draftId === null ? null : { annotationId: draftId, text: draftText },
+        draft:
+          draftId === null ? null : { annotationId: draftId, text: draftText, caret: draftCaret },
       }),
     [
       props.planId,
@@ -196,6 +198,7 @@ export function ReviewApp(props: ReviewAppProps) {
       shownEdits,
       draftId,
       draftText,
+      draftCaret,
     ],
   );
 
@@ -323,6 +326,7 @@ export function ReviewApp(props: ReviewAppProps) {
         kind: 'editing',
         annotationId: existing.id,
         draft: existing.comment,
+        caret: existing.comment.length,
         isNew: false,
       });
     }
@@ -349,7 +353,7 @@ export function ReviewApp(props: ReviewAppProps) {
     ]);
     setHiddenFeedback(false);
     setSelection((s) => reduceSelection(s, { type: 'clear' }, rows));
-    setMode({ kind: 'editing', annotationId: id, draft: '', isNew: true });
+    setMode({ kind: 'editing', annotationId: id, draft: '', caret: 0, isNew: true });
   }
 
   /**
@@ -628,7 +632,7 @@ export function ReviewApp(props: ReviewAppProps) {
       if (input === 'j') return nextFeedback();
       if (input === 'd' && previousVersion !== null) return toggleDiff();
       if (input === 'h') return setHiddenFeedback((on) => !on);
-      if (input === 'n') return setMode({ kind: 'note', draft: general });
+      if (input === 'n') return setMode({ kind: 'note', draft: general, caret: general.length });
       if (input === 's') return finish('submit');
       if (input === '?') return setMode({ kind: 'help' });
       if (input === 'x' || input === 'q') return finish('quit');
@@ -636,8 +640,17 @@ export function ReviewApp(props: ReviewAppProps) {
     { isActive: mode.kind === 'browse' },
   );
 
-  // Editing swallows everything printable, which is the point: `s` has to be
-  // the letter s while a note is being written.
+  /**
+   * The note box, with a caret in it.
+   *
+   * It was append-only until now: every arrow key fell through to the browse
+   * handler, so `←` walked the document under the box you were typing in, and
+   * backspace could only take back the last character you typed. The `e` line
+   * editor has had a real caret since it was written; this is the same one.
+   *
+   * Editing still swallows everything printable, which is the point: `s` has to
+   * be the letter s while a note is being written.
+   */
   useInput(
     (input, key) => {
       if (mode.kind !== 'editing' && mode.kind !== 'note') return;
@@ -660,13 +673,27 @@ export function ReviewApp(props: ReviewAppProps) {
         }
         return;
       }
+
+      const moved = caretKey(mode.draft, mode.caret, input, key);
+      if (moved !== null) return setMode({ ...mode, caret: moved });
+
       if (key.backspace || key.delete) {
-        return setMode({ ...mode, draft: mode.draft.slice(0, -1) });
+        if (mode.caret === 0) return;
+        return setMode({
+          ...mode,
+          draft: `${mode.draft.slice(0, mode.caret - 1)}${mode.draft.slice(mode.caret)}`,
+          caret: mode.caret - 1,
+        });
       }
       // Ignore the control keys Ink reports as empty input. A pasted chunk
       // arrives whole rather than one keystroke at a time.
       if (input && !key.ctrl && !key.meta) {
-        return setMode({ ...mode, draft: mode.draft + input.replace(/[\r\n]+/g, ' ') });
+        const text = input.replace(/[\r\n]+/g, ' ');
+        return setMode({
+          ...mode,
+          draft: `${mode.draft.slice(0, mode.caret)}${text}${mode.draft.slice(mode.caret)}`,
+          caret: mode.caret + text.length,
+        });
       }
     },
     { isActive: mode.kind === 'editing' || mode.kind === 'note' },
@@ -810,6 +837,7 @@ export function ReviewApp(props: ReviewAppProps) {
       : statusLine({
           status,
           note: mode.kind === 'note' ? mode.draft : '',
+          caret: mode.kind === 'note' ? mode.caret : 0,
           typing: mode.kind === 'note',
           width: inner,
         });
@@ -943,10 +971,14 @@ function renderRow(row: ViewRow, opts: RowOptions): string {
     if (row.part !== 'body') return `${arrow} ${pad}${signal(row.text)}`;
 
     const box = row.boxWidth - BOX_PADDING;
-    const caret = opts.editing && row.last;
-    const text = truncate(row.text, box);
-    const filled = padEnd(caret ? `${text}${inverse(' ')}` : text, box);
-    return `${arrow} ${pad}${signal('│')} ${filled} ${signal('│')}`;
+    // The caret sits inside the text, at the column the model worked out, not
+    // after the final character — so walking back through a wrap with ⌥← shows
+    // where the next keystroke will land rather than where the last one did.
+    const text =
+      opts.editing && row.caret !== null
+        ? caretLine(row.text, row.caret, box + 1)
+        : truncate(row.text, box);
+    return `${arrow} ${pad}${signal('│')} ${padEnd(text, box)} ${signal('│')}`;
   }
 
   const gutter = opts.cursor ? row.gutterActive : row.gutter;
@@ -991,6 +1023,8 @@ interface StatusOptions {
   status: string | null;
   /** The whole-plan note as it is being typed, while `n` is open. */
   note: string;
+  /** Where the caret sits in it. */
+  caret: number;
   typing: boolean;
   width: number;
 }
@@ -1009,10 +1043,11 @@ interface StatusOptions {
  */
 function statusLine(opts: StatusOptions): string {
   if (opts.typing) {
-    // The tail, not the head: the caret has to stay beside the words being
-    // typed, and a note long enough to overflow is one you are still writing.
-    const room = Math.max(8, opts.width - NOTE_LABEL.length - 1);
-    return `${yellow(`${NOTE_LABEL}${opts.note.slice(-room)}`)}${inverse(' ')}`;
+    // The window follows the caret rather than pinning to the tail: with the
+    // caret movable, the end of a long note is no longer the only place you can
+    // be typing.
+    const room = Math.max(8, opts.width - NOTE_LABEL.length);
+    return yellow(`${NOTE_LABEL}${caretLine(opts.note, opts.caret, room)}`);
   }
   if (opts.status) return signal(truncate(opts.status, opts.width));
   return '';
@@ -1179,6 +1214,46 @@ function widestHints(ctx: Pick<HintContext, 'canDiff' | 'manyVersions'>): Hint[]
   return hints;
 }
 
+/**
+ * Where a keypress moves the caret, or null when it is not a caret key.
+ *
+ * Option+arrow reaches the process two ways depending on how the terminal is
+ * configured: `\x1b[1;3D`, which Ink reports as an arrow with `meta` set, and
+ * `\x1bb`, which arrives as the input `b` with `meta` set. Both are bound,
+ * because which one you get is a setting nobody remembers changing.
+ *
+ * Cmd+arrow is not here and cannot be: Terminal.app and iTerm both consume it
+ * before it reaches the process, so there is no escape sequence to bind.
+ */
+function caretKey(draft: string, caret: number, input: string, key: Key): number | null {
+  const word = key.meta || input === 'b' || input === 'f';
+  if (key.leftArrow || (key.meta && input === 'b')) {
+    return word ? wordStartBefore(draft, caret) : Math.max(0, caret - 1);
+  }
+  if (key.rightArrow || (key.meta && input === 'f')) {
+    return word ? wordStartAfter(draft, caret) : Math.min(draft.length, caret + 1);
+  }
+  if (key.ctrl && input === 'a') return 0;
+  if (key.ctrl && input === 'e') return draft.length;
+  return null;
+}
+
+/** The start of the run of non-whitespace before the caret. */
+function wordStartBefore(text: string, caret: number): number {
+  let i = caret;
+  while (i > 0 && /\s/.test(text[i - 1]!)) i--;
+  while (i > 0 && !/\s/.test(text[i - 1]!)) i--;
+  return i;
+}
+
+/** The start of the next run of non-whitespace after the caret. */
+function wordStartAfter(text: string, caret: number): number {
+  let i = caret;
+  while (i < text.length && !/\s/.test(text[i]!)) i++;
+  while (i < text.length && /\s/.test(text[i]!)) i++;
+  return i;
+}
+
 /** Exactly `height` lines: the tail cut, or blank rows added. */
 function fit(lines: readonly string[], height: number): string[] {
   const out = lines.slice(0, height);
@@ -1228,6 +1303,7 @@ function helpLines(width: number, canDiff: boolean): string[] {
       ([keys, what]) => `${signal(padEnd(keys, 8))}${dim(truncate(what, width - 8))}`,
     ),
     '',
+    dim('inside a note or a line: ← → ⌥← ⌥→ move the caret, ^a ^e reach its ends.'),
     dim('a note is deleted by emptying it: f, clear the text, enter.'),
   ];
 }

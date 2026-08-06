@@ -47,8 +47,8 @@ export interface SimPlan {
 
 export type Mode =
   | { kind: 'browse' }
-  | { kind: 'editing'; annotationId: string; draft: string; isNew: boolean }
-  | { kind: 'note'; draft: string }
+  | { kind: 'editing'; annotationId: string; draft: string; caret: number; isNew: boolean }
+  | { kind: 'note'; draft: string; caret: number }
   | { kind: 'line'; line: number; draft: string; caret: number; queue: number[] }
   | { kind: 'leave' }
   | { kind: 'help' }
@@ -158,7 +158,11 @@ export function layout(state: SimState, cols: number, bodyRows: number): void {
     draft:
       draftId === null
         ? null
-        : { annotationId: draftId, text: (state.mode as { draft: string }).draft },
+        : {
+            annotationId: draftId,
+            text: (state.mode as { draft: string }).draft,
+            caret: (state.mode as { caret: number }).caret,
+          },
   });
 
   const rows = state.model.rows;
@@ -315,7 +319,8 @@ function browse(state: SimState, key: string): void {
     return;
   }
   if (key === 'n') {
-    state.mode = { kind: 'note', draft: state.notes[state.versionB] ?? '' };
+    const note = state.notes[state.versionB] ?? '';
+    state.mode = { kind: 'note', draft: note, caret: note.length };
     return;
   }
   if (key === 's') return finish(state, 'submit');
@@ -388,6 +393,7 @@ function startFeedback(state: SimState): void {
       kind: 'editing',
       annotationId: existing.id,
       draft: existing.comment,
+      caret: existing.comment.length,
       isNew: false,
     };
     return;
@@ -406,7 +412,7 @@ function startFeedback(state: SimState): void {
   ]);
   state.hiddenFeedback = false;
   state.selection = { anchor: null, active: false };
-  state.mode = { kind: 'editing', annotationId: id, draft: '', isNew: true };
+  state.mode = { kind: 'editing', annotationId: id, draft: '', caret: 0, isNew: true };
 }
 
 function nextAnnotationId(annotations: readonly Annotation[]): string {
@@ -457,12 +463,55 @@ function typing(state: SimState, key: string): void {
     state.mode = { kind: 'browse' };
     return;
   }
+  const moved = caretKey(mode.draft, mode.caret, key);
+  if (moved !== null) {
+    state.mode = { ...mode, caret: moved };
+    return;
+  }
   if (key === 'backspace') {
-    state.mode = { ...mode, draft: mode.draft.slice(0, -1) };
+    if (mode.caret === 0) return;
+    state.mode = {
+      ...mode,
+      draft: `${mode.draft.slice(0, mode.caret - 1)}${mode.draft.slice(mode.caret)}`,
+      caret: mode.caret - 1,
+    };
     return;
   }
   const char = printable(key);
-  if (char) state.mode = { ...mode, draft: mode.draft + char };
+  if (char) {
+    state.mode = {
+      ...mode,
+      draft: `${mode.draft.slice(0, mode.caret)}${char}${mode.draft.slice(mode.caret)}`,
+      caret: mode.caret + char.length,
+    };
+  }
+}
+
+/** Where a keypress moves the caret, or null when it is not a caret key. */
+function caretKey(draft: string, caret: number, key: string): number | null {
+  if (key === 'left') return Math.max(0, caret - 1);
+  if (key === 'right') return Math.min(draft.length, caret + 1);
+  if (key === 'alt+left') return wordStartBefore(draft, caret);
+  if (key === 'alt+right') return wordStartAfter(draft, caret);
+  if (key === 'ctrl+a') return 0;
+  if (key === 'ctrl+e') return draft.length;
+  return null;
+}
+
+/** The start of the run of non-whitespace before the caret. */
+function wordStartBefore(text: string, caret: number): number {
+  let i = caret;
+  while (i > 0 && /\s/.test(text[i - 1]!)) i--;
+  while (i > 0 && !/\s/.test(text[i - 1]!)) i--;
+  return i;
+}
+
+/** The start of the next run of non-whitespace after the caret. */
+function wordStartAfter(text: string, caret: number): number {
+  let i = caret;
+  while (i < text.length && !/\s/.test(text[i]!)) i++;
+  while (i < text.length && /\s/.test(text[i]!)) i++;
+  return i;
 }
 
 /** `space` arrives as a token; everything else printable is its own character. */
@@ -939,8 +988,11 @@ function renderRow(
     if (row.part !== 'body') return [...gap, p(row.text, 'sig')];
     const box = row.boxWidth - 4;
     const editing =
-      state.mode.kind === 'editing' && state.mode.annotationId === row.annotationId && row.last;
-    const body: Line = [p(row.text), ...(editing ? [p(' ', 'caret')] : [])];
+      state.mode.kind === 'editing' &&
+      state.mode.annotationId === row.annotationId &&
+      row.caret !== null;
+    // The caret sits inside the text, at the column the model worked out.
+    const body: Line = editing ? caretLine(row.text, row.caret!, box + 1) : [p(row.text)];
     return [...gap, p('│', 'sig'), p(' '), ...fit(body, box), p(' '), p('│', 'sig')];
   }
 
@@ -983,8 +1035,18 @@ function caretLine(draft: string, caret: number, width: number): Line {
  */
 function statusLine(state: SimState, width: number): Line {
   if (state.mode.kind === 'note') {
-    const room = Math.max(8, width - NOTE_LABEL.length - 1);
-    return [p(`${NOTE_LABEL}${state.mode.draft.slice(-room)}`, 'warn'), p(' ', 'caret')];
+    // The window follows the caret rather than pinning to the tail: with the
+    // caret movable, the end is no longer the only place you can be typing.
+    const room = Math.max(8, width - NOTE_LABEL.length);
+    const { draft, caret } = state.mode;
+    const start = Math.max(0, caret - room + 1);
+    const visible = draft.slice(start, start + room);
+    const at = caret - start;
+    return [
+      p(`${NOTE_LABEL}${visible.slice(0, at)}`, 'warn'),
+      p(draft[caret] ?? ' ', 'caret'),
+      p(visible.slice(at + 1), 'warn'),
+    ];
   }
   if (state.status) return fit([p(state.status, 'sig')], width);
   return [];
@@ -1102,6 +1164,7 @@ function helpLines(width: number, canDiff: boolean): Line[] {
       ...fit([p(what, 'dim')], Math.max(8, width - 8)),
     ]),
     [],
+    [p('inside a note or a line: ← → ⌥← ⌥→ move the caret, ^a ^e reach its ends.', 'dim')],
     [p('a note is deleted by emptying it: f, clear the text, enter.', 'dim')],
   ];
 }

@@ -53,6 +53,31 @@ change nothing, and it stays out of the submission — what you already left
 there is untouched, and the summary names only the versions you actually wrote
 on.
 
+## Typing in a note
+
+`f` and `n` open a box with a real caret in it, the same one `e` has had since
+it was written:
+
+| Key | What it does |
+| --- | --- |
+| `←` `→` | One character |
+| `⌥←` `⌥→` | One word — to the start of the run of non-whitespace either side |
+| `^a` `^e` | The start and the end |
+| `backspace` | Delete the character before the caret |
+| printable | Insert at the caret |
+
+The box used to be append-only: every arrow key fell through to the browse
+handler, so `←` walked the document underneath the note you were typing in, and
+backspace could only take back the last character you typed.
+
+**Option+arrow arrives two ways** depending on how your terminal is configured —
+`\x1b[1;3D`, which reads as an arrow with meta set, and `\x1bb`, which reads as
+the letter `b` with meta set. Both are bound, because which one you get is a
+setting nobody remembers changing.
+
+**Cmd+arrow is not bound and cannot be.** Terminal.app and iTerm both consume it
+before it reaches the process, so there is no escape sequence to bind.
+
 ## Rewrite a line yourself, with `e`
 
 A review can do more than ask. `e` opens the line under the cursor as its raw

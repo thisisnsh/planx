@@ -216,6 +216,10 @@ const DOWN = '\x1b[B';
 const LEFT = '\x1b[D';
 const RIGHT = '\x1b[C';
 const BACKSPACE = '\x7f';
+/** Option+arrow, as Terminal.app and iTerm each send it. */
+const ALT_LEFT = '\x1b[1;3D';
+const ALT_RIGHT = '\x1b[1;3C';
+const META_B = '\x1bb';
 const ARROW = '▸';
 /** The closing corner of a note box — the thing that used to be missing. */
 const BOX_CLOSE = '╮';
@@ -397,6 +401,79 @@ describe('feedback lives in the document', () => {
     // Without a trailing space surviving the wrap, `a` and `a ` render
     // identically and the caret never moves as you type the space.
     await app.frame('a b');
+    app.unmount();
+  });
+
+  /**
+   * The box was append-only: every arrow fell through to the browse handler, so
+   * `←` walked the document under the note you were typing in.
+   */
+  it('walks the caret through the note rather than the document', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('f');
+    await app.press('the flag');
+    await app.press(LEFT);
+    await app.press(LEFT);
+    await app.press(LEFT);
+    await app.press(LEFT);
+    await app.press('X');
+    await app.frame('the Xflag');
+    app.unmount();
+  });
+
+  it('deletes before the caret, not off the end', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('f');
+    await app.press('abcd');
+    await app.press(LEFT);
+    await app.press(LEFT);
+    await app.press(BACKSPACE);
+    await app.frame('acd');
+    app.unmount();
+  });
+
+  it('reaches the ends of the note with ^a and ^e', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('f');
+    await app.press('flag');
+    await app.press('\x01'); // ctrl+a
+    await app.press('the ');
+    await app.frame('the flag');
+    await app.press('\x05'); // ctrl+e
+    await app.press('!');
+    await app.frame('the flag!');
+    app.unmount();
+  });
+
+  /**
+   * Option+arrow arrives two ways depending on how the terminal is configured,
+   * and which one you get is a setting nobody remembers changing.
+   */
+  it('walks a word with option+arrow, in both encodings', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('f');
+    await app.press('guard the write path');
+    await app.press(ALT_LEFT);
+    await app.press('R2 ');
+    await app.frame('guard the write R2 path');
+
+    await app.press(META_B);
+    await app.press(META_B);
+    await app.press('X');
+    await app.frame('guard the Xwrite R2 path');
+
+    await app.press(ALT_RIGHT);
+    await app.press(ALT_RIGHT);
+    await app.press('!');
+    await app.frame('guard the Xwrite R2 !path');
     app.unmount();
   });
 

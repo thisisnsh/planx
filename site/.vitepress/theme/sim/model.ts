@@ -49,7 +49,8 @@ export interface FeedbackRow {
   annotationId: string;
   part: 'top' | 'body' | 'bottom' | 'collapsed';
   text: string;
-  last: boolean;
+  /** The column the caret sits in on this row, or null when it is not here. */
+  caret: number | null;
   boxWidth: number;
   /** Drawn, but not a row the cursor rests on — a box is one stop. */
   skip: boolean;
@@ -79,7 +80,7 @@ export interface BuildOptions {
   collapsedFeedback: ReadonlySet<string>;
   edits: ReadonlyMap<number, string>;
   /** The note being typed, so its box grows under the cursor. */
-  draft: { annotationId: string; text: string } | null;
+  draft: { annotationId: string; text: string; caret: number } | null;
 }
 
 export interface ReviewModel {
@@ -192,7 +193,14 @@ export function buildModel(opts: BuildOptions): ReviewModel {
       const editing = opts.draft?.annotationId === annotation.id;
       const text = editing ? opts.draft!.text : annotation.comment;
       const collapsed = opts.hiddenFeedback || opts.collapsedFeedback.has(annotation.id);
-      rows.push(...feedbackRows(annotation.id, text, { boxWidth, collapsed, editing }));
+      rows.push(
+        ...feedbackRows(annotation.id, text, {
+          boxWidth,
+          collapsed,
+          editing,
+          caret: editing ? opts.draft!.caret : 0,
+        }),
+      );
     }
 
     // The heading itself stays, and its own notes with it. What it covers goes.
@@ -387,7 +395,10 @@ function endingAt(annotations: readonly Annotation[], line: number): Annotation[
 interface BoxOptions {
   boxWidth: number;
   collapsed: boolean;
+  /** The note being typed: reserve the caret a column, and draw one in it. */
   editing: boolean;
+  /** Where the caret sits, as an offset into the note's text. */
+  caret?: number;
 }
 
 /**
@@ -405,41 +416,45 @@ export function feedbackRows(id: string, comment: string, opts: BoxOptions): Fee
     newLine: null,
     gapIndex: null,
     boxWidth,
-    last: false,
+    caret: null,
   };
   const rule = '─'.repeat(Math.max(0, boxWidth - 2));
 
   if (opts.collapsed) {
     const title = ` ▸ ${firstLine(comment)} `;
     const fill = Math.max(0, boxWidth - 2 - title.length);
-    return [
-      {
-        ...base,
-        part: 'collapsed',
-        text: `├─${title}${'─'.repeat(fill)}`,
-        last: true,
-        skip: false,
-      },
-    ];
+    return [{ ...base, part: 'collapsed', text: `├─${title}${'─'.repeat(fill)}`, skip: false }];
   }
 
-  // The caret needs a column of its own on the last line; wrapping a column
-  // early gives it one.
+  // The caret needs a column of its own on the last line. Wrapping a column
+  // early gives it one; truncating the line to make room is what used to hold
+  // an over-long word on one line until the next space was typed.
   const width = boxWidth - BOX_PADDING - (opts.editing ? 1 : 0);
-  const body = comment.length ? wrapComment(comment, width) : [''];
+  const wrapped = comment.length ? wrapLines(comment, width) : [{ text: '', start: 0 }];
+  const at = opts.editing ? caretAt(wrapped, opts.caret ?? 0) : null;
   // The first line of the note is the row the cursor stops on; the edges and
   // the wrapped rows are passed over — every one of them was a press.
   return [
     { ...base, part: 'top', text: `├${rule}╮`, skip: true },
-    ...body.map((text, i) => ({
+    ...wrapped.map((line, i) => ({
       ...base,
       part: 'body' as const,
-      text,
-      last: i === body.length - 1,
+      text: line.text,
+      caret: at !== null && at.row === i ? at.column : null,
       skip: i > 0,
     })),
     { ...base, part: 'bottom', text: `╰${rule}╯`, skip: true },
   ];
+}
+
+/** Which wrapped row the caret falls on, and which column of it. */
+function caretAt(wrapped: readonly WrappedLine[], caret: number): { row: number; column: number } {
+  for (let i = wrapped.length - 1; i >= 0; i--) {
+    const line = wrapped[i]!;
+    if (line.start > caret) continue;
+    return { row: i, column: Math.min(caret - line.start, line.text.length) };
+  }
+  return { row: 0, column: 0 };
 }
 
 function firstLine(comment: string): string {
@@ -456,13 +471,28 @@ function firstLine(comment: string): string {
  * to do nothing and a pasted snippet keeps its indent.
  */
 export function wrapComment(comment: string, width: number): string[] {
+  return wrapLines(comment, width).map((line) => line.text);
+}
+
+/** One wrapped row, and where its text begins in the note it came from. */
+export interface WrappedLine {
+  text: string;
+  start: number;
+}
+
+/** The same wrap, with each row's offset in the source carried along. */
+export function wrapLines(comment: string, width: number): WrappedLine[] {
   const limit = Math.max(8, width);
-  const out: string[] = [];
+  const out: WrappedLine[] = [];
+  let consumed = 0;
 
   for (const paragraph of comment.split('\n')) {
     let current = '';
+    let start = consumed;
     const push = () => {
-      out.push(current);
+      out.push({ text: current, start });
+      consumed += current.length;
+      start = consumed;
       current = '';
     };
     for (const token of paragraph.match(/\s+|\S+/g) ?? []) {
@@ -479,7 +509,9 @@ export function wrapComment(comment: string, width: number): string[] {
       }
       current += rest;
     }
-    out.push(current);
+    push();
+    // The newline that ended this paragraph is consumed, not drawn.
+    consumed += 1;
   }
-  return out.length ? out : [''];
+  return out.length ? out : [{ text: '', start: 0 }];
 }

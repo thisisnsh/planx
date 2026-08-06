@@ -61,6 +61,9 @@ const SWALLOWED = new Set([
 
 function tokenFromEvent(event: KeyboardEvent): string | null {
   if (event.ctrlKey && /^[a-z]$/i.test(event.key)) return `ctrl+${event.key.toLowerCase()}`;
+  // Option+arrow walks a word in the note box, the way it does in the CLI.
+  if (event.altKey && event.key === 'ArrowLeft') return 'alt+left';
+  if (event.altKey && event.key === 'ArrowRight') return 'alt+right';
   if (event.metaKey || event.altKey || event.ctrlKey) return null;
   switch (event.key) {
     case 'ArrowUp':
