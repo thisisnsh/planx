@@ -1021,17 +1021,17 @@ function leaveWarning(state: SimState): string {
 }
 
 /**
- * How a review signs off: what happened, what to do next, how to get back.
+ * How a review signs off — src/cli/commands.ts `closingBlock`.
  *
- * The agent command is the next step; the reopen line is the fallback, and it
- * is on every exit — a review that ended successfully should not leave you
- * without a way back to what you were just looking at.
+ * Every line says where its command runs, reopening comes first on every exit,
+ * and there is one blank line between each entry.
  */
 function doneLines(state: SimState): Line[] {
   const mode = state.mode as Extract<Mode, { kind: 'done' }>;
   const id = state.plan.id;
   const version = state.versionB;
   const out: Line[] = [];
+  const carried = current(state).length > 0 || (state.notes[version] ?? '').trim().length > 0;
 
   if (mode.action === 'submit') {
     const count = current(state).length;
@@ -1039,14 +1039,30 @@ function doneLines(state: SimState): Line[] {
     out.push([
       p(`Submitted ${count} feedback${count === 1 ? '' : 's'}${note} on v${version}.`, 'green'),
     ]);
-  }
-  if (mode.action === 'submit') {
-    out.push([p('Paste to your agent:  '), p(`/planx revise ${id}`, 'warn')]);
+    out.push([]);
   }
   if (mode.action === 'quit' || mode.action === 'back') {
     out.push([p('Left without submitting. Nothing was written.', 'dim')]);
+    out.push([]);
   }
-  out.push([p('Reopen it with:  '), p(`planx ${id} v${version}`, 'warn')]);
+
+  out.push([p('Reopen it in your terminal:  '), p(`planx ${id} v${version}`, 'warn')]);
+  if (mode.action === 'submit') {
+    out.push([]);
+    if (carried) {
+      out.push([p('Revise this plan in your agent:  '), p(`/planx revise ${id}`, 'warn')]);
+      out.push([]);
+      out.push([
+        p('Execute it in your agent, once the feedback is addressed:  '),
+        p(`/planx execute ${id} v${version}`, 'warn'),
+      ]);
+    } else {
+      out.push([
+        p('Execute this plan in your agent:  '),
+        p(`/planx execute ${id} v${version}`, 'warn'),
+      ]);
+    }
+  }
   out.push([]);
   out.push([p('press r to review it again', 'dim')]);
   return out;

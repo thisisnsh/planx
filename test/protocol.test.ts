@@ -227,44 +227,62 @@ describe('what the agent sees', () => {
  * submit — so these are pinned verbatim.
  */
 describe('the review hand-off', () => {
-  it('sends a slash command to the agent and a bare command to the terminal', () => {
+  it('says where every command runs, on the line that carries it', () => {
     setColorEnabled(false);
-    expect(handOffLine('agent', '/planx revise guard-clock-a3f9').trim()).toBe(
-      'Paste to your agent:  /planx revise guard-clock-a3f9',
+    expect(handOffLine('Reopen it in your terminal', 'planx guard-clock-a3f9 v3')).toBe(
+      'Reopen it in your terminal:  planx guard-clock-a3f9 v3',
     );
-    expect(handOffLine('agent', '/planx execute guard-clock-a3f9 v3').trim()).toBe(
-      'Paste to your agent:  /planx execute guard-clock-a3f9 v3',
-    );
-    expect(handOffLine('terminal', 'planx guard-clock-a3f9 v3').trim()).toBe(
-      'Reopen it with:  planx guard-clock-a3f9 v3',
+    expect(handOffLine('Revise this plan in your agent', '/planx revise guard-clock-a3f9')).toBe(
+      'Revise this plan in your agent:  /planx revise guard-clock-a3f9',
     );
   });
 
-  it('is a block: nothing blank inside it, one blank after it', () => {
+  it('opens on the way back in, whichever way the review ended', () => {
     setColorEnabled(false);
-    for (const action of ['quit', 'revise'] as const) {
-      const block = closingBlock(action, 'guard-clock-a3f9', 4);
-      expect(block.slice(0, -1).every((line) => line.trim())).toBe(true);
+    for (const carried of [undefined, false, true]) {
+      const block = closingBlock('guard-clock-a3f9', 4, carried);
+      expect(block[0]).toBe('Reopen it in your terminal:  planx guard-clock-a3f9 v4');
       expect(block.at(-1)).toBe('');
     }
   });
 
-  it('always offers the way back in, last, whichever way the review ended', () => {
+  it('quitting carries nothing but the way back in', () => {
     setColorEnabled(false);
-    for (const action of ['quit', 'revise'] as const) {
-      const block = closingBlock(action, 'guard-clock-a3f9', 4);
-      expect(block.at(-2)).toContain('Reopen it with:  planx guard-clock-a3f9 v4');
-      expect(block.join('\n')).not.toContain('nothing submitted');
-    }
-
-    expect(closingBlock('quit', 'guard-clock-a3f9', 4).join('\n')).not.toContain('Paste');
-    expect(closingBlock('revise', 'guard-clock-a3f9', 4)[0]).toContain(
-      '/planx revise guard-clock-a3f9',
-    );
-    expect(closingBlock('revise', 'guard-clock-a3f9', 4)).toEqual([
-      'Paste to your agent:  /planx revise guard-clock-a3f9',
-      'Reopen it with:  planx guard-clock-a3f9 v4',
+    expect(closingBlock('guard-clock-a3f9', 4)).toEqual([
+      'Reopen it in your terminal:  planx guard-clock-a3f9 v4',
       '',
     ]);
+  });
+
+  // A submit that carried nothing is the reviewer saying the plan is fine, so
+  // there is nothing to answer and one command is enough.
+  it('offers execute alone when the submit carried nothing', () => {
+    setColorEnabled(false);
+    expect(closingBlock('guard-clock-a3f9', 3, false)).toEqual([
+      'Reopen it in your terminal:  planx guard-clock-a3f9 v3',
+      '',
+      'Execute this plan in your agent:  /planx execute guard-clock-a3f9 v3',
+      '',
+    ]);
+  });
+
+  it('offers revise then execute when the submit carried feedback', () => {
+    setColorEnabled(false);
+    expect(closingBlock('guard-clock-a3f9', 3, true)).toEqual([
+      'Reopen it in your terminal:  planx guard-clock-a3f9 v3',
+      '',
+      'Revise this plan in your agent:  /planx revise guard-clock-a3f9',
+      '',
+      'Execute it in your agent, once the feedback is addressed:  /planx execute guard-clock-a3f9 v3',
+      '',
+    ]);
+  });
+
+  // One blank line between every entry — each is a separate thing to do.
+  it('separates every entry with exactly one blank line', () => {
+    setColorEnabled(false);
+    const block = closingBlock('guard-clock-a3f9', 3, true);
+    expect(block.filter((line) => line === '')).toHaveLength(3);
+    expect(block.join('\n')).not.toContain('\n\n\n');
   });
 });

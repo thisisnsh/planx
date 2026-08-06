@@ -4,24 +4,42 @@ Approving a plan does not build it. Submitting a review that asks for nothing is
 how you approve, and what it prints is how you build it:
 
 ```
-  Paste to your agent:  /planx execute guard-clock-regression-a3f9 v3
+Reopen it in your terminal:  planx guard-clock-regression-a3f9 v3
+
+Execute this plan in your agent:  /planx execute guard-clock-regression-a3f9 v3
 ```
 
-Paste that to an agent and the `/planx` skill takes the execute branch: it loads
-the stored version with `planx show`, drops it into the current context, and
-implements it there.
+Paste the second one to an agent and the `/planx` skill takes the execute
+branch: it loads the stored version with `planx show`, drops it into the current
+context, and implements it there.
 
-**A slash command is for your agent; a bare command is for your terminal.** That
-is the only thing that tells the two apart, so the review is careful about which
-form it prints. `/planx execute` is a branch of the skill and has never been a
-shell command — printing it as one is what used to make the line read as noise.
+**Every line says where its command runs.** A slash command and a bare command
+look alike enough on a terminal that a lead like `Paste to your agent:` was the
+only thing telling them apart, and a lead that carries that much has to be read
+to be believed. `in your terminal` and `in your agent` say it outright.
 
-The other two exits print the same way:
+A submit that carried feedback needs two commands instead of one, because the
+feedback has to be answered before the plan can be built:
 
 ```
-s   Paste to your agent:  /planx revise guard-clock-regression-a3f9
-x   Reopen it with:  planx guard-clock-regression-a3f9 v3
+Reopen it in your terminal:  planx guard-clock-regression-a3f9 v3
+
+Revise this plan in your agent:  /planx revise guard-clock-regression-a3f9
+
+Execute it in your agent, once the feedback is addressed:  /planx execute guard-clock-regression-a3f9 v3
 ```
+
+And quitting gets the reopen line alone, which is what every block opens on —
+it is the one entry that is true of every ending:
+
+```
+Reopen it in your terminal:  planx guard-clock-regression-a3f9 v3
+```
+
+The commands are not padded into a shared column. Alignment was there to tie
+three adjacent lines together; with a blank line between each of them there is
+nothing left to tie, and a ragged right edge of labels reads worse than a ragged
+left edge of commands.
 
 ## A version with nothing left on it
 

@@ -361,7 +361,7 @@ async function runInteractiveReview(
   if (result.action === 'quit') {
     // No `nothing submitted` above it: you just quit, so you know. What follows
     // is the part that carries something you did not already have.
-    for (const line of closingBlock('quit', id, result.version)) ctx.out(line);
+    for (const line of closingBlock(id, result.version)) ctx.out(line);
     return 0;
   }
 
@@ -381,6 +381,7 @@ async function runInteractiveReview(
   // Every version the reviewer touched comes back, the one on screen included,
   // so there is no batch to invent here — and a version they emptied comes back
   // empty, which is what makes a deleted comment stay deleted.
+  let carried = false;
   for (const batch of result.batches) {
     submitFeedback({
       planId: id,
@@ -388,6 +389,7 @@ async function runInteractiveReview(
       annotations: batch.annotations,
       general: batch.general,
     });
+    if (batch.annotations.length || batch.general.trim()) carried = true;
 
     ctx.out(
       green(
@@ -396,7 +398,7 @@ async function runInteractiveReview(
     );
   }
 
-  for (const line of closingBlock('revise', id, result.version)) ctx.out(line);
+  for (const line of closingBlock(id, result.version, carried)) ctx.out(line);
   return 0;
 }
 
@@ -407,42 +409,59 @@ function countFeedback(n: number): string {
 }
 
 /**
- * The one line the reviewer carries out of the review.
+ * One entry of the closing block: what it does, and where you type it.
  *
- * The whole loop depends on the reviewer handing a command back, and after a
- * submit the review used to print none at all — which is where the round
- * dead-ended, one step short of continuing.
+ * The label names both. A slash command and a bare command look alike enough
+ * on a terminal that the old `Paste to your agent:` / `Reopen it with:` leads
+ * were the only thing telling them apart, and a lead that carries that much has
+ * to be read to be believed. `in your terminal` and `in your agent` say it
+ * outright, on every line.
  *
- * A slash command is for your agent, a bare command is for your terminal.
- * Nothing else distinguished them before, which is most of why the old strings
- * read as noise: `planx execute <id>` looked like something to run in a shell,
- * and there has never been such a command. `/planx execute` is a branch of the
- * skill, and in slash form it is unmistakably something you paste into a chat.
+ * The commands are not padded into a shared column. Alignment was there to tie
+ * three adjacent lines together; with a blank line between each of them there is
+ * nothing left to tie, and a ragged right edge of labels reads worse than a
+ * ragged left edge of commands.
  */
-export function handOffLine(to: 'agent' | 'terminal', command: string): string {
-  const lead = to === 'agent' ? 'Paste to your agent:' : 'Reopen it with:';
-  return `${lead}  ${yellow(command)}`;
+export function handOffLine(label: string, command: string): string {
+  return `${label}:  ${yellow(command)}`;
 }
 
 /**
- * How a review signs off: what happened, what to do next, how to get back.
+ * How a review signs off: how to get back in, and what to do next.
  *
- * The blanks used to lead instead of trail — the summary, the paste line and
- * the reopen line each opened with one — so what should read as a block arrived
- * as three separate announcements. One line of air after the whole thing, and
- * none inside it.
+ * Reopening comes first, on every exit including a plain quit. It is the one
+ * line that is true of every ending — a review that finished successfully
+ * should not leave you without a way back to what you were just looking at.
  *
- * The reopen line is on every exit now. Only quitting printed it before, so a
- * review that ended *successfully* left no way back to what you had just been
- * looking at. It goes last: the agent command is the next step, and this is the
- * fallback.
+ * What follows depends on what the submit carried. Feedback has to be answered
+ * before the plan can be built, so it takes two commands; a submit that carried
+ * nothing is the reviewer saying the plan is fine, so it takes one. Quitting
+ * passes nothing at all, and gets the reopen line every block already opens on.
+ *
+ * One blank line between every entry. They ran together as a wall before, and
+ * each is a separate thing to do — which reads as one with air around it.
  */
-export function closingBlock(action: 'quit' | 'revise', planId: string, version: number): string[] {
-  const lines: string[] = [];
-  if (action !== 'quit') {
-    lines.push(handOffLine('agent', `/planx revise ${planId}`));
+export function closingBlock(planId: string, version: number, carried?: boolean): string[] {
+  const lines = [handOffLine('Reopen it in your terminal', `planx ${planId} v${version}`)];
+
+  if (carried === true) {
+    lines.push(
+      '',
+      handOffLine('Revise this plan in your agent', `/planx revise ${planId}`),
+      '',
+      handOffLine(
+        'Execute it in your agent, once the feedback is addressed',
+        `/planx execute ${planId} v${version}`,
+      ),
+    );
+  } else if (carried === false) {
+    lines.push(
+      '',
+      handOffLine('Execute this plan in your agent', `/planx execute ${planId} v${version}`),
+    );
   }
-  lines.push(handOffLine('terminal', `planx ${planId} v${version}`), '');
+
+  lines.push('');
   return lines;
 }
 

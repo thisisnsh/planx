@@ -72,7 +72,8 @@ describe('the website demo', () => {
     const state = open('executing');
     send(state, 's');
     expect(state.handoff).toContain('Reviewed with nothing to change. Implement it as written.');
-    expect(frameText(state)).toContain('/planx revise guard-clock-a3f9');
+    expect(frameText(state)).toContain('/planx execute guard-clock-a3f9 v3');
+    expect(frameText(state)).not.toContain('/planx revise');
   });
 
   it('opens a diff, and puts it away again', () => {
