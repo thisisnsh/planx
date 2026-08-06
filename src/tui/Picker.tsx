@@ -164,10 +164,12 @@ export function Picker<T>({
 
   const here = rows[cursor];
 
-  // One row between the list and the hint bar: the red line an armed ctrl+c
-  // draws, or nothing. It is always there, so the frame does not change height
-  // the moment you press one.
-  const messageRows = [leaving ? `  ${red(EXIT_PROMPT)}` : ''];
+  // Two rows between the list and the hint bar: a blank one, then the red line
+  // an armed ctrl+c draws. Both are always there, so the frame does not change
+  // height the moment you press one — and the red line has air above it rather
+  // than sitting flush against the last row of the list, the way the review's
+  // own prompt does.
+  const messageRows = ['', leaving ? `  ${red(EXIT_PROMPT)}` : ''];
 
   // The frame costs four rows of chrome above the list and three below it, plus
   // the message row.

@@ -4,7 +4,7 @@
 and it asks which way the command goes:
 
 ```
-│ Execute guard-clock-regression-a3f9 v3.                          │
+│ Execute guard-clock-regression-a3f9 v3?                          │
 │ 1 execute in a new agent · 2 give me the command · esc back      │
 ```
 
@@ -16,7 +16,7 @@ nothing is warned about: a plan being built with comments on it is a supported
 thing, and the execute branch works them into the build rather than bouncing
 them back for another round.
 
-`s` asks the same question for the other direction — *submit and revise* — and
+`s` asks the same question for the other direction — *submit feedback for* — and
 is offered whenever the version carries something to submit: a comment, a note,
 or a line you rewrote.
 
@@ -52,7 +52,6 @@ The commands, exactly as before:
 
 ```
 Reopen it in your terminal:  planx guard-clock-regression-a3f9 v3
-
 Execute this plan in your agent:  /planx execute guard-clock-regression-a3f9 v3
 ```
 
@@ -70,11 +69,14 @@ feedback has to be answered before the plan can be built:
 
 ```
 Reopen it in your terminal:  planx guard-clock-regression-a3f9 v3
-
 Revise this plan in your agent:  /planx revise guard-clock-regression-a3f9
-
-Execute it in your agent, once the feedback is addressed:  /planx execute guard-clock-regression-a3f9 v3
+Execute it in your agent:  /planx execute guard-clock-regression-a3f9 v3
 ```
+
+The execute line carries no qualifier about the feedback. The order already says
+it: revise is the line above. Colour tells the three apart — the way back is
+grey throughout, revise is yellow, execute is blue — and the labels stay grey on
+every line, so the command is what the eye lands on.
 
 Going back to the list gets the reopen line alone, which is what every block
 opens on — it is the one entry that is true of every ending:
@@ -88,7 +90,7 @@ recorded, or by an agent it cannot name — the prompt is still drawn, with the
 command as its only option:
 
 ```
-│ Execute guard-clock-regression-a3f9 v3.                          │
+│ Execute guard-clock-regression-a3f9 v3?                          │
 │ 1 give me the command · esc back                                 │
 ```
 
@@ -96,10 +98,10 @@ The number is the position on screen, so the command answers to `1` there. The
 question is still worth asking, and a key that silently printed a block read as
 `x` having been ignored.
 
-The commands are not padded into a shared column. Alignment was there to tie
-three adjacent lines together; with a blank line between each of them there is
-nothing left to tie, and a ragged right edge of labels reads worse than a ragged
-left edge of commands.
+There is no blank line between the entries. The air was there to give each
+command room; four adjacent lines read as one block, which is what they are.
+Nor are the commands padded into a shared column: a ragged right edge of labels
+reads worse than a ragged left edge of commands.
 
 ## A version with nothing left on it
 

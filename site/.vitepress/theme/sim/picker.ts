@@ -134,10 +134,8 @@ export function pickerPress(state: PickerState, key: string): void {
     state.did.add('open');
     return;
   }
-  if (key === 'escape') {
-    state.status = 'esc leaves the picker.';
-    return;
-  }
+  // `esc` does not leave the list: leaving planx is ctrl+c twice, wherever you
+  // are. It still backs out of the delete confirmation above.
   // `^d`, not `d`. A bare letter opened the confirmation before the filter ever
   // saw it, so no plan whose name starts with `d` could be filtered for.
   if (key === 'ctrl+d' && here) {
@@ -171,7 +169,7 @@ export function pickerHints(state: PickerState): Hint[] {
   const hints: Hint[] = [
     ['↑↓', 'choose'],
     ['enter', 'open'],
-    ['esc', 'cancel'],
+    ['^c', 'exit'],
   ];
   const open = here !== undefined && rows.some((row) => row.parent === here.parent && row.child);
   if (!state.query && here) {

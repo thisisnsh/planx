@@ -11,6 +11,7 @@ import { hintLines, orderHints, type Hint } from './hints.js';
 import { sectionOf } from './markdown.js';
 import {
   buildModel,
+  enclosingHeading,
   foldEnd,
   wrapComment,
   type Annotation,
@@ -78,6 +79,10 @@ export interface SimState {
   mode: Mode;
   status: string | null;
   pendingJump: string | null;
+  /** A section just collapsed from inside, whose stand-in row the cursor follows. */
+  pendingFold: number | null;
+  /** The arrow run in progress, for the acceleration a held key gets. */
+  heldArrow: HeldRun | null;
   /** What the reviewer has tried, for the checklist beside the frame. */
   did: Set<string>;
   /** The markdown the agent is handed, once `s` has been pressed. */
@@ -121,6 +126,8 @@ export function createState(opts: SimOptions): SimState {
     mode: { kind: 'browse' },
     status: null,
     pendingJump: null,
+    pendingFold: null,
+    heldArrow: null,
     did: new Set(),
     handoff: null,
     cols: 80,
@@ -181,6 +188,13 @@ export function layout(state: SimState, cols: number, bodyRows: number): void {
     const index = [at('body'), at('collapsed'), at('top')].find((i) => i !== -1);
     state.pendingJump = null;
     if (index !== undefined) state.cursor = index;
+  }
+  // The row a collapse leaves behind does not exist until the rows are rebuilt,
+  // so the cursor is aimed at it here rather than at a guessed index.
+  if (state.pendingFold !== null) {
+    const index = rows.findIndex((r) => r.kind === 'doc' && r.fold === state.pendingFold);
+    state.pendingFold = null;
+    if (index !== -1) state.cursor = index;
   }
   // Folding takes rows out from under the cursor; unfolding turns the row it
   // was on into a box edge, which is not a row it may rest on.
@@ -255,13 +269,58 @@ function spanSize(state: SimState): number {
   return span ? span.end - span.start + 1 : 1;
 }
 
+/* ------------------------------------------------------------- repeats */
+
+/**
+ * How far one arrow press moves, given how long the key has been held.
+ *
+ * A browser repeats a held key the same way a terminal does — a stream of
+ * identical events with no key-up between them — so "held" is inferred from
+ * their timing: a run of same-direction arrows with no gap long enough to be a
+ * release. The first gap is allowed to be wide, because the operating system
+ * waits before it starts repeating.
+ */
+const IDLE_MS = 150;
+const START_MS = 700;
+const STEPS: ReadonlyArray<readonly [held: number, rows: number]> = [
+  [4000, 5],
+  [1500, 2],
+];
+
+export interface HeldRun {
+  key: 'up' | 'down';
+  start: number;
+  last: number;
+  presses: number;
+}
+
+export function pressArrow(
+  run: HeldRun | null,
+  key: 'up' | 'down',
+  now: number,
+): { run: HeldRun; step: number } {
+  const gap = run === null ? Infinity : now - run.last;
+  const allowed = run !== null && run.presses === 1 ? START_MS : IDLE_MS;
+  const held = run !== null && run.key === key && gap <= allowed ? run : null;
+  const next: HeldRun = held
+    ? { key, start: held.start, last: now, presses: held.presses + 1 }
+    : { key, start: now, last: now, presses: 1 };
+
+  const heldMs = now - next.start;
+  for (const [at, rows] of STEPS) if (heldMs >= at) return { run: next, step: rows };
+  return { run: next, step: 1 };
+}
+
 /* --------------------------------------------------------------- keys */
 
 /**
  * One keypress. `key` is a token: a single character, or one of `up`, `down`,
  * `left`, `right`, `enter`, `escape`, `backspace`, `space`, `ctrl+d`, …
+ *
+ * `now` is the clock the held-arrow curve is measured against, so a test can
+ * drive it rather than holding a key for four seconds.
  */
-export function press(state: SimState, key: string): void {
+export function press(state: SimState, key: string, now: number = Date.now()): void {
   switch (state.mode.kind) {
     case 'editing':
     case 'note':
@@ -288,16 +347,23 @@ export function press(state: SimState, key: string): void {
       if (key === 'r' || key === 'enter') restart(state);
       return;
     default:
-      return browse(state, key);
+      return browse(state, key, now);
   }
 }
 
-function browse(state: SimState, key: string): void {
+function browse(state: SimState, key: string, now: number): void {
   state.status = null;
   const rows = state.model.rows;
 
-  if (key === 'down') return move(state, 1);
-  if (key === 'up') return move(state, -1);
+  // Held arrows take more rows the longer they are held, so a plan of two
+  // hundred rows is not two hundred repeats.
+  if (key === 'down' || key === 'up') {
+    const { run, step } = pressArrow(state.heldArrow, key, now);
+    state.heldArrow = run;
+    return move(state, key === 'up' ? -step : step);
+  }
+  // Anything else ends the run: let go and press again and it is one row.
+  state.heldArrow = null;
   if (key === 'ctrl+d' || key === 'pagedown') return page(state, Math.floor(state.bodyRows / 2));
   if (key === 'ctrl+u' || key === 'pageup') return page(state, -Math.floor(state.bodyRows / 2));
   if (key === 'ctrl+f') return page(state, state.bodyRows);
@@ -656,47 +722,91 @@ function lineEdit(state: SimState, key: string): void {
 /* --------------------------------------------------------------- folding */
 
 /**
- * Space folds what is under the cursor: a section away, a note into its rail, a
- * gap open. The heading wins over a note that happens to cover it.
+ * What `space` would do where the cursor is.
+ *
+ * Where something is hidden under the cursor it comes back; then a heading,
+ * which wins over a note that happens to cover it; then the note; then, from
+ * anywhere else in the document, the section you are standing in.
  */
-function toggleFold(state: SimState): void {
+export type SpaceAction =
+  | { kind: 'gap'; gap: number }
+  | { kind: 'note'; id: string; folded: boolean }
+  /** `inside` marks a section reached from one of its own lines, not its heading. */
+  | { kind: 'section'; heading: number; folded: boolean; inside?: boolean };
+
+export function spaceAction(state: SimState): SpaceAction | null {
   const row = state.model.rows[state.cursor];
-  const heading = foldTarget(state, row);
-  if (heading !== null) {
-    if (state.foldedSections.has(heading)) state.foldedSections.delete(heading);
-    else state.foldedSections.add(heading);
-    state.did.add('fold');
-    return;
+
+  if (row?.kind === 'doc') {
+    if (row.fold !== null) return { kind: 'section', heading: row.fold, folded: true };
+    if (row.gapIndex !== null) return { kind: 'gap', gap: row.gapIndex };
+  }
+  if (
+    row?.kind === 'doc' &&
+    row.newLine !== null &&
+    foldEnd(state.model.docLines, row.newLine) !== null
+  ) {
+    return {
+      kind: 'section',
+      heading: row.newLine,
+      folded: state.foldedSections.has(row.newLine),
+    };
   }
 
   const note = annotationAtCursor(state);
   if (note) {
+    return {
+      kind: 'note',
+      id: note.id,
+      folded: state.hiddenFeedback || state.collapsedFeedback.has(note.id),
+    };
+  }
+
+  if (row?.kind === 'doc' && row.newLine !== null) {
+    const heading = enclosingHeading(state.model.docLines, row.newLine);
+    if (heading !== null) {
+      return { kind: 'section', heading, folded: state.foldedSections.has(heading), inside: true };
+    }
+  }
+  return null;
+}
+
+function toggleFold(state: SimState): void {
+  const action = spaceAction(state);
+  if (action === null) return;
+
+  if (action.kind === 'gap') {
+    state.expandedGaps.add(action.gap);
+    state.did.add('expand');
+    return;
+  }
+
+  if (action.kind === 'note') {
     // Folding from inside the box takes it down to one row, so the cursor moves
     // to where the box starts rather than to whatever slides up underneath it.
-    if (row?.kind === 'feedback') {
+    if (state.model.rows[state.cursor]?.kind === 'feedback') {
       jumpTo(
         state,
-        state.model.rows.findIndex((r) => r.kind === 'feedback' && r.annotationId === note.id),
+        state.model.rows.findIndex((r) => r.kind === 'feedback' && r.annotationId === action.id),
       );
     }
-    if (state.collapsedFeedback.has(note.id)) state.collapsedFeedback.delete(note.id);
-    else state.collapsedFeedback.add(note.id);
+    if (state.collapsedFeedback.has(action.id)) state.collapsedFeedback.delete(action.id);
+    else state.collapsedFeedback.add(action.id);
     state.did.add('fold');
     return;
   }
 
-  const gap = row?.gapIndex;
-  if (gap === null || gap === undefined) return;
-  state.expandedGaps.add(gap);
-  state.did.add('expand');
+  // Collapsing from inside takes the cursor's own rows with the section, so it
+  // follows the collapse onto the row that now stands for where it was.
+  if (action.inside && !action.folded) state.pendingFold = action.heading;
+  if (action.folded) state.foldedSections.delete(action.heading);
+  else state.foldedSections.add(action.heading);
+  state.did.add('fold');
 }
 
-/** The heading line `space` would fold or unfold from this row, or null. */
-function foldTarget(state: SimState, row: ViewRow | undefined): number | null {
-  if (row?.kind !== 'doc') return null;
-  if (row.fold !== null) return row.fold;
-  if (row.newLine === null) return null;
-  return foldEnd(state.model.docLines, row.newLine) === null ? null : row.newLine;
+/** Which way `space` goes here. A gap only ever opens. */
+export function spaceHint(action: SpaceAction): string {
+  return action.kind === 'gap' || action.folded ? 'expand' : 'collapse';
 }
 
 /** `j` walks the feedback, forward, wrapping at the end, unfolding on the way. */
@@ -884,30 +994,28 @@ export function hintsFor(state: SimState): Hint[] {
   if (mode.kind === 'done') return [['r', 'review it again']];
 
   const row = state.model.rows[state.cursor];
-  const heading = foldTarget(state, row);
-  const plural = spanSize(state) > 1;
-  const lines = plural ? 'lines' : 'line';
+  const space = spaceAction(state);
   const hints: Hint[] = [
-    ['n', 'note'],
+    ['n', (state.notes[state.versionB] ?? '').trim() ? 'edit note' : 'add note'],
+    ['v', state.selection.active ? 'unselect lines' : 'select lines'],
     ['x', 'execute'],
     ['esc', 'back'],
+    ['^c', 'exit'],
   ];
 
+  // What space acts on is under the cursor and needs no naming; which way it
+  // goes is the only thing you cannot see from the row.
+  if (space) hints.push(['space', spaceHint(space)]);
+
   if (row?.kind === 'feedback') {
-    const folded = state.hiddenFeedback || state.collapsedFeedback.has(row.annotationId);
-    hints.push(['space', folded ? 'unfold feedback' : 'fold feedback'], ['f', 'edit']);
-  } else if (row?.kind === 'doc' && (row.gapIndex !== null || row.fold !== null)) {
-    hints.push(
-      ['space', heading !== null ? 'unfold section' : 'expand'],
-      ['v', state.selection.active ? 'unselect lines' : 'select lines'],
-    );
-  } else {
-    if (heading !== null) {
-      hints.push(['space', state.foldedSections.has(heading) ? 'unfold section' : 'fold section']);
+    hints.push(['f', 'edit feedback']);
+  } else if (spanAtCursor(state) !== null) {
+    // Dropped where the cursor covers no line of this version at all — a pure
+    // deletion in a diff, or a row standing in for hidden lines.
+    hints.push(['f', annotationAtCursor(state) ? 'edit feedback' : 'add feedback']);
+    if (state.versionB === latest(state)) {
+      hints.push(['e', spanSize(state) > 1 ? 'edit lines' : 'edit line']);
     }
-    hints.push(['v', state.selection.active ? 'unselect lines' : 'select lines']);
-    hints.push(['f', annotationAtCursor(state) ? 'edit' : 'feedback']);
-    if (state.versionB === latest(state)) hints.push(['e', `rewrite ${lines}`]);
   }
 
   if (current(state).length) hints.push(['j', 'next feedback']);
@@ -924,13 +1032,14 @@ export function hintsFor(state: SimState): Hint[] {
 /** The widest bar browse mode can produce, for the height to reserve. */
 function widestHints(state: SimState): Hint[] {
   const hints: Hint[] = [
-    ['n', 'note'],
+    ['n', 'edit note'],
     ['x', 'execute'],
     ['esc', 'back'],
-    ['space', 'unfold section'],
+    ['^c', 'exit'],
+    ['space', 'collapse'],
     ['v', 'unselect lines'],
-    ['e', 'rewrite lines'],
-    ['f', 'feedback'],
+    ['e', 'edit lines'],
+    ['f', 'edit feedback'],
     ['j', 'next feedback'],
   ];
   if (previousVersion(state) !== null) hints.push(['d', 'show diff']);
@@ -968,14 +1077,17 @@ export function frame(state: SimState): Line[] {
         ? [
             p(
               state.mode.intent === 'revise'
-                ? `Submit and revise ${state.plan.id} v${state.versionB}.`
-                : `Execute ${state.plan.id} v${state.versionB}.`,
+                ? `Submit feedback for ${state.plan.id} v${state.versionB}?`
+                : `Execute ${state.plan.id} v${state.versionB}?`,
               'warn',
             ),
           ]
         : statusLine(state, inner);
 
-  const summary = summaryLines(state, inner);
+  // A question stands alone: while a prompt is up, what the version holds is
+  // not drawn. The rows stay, blank, so the document does not reflow under it.
+  const asking = state.mode.kind === 'leave' || state.mode.kind === 'handoff';
+  const summary = summaryLines(state, inner).map((line) => (asking ? ([] as Line) : line));
   const hints = hintLines(hintsFor(state), inner);
   const reserve =
     state.mode.kind === 'browse' ? hintLines(widestHints(state), inner).length : hints.length;
@@ -1205,26 +1317,26 @@ function doneLines(state: SimState): Line[] {
     return out;
   }
 
-  out.push([p('Reopen it in your terminal:  '), p(`planx ${id} v${version}`, 'warn')]);
+  // No blank lines between the entries: four adjacent lines read as one block,
+  // which is what they are. The way back is grey throughout — it is not the
+  // next step — and the two next steps carry a colour each.
+  out.push([p('Reopen it in your terminal:  ', 'dim'), p(`planx ${id} v${version}`, 'dim')]);
   if (mode.action === 'submit') {
-    out.push([]);
     if (carried) {
-      out.push([p('Revise this plan in your agent:  '), p(`/planx revise ${id}`, 'warn')]);
-      out.push([]);
+      out.push([p('Revise this plan in your agent:  ', 'dim'), p(`/planx revise ${id}`, 'warn')]);
       out.push([
-        p('Execute it in your agent, once the feedback is addressed:  '),
-        p(`/planx execute ${id} v${version}`, 'warn'),
+        p('Execute it in your agent:  ', 'dim'),
+        p(`/planx execute ${id} v${version}`, 'blue'),
       ]);
     } else {
       out.push([
-        p('Execute this plan in your agent:  '),
-        p(`/planx execute ${id} v${version}`, 'warn'),
+        p('Execute this plan in your agent:  ', 'dim'),
+        p(`/planx execute ${id} v${version}`, 'blue'),
       ]);
     }
   }
   if (mode.action === 'execute') {
-    out.push([]);
-    out.push([p('Execute this plan in your agent:  '), p(command, 'warn')]);
+    out.push([p('Execute this plan in your agent:  ', 'dim'), p(command, 'blue')]);
   }
   out.push([]);
   out.push([p('press r to review it again', 'dim')]);
@@ -1237,34 +1349,41 @@ function doneLines(state: SimState): Line[] {
  */
 const HELP: Array<[Hint, 'always' | 'versioned']> = [
   [['←→', 'the previous and next version of the plan'], 'versioned'],
-  [['↑↓', 'move a row at a time — a note box is one stop, on its first line'], 'always'],
+  [['↑↓', 'a row at a time — held, 2 rows after 1.5s and 5 after 4s'], 'always'],
   [['d', 'show the diff against the previous version, or hide it'], 'versioned'],
-  [['e', 'rewrite the line, or every line of the selection, in place'], 'always'],
-  [['f', 'feedback on the selection, or edit the note under the cursor'], 'always'],
+  [['e', 'edit the line, or every line of the selection, in place'], 'always'],
+  [['f', 'add feedback on the selection, or edit the note under the cursor'], 'always'],
   [['g G', 'the top and the bottom of the plan'], 'always'],
   [['^d ^u', 'half a screen down or up'], 'always'],
   [['^f ^b', 'a whole screen down or up'], 'always'],
   [['h', 'fold or unfold every note at once'], 'always'],
   [['j', 'the next feedback on this version, wrapping at the end'], 'always'],
-  [['n', 'a note about the whole plan'], 'always'],
+  [['n', 'add or edit the note about the whole plan'], 'always'],
   [['s', 'submit everything at once'], 'always'],
-  [['space', 'fold the section or the note, or expand the run, under the cursor'], 'always'],
+  [['space', 'collapse the section you are in, or the note — or expand what is hidden'], 'always'],
   [['v', 'start or end a selection, then ↑ ↓ to extend'], 'always'],
   [['x', 'execute this plan, in a new agent or as a command'], 'always'],
   [['esc', 'back to the list'], 'always'],
   [['?', 'this list'], 'always'],
 ];
 
+/**
+ * The way out, last: `?` ends the hint bar because it recovers what the width
+ * dropped, and nothing is dropped from a list you are already reading.
+ */
+const HELP_EXIT: Hint = ['^c', 'leave planx — twice'];
+
 function helpLines(width: number, canDiff: boolean): Line[] {
   const shown = HELP.filter(([, when]) => when === 'always' || canDiff).map(([hint]) => hint);
   return [
     [p('planx review', 'sig bold')],
     [],
-    ...orderHints(shown).map(([keys, what]) => [
+    ...[...orderHints(shown), HELP_EXIT].map(([keys, what]) => [
       p(keys.padEnd(8, ' '), 'sig'),
       ...fit([p(what, 'dim')], Math.max(8, width - 8)),
     ]),
     [],
+    [p('a note box is one stop for the cursor, on its first line of text.', 'dim')],
     [p('inside a note or a line: ← → ⌥← ⌥→ move the caret, ^a ^e reach its ends.', 'dim')],
     [p('a note is deleted by emptying it: f, clear the text, enter.', 'dim')],
   ];

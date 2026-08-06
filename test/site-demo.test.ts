@@ -70,7 +70,7 @@ describe('the website demo', () => {
 
     // `s` asks which way the command goes; `2` is the one you paste yourself.
     send(state, 's');
-    expect(frameText(state)).toContain('Submit and revise guard-clock-a3f9 v3.');
+    expect(frameText(state)).toContain('Submit feedback for guard-clock-a3f9 v3?');
     send(state, '2');
     expect(state.handoff).toContain('## planx — guard-clock-a3f9 v3');
     expect(state.handoff).toContain('**Feedback:** Name the function.');
@@ -92,7 +92,7 @@ describe('the website demo', () => {
   it('starts the agent itself when 1 is pressed, and says what it ran', () => {
     const state = open('executing');
     send(state, 'x');
-    expect(frameText(state)).toContain('Execute guard-clock-a3f9 v3.');
+    expect(frameText(state)).toContain('Execute guard-clock-a3f9 v3?');
     expect(frameText(state)).toContain('1 execute in a new agent');
     expect(frameText(state)).toContain('2 give me the command');
 
@@ -117,6 +117,48 @@ describe('the website demo', () => {
     expect(frameText(state)).not.toContain('v3 ← v2');
     send(state, 'left');
     expect(frameText(state)).toContain('guard-clock-a3f9  v2');
+  });
+
+  /**
+   * The mirror of the CLI's own closing block: same labels, same order, and no
+   * blank line between the entries.
+   */
+  it('signs off with the same block the CLI prints', () => {
+    const state = open('review');
+    send(state, 'down', 'down', 'f');
+    type(state, 'one thing');
+    send(state, 'enter', 's', '2');
+
+    const lines = frameText(state)
+      .split('\n')
+      .map((line) => line.replace(/^│\s?/, '').replace(/\s*│$/, '').trimEnd())
+      .filter((line) => line.includes(':  '));
+    expect(lines).toEqual([
+      'Reopen it in your terminal:  planx guard-clock-a3f9 v3',
+      'Revise this plan in your agent:  /planx revise guard-clock-a3f9',
+      'Execute it in your agent:  /planx execute guard-clock-a3f9 v3',
+    ]);
+  });
+
+  it('offers the same bar the CLI does, with ^c on the end of it', () => {
+    const state = open('review');
+    send(state, 'down');
+    const screen = frameText(state);
+    expect(screen).toContain('f add feedback');
+    expect(screen).toContain('n add note');
+    expect(screen).toContain('space collapse');
+    expect(screen).toContain('esc back');
+    expect(screen).toContain('^c exit');
+    // And the old wordings are gone from both.
+    expect(screen).not.toContain('fold section');
+    expect(screen).not.toContain('rewrite line');
+  });
+
+  it('leaves the picker with ^c rather than esc', () => {
+    const state = createPicker(demoPlans());
+    const rows = pickerFrame(state, 10).map((line) => plain(line));
+    expect(rows.join('\n')).toContain('^c exit');
+    expect(rows.join('\n')).not.toContain('esc cancel');
   });
 
   it('rewrites a line in place, and reports it as settled text', () => {

@@ -2,8 +2,8 @@
  * One order for every list of keys planx prints — src/tui/hints.ts, ported.
  *
  * Arrow keys first, then everything else alphabetically by the key itself, then
- * `esc`, then `?`. A rule rather than a judgement per line, so a key is always
- * in the same place.
+ * `esc`, `^c`, `?` — the three that mean the same thing on every screen. A rule
+ * rather than a judgement per line, so a key is always in the same place.
  */
 
 export type Hint = [key: string, what: string];
@@ -11,7 +11,8 @@ export type Hint = [key: string, what: string];
 function rank(key: string): string {
   if (key.startsWith('←') || key.startsWith('↑') || key.startsWith('→')) return `0${key}`;
   if (key === 'esc') return '2';
-  if (key === '?') return '3';
+  if (key === '^c') return '3';
+  if (key === '?') return '4';
   return `1${key.toLowerCase().replace(/\^/g, '')}`;
 }
 

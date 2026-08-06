@@ -137,16 +137,26 @@ asked for nothing ends there, and `planx revise` reports the version as
 submits it first and builds anyway — see [Executing](/executing).
 
 Leaving planx is **ctrl+c, twice**. The first press says so in red on the row
-under the plan; any other key disarms it, and there is no timer, because a guard
-that expires on a clock behaves differently depending on how fast you type.
-`esc` is unchanged: back to the list, with a red warning when something on
-screen has not been submitted.
+under the plan; any other key disarms it, and so does two seconds passing — the
+two presses have to be prompt, so a guard armed by a stray ctrl+c and left armed
+all session is not one keystroke from ending a review. `^c exit` is on the hint
+bar now, the one key that ends the session having been the only one nowhere on
+screen. `esc` is unchanged in the review: back to the list, with a red warning
+when something on screen has not been submitted. On the plan list it is unbound
+— ctrl+c leaves from there too.
 
 ## Getting around a plan you have read before
 
-`space` on a heading folds its section away, subsections included, and leaves a
-row saying what went with it — the same dim marker a collapsed run of unchanged
-lines leaves, in the same column, expanded by the same key:
+**Hold an arrow and it goes faster.** A row at a time to start with, two rows
+after a second and a half of holding, five after four seconds. Let go and press
+again and it is back to one — a terminal has no key-up event, so a hold is a run
+of presses with no gap long enough to be a release, and tapping never
+accelerates.
+
+`space` collapses the section you are standing in, from any line of it,
+subsections included. It leaves a row saying what went with it — the same dim
+marker a collapsed run of unchanged lines leaves, in the same column, expanded
+by the same key — and the cursor follows the collapse onto that row:
 
 ```
 ▸  3 │ ## Approach
@@ -154,10 +164,14 @@ lines leaves, in the same column, expanded by the same key:
    16   ## Rollout
 ```
 
-`space` on either row brings the section back. The rail beside a folded heading
-means there is feedback inside it, so nothing you left can hide behind a fold.
-`j` steps to the next feedback on the version, in document order, wrapping at
-the end — and unfolds a section to get there.
+Where something is hidden under the cursor, `space` brings it back instead: that
+reading wins, on the dim row a fold leaves behind and on a collapsed run alike.
+The bar says which way it goes — `space expand` or `space collapse` — because
+what it acts on is the row you are pointing at and needs no naming.
+
+The rail beside a folded heading means there is feedback inside it, so nothing
+you left can hide behind a fold. `j` steps to the next feedback on the version,
+in document order, wrapping at the end — and unfolds a section to get there.
 
 ## Which feedback is still live
 

@@ -133,6 +133,11 @@
   color: #ffb020;
 }
 
+/* The execute command in the closing block, told apart from revise above it. */
+.pnx-screen .blue {
+  color: #6aa9ff;
+}
+
 /* A removed line: struck through, the way the terminal draws it. */
 .pnx-screen .delline {
   color: #ff6b5a;

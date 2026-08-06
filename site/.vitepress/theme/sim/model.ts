@@ -345,6 +345,20 @@ export function foldEnd(lines: readonly string[], line: number): number | null {
   return end > heading.line ? end : null;
 }
 
+/**
+ * The heading a line sits under — the nearest one at or above it that has
+ * something to hide, skipping the ones `foldEnd` declines.
+ */
+export function enclosingHeading(lines: readonly string[], line: number): number | null {
+  const all = headingsIn(lines);
+  for (let i = all.length - 1; i >= 0; i--) {
+    const heading = all[i]!;
+    if (heading.line > line) continue;
+    if (foldEnd(lines, heading.line) !== null) return heading.line;
+  }
+  return null;
+}
+
 function foldsIn(lines: readonly string[], folded: ReadonlySet<number>): Map<number, number> {
   const out = new Map<number, number>();
   for (const line of folded) {
