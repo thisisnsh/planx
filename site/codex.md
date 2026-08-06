@@ -50,5 +50,5 @@ typed into — and the whole command is printed before it runs, so what it was
 granted is on the scrollback.
 
 For that to work, the capture has to have carried `--session-id
-"$CODEX_THREAD_ID"`; the skill does it. Without one, planx prints the command
-instead of asking — see [Executing](/executing).
+"$CODEX_THREAD_ID"`; the skill does it. Without one, the prompt still appears
+and offers the command alone, as `1` — see [Executing](/executing).

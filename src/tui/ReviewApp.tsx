@@ -628,14 +628,15 @@ export function ReviewApp(props: ReviewAppProps) {
   }
 
   /**
-   * Ask which way the command goes, or take the only way there is.
+   * Ask which way the command goes.
    *
-   * With nothing to start — a version captured before planx recorded sessions,
-   * or by an agent it cannot name — there is one option, and asking about it
-   * would be a question with one answer.
+   * The prompt is drawn either way. Where planx cannot start anything — a
+   * version captured before it recorded sessions, or by an agent it cannot
+   * name — the command is the whole list rather than the second half of one,
+   * so it answers to `1`. Skipping the prompt entirely made the review look
+   * like it had simply ignored the key.
    */
   function handOff(intent: 'revise' | 'execute') {
-    if (!launchable[intent]) return finish(intent === 'revise' ? 'submit' : 'execute', 'command');
     setMode({ kind: 'handoff', intent });
   }
 
@@ -815,8 +816,10 @@ export function ReviewApp(props: ReviewAppProps) {
       }
       if (mode.kind === 'handoff') {
         const action = mode.intent === 'revise' ? 'submit' : 'execute';
-        if (input === '1') return finish(action, 'agent');
-        if (input === '2') return finish(action, 'command');
+        // With no agent to start, the command is the only option, and the only
+        // option is `1` — the number is the position in the list on screen.
+        if (input === '1') return finish(action, launchable[mode.intent] ? 'agent' : 'command');
+        if (input === '2' && launchable[mode.intent]) return finish(action, 'command');
         // Back to the plan, not out of planx: `x` is easy to hit, and the way
         // back from it has to be free. Every other key is ignored rather than
         // falling through to the document underneath.
@@ -943,6 +946,7 @@ export function ReviewApp(props: ReviewAppProps) {
             canDiff: previousVersion !== null,
             manyVersions: props.versions.length > 1,
             canSubmit,
+            canLaunch: mode.kind === 'handoff' && launchable[mode.intent],
           }),
           inner,
         ),
@@ -1198,6 +1202,8 @@ interface HintContext {
   manyVersions: boolean;
   /** This version carries something `s` would write. */
   canSubmit: boolean;
+  /** planx could start an agent for the intent the prompt is asking about. */
+  canLaunch: boolean;
 }
 
 /**
@@ -1237,12 +1243,21 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
       ['enter', 'back'],
       ['esc', 'stay'],
     ];
+  // Where planx can start something, the command is the second option; where it
+  // cannot, the command is the only one and takes the first number. The prompt
+  // is drawn either way — the question is still worth asking, and a key that
+  // silently did nothing read as a bug.
   if (mode.kind === 'handoff')
-    return [
-      ['1', mode.intent === 'revise' ? 'revise in the agent' : 'execute in a new agent'],
-      ['2', 'give me the command'],
-      ['esc', 'back'],
-    ];
+    return ctx.canLaunch
+      ? [
+          ['1', mode.intent === 'revise' ? 'revise in the agent' : 'execute in a new agent'],
+          ['2', 'give me the command'],
+          ['esc', 'back'],
+        ]
+      : [
+          ['1', 'give me the command'],
+          ['esc', 'back'],
+        ];
   if (mode.kind === 'help') return [['any key', 'to close']];
 
   const hints: Hint[] = [

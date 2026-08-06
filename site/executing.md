@@ -83,11 +83,18 @@ opens on — it is the one entry that is true of every ending:
 Reopen it in your terminal:  planx guard-clock-regression-a3f9 v3
 ```
 
-`2` is not a fallback for a broken `1`. It is what planx does whenever it cannot
-be exact: a version captured before the session id was recorded, an agent it
-cannot name, or a machine without that agent on its `PATH`. In each case the
-prompt is skipped and the commands are printed, because a choice between one
-thing and nothing is not a choice.
+Where planx cannot be exact — a version captured before the session id was
+recorded, or by an agent it cannot name — the prompt is still drawn, with the
+command as its only option:
+
+```
+│ Execute guard-clock-regression-a3f9 v3.                          │
+│ 1 give me the command · esc back                                 │
+```
+
+The number is the position on screen, so the command answers to `1` there. The
+question is still worth asking, and a key that silently printed a block read as
+`x` having been ignored.
 
 The commands are not padded into a shared column. Alignment was there to tie
 three adjacent lines together; with a blank line between each of them there is

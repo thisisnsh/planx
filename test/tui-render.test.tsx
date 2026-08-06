@@ -908,6 +908,8 @@ describe('rewriting a line in place', () => {
     await app.press(ESC);
 
     await app.press('s');
+    // The prompt is always drawn, so finishing takes its answer too.
+    await app.press('1');
     const result = await app.result;
     expect(result.editedVersion).toBe(1);
     expect(result.edits).toEqual([{ line: 1, text: '# Guard the clock regression rewritten' }]);
@@ -932,6 +934,8 @@ describe('rewriting a line in place', () => {
     expect(app.stdout.lastFrame).not.toContain('line edited on this version');
 
     await app.press('s');
+    // The prompt is always drawn, so finishing takes its answer too.
+    await app.press('1');
     const result = await app.result;
     expect(result.editedVersion).toBe(2);
     expect(result.batches.map((b) => b.version)).toEqual([1, 2]);
@@ -1148,6 +1152,8 @@ describe('submitting', () => {
     await app.ready();
 
     await app.press('x');
+    // The prompt is always drawn, so finishing takes its answer too.
+    await app.press('1');
     const result = await app.result;
     expect(result.action).toBe('execute');
     expect(result.batches).toEqual([{ version: 1, annotations: [], general: '' }]);
@@ -1175,6 +1181,8 @@ describe('submitting', () => {
     await app.press(ENTER);
     await app.frame('needs work');
     await app.press('s');
+    // The prompt is always drawn, so finishing takes its answer too.
+    await app.press('1');
 
     const result = await app.result;
     expect(result.action).toBe('submit');
@@ -1197,6 +1205,8 @@ describe('submitting', () => {
     await app.frame('one thing');
 
     await app.press('x');
+    // The prompt is always drawn, so finishing takes its answer too.
+    await app.press('1');
     const result = await app.result;
     expect(result.action).toBe('execute');
     expect(result.batches[0]?.annotations[0]?.comment).toBe('one thing');
@@ -1311,25 +1321,55 @@ describe('the hand-off prompt', () => {
     app.unmount();
   });
 
-  /** A choice between one thing and nothing is not a choice. */
-  it('skips the prompt when planx has no agent to start', async () => {
+  /**
+   * A version captured before planx recorded sessions has nothing to start, so
+   * the command is the whole list rather than the second half of one — and it
+   * answers to `1`, because the number is the position on screen. The prompt is
+   * still drawn: a key that silently did nothing read as a bug.
+   */
+  it('offers the command as the only option when there is no agent to start', async () => {
     const app = mount(seed(), null, 1, [1], 100, 30, [], { 1: { revise: false, execute: false } });
     await app.ready();
 
     await app.press('x');
+    await app.frame('1 give me the command');
+    expect(app.stdout.lastFrame).toContain('Execute ');
+    expect(app.stdout.lastFrame).not.toContain('2 give me the command');
+    expect(app.stdout.lastFrame).not.toContain('execute in a new agent');
+
+    await app.press('1');
     expect(await app.result).toMatchObject({ action: 'execute', handoff: 'command' });
     app.unmount();
   });
 
-  it('skips it for a version with no session to fork, and still offers execute', async () => {
+  it('asks per intent: no session to fork, but an agent to execute in', async () => {
     const app = mount(seed(), null, 1, [1], 100, 30, [], { 1: { revise: false, execute: true } });
     await app.ready();
+
+    // Execute can start something, so the agent is option 1.
+    await app.press('x');
+    await app.frame('1 execute in a new agent');
+    await app.press(ESC);
 
     await app.press('f');
     await app.press('needs work');
     await app.press(ENTER);
     await app.press('s');
+    await app.frame('1 give me the command');
+    await app.press('1');
     expect(await app.result).toMatchObject({ action: 'submit', handoff: 'command' });
+    app.unmount();
+  });
+
+  it('ignores 2 where there is no second option', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], { 1: { revise: false, execute: false } });
+    await app.ready();
+
+    await app.press('x');
+    await app.frame('1 give me the command');
+    await app.press('2');
+    await new Promise((r) => setTimeout(r, 120));
+    expect(app.stdout.lastFrame).toContain('1 give me the command');
     app.unmount();
   });
 });
@@ -1749,6 +1789,8 @@ describe('the plan, the diff and the versions', () => {
     await app.frame('about v1');
 
     await app.press('s');
+    // The prompt is always drawn, so finishing takes its answer too.
+    await app.press('1');
     const result = await app.result;
     expect(result.batches.map((b) => b.version)).toEqual([1, 2]);
     expect(result.batches[0]?.annotations[0]?.comment).toBe('about v1');
@@ -1784,6 +1826,8 @@ describe('the plan, the diff and the versions', () => {
     await app.frame('only about v2');
 
     await app.press('s');
+    // The prompt is always drawn, so finishing takes its answer too.
+    await app.press('1');
     const result = await app.result;
     expect(result.batches.map((b) => b.version)).toEqual([2]);
     app.unmount();
