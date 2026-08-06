@@ -1,5 +1,5 @@
 import { useApp, useInput } from 'ink';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 /**
  * Leaving planx, from anywhere: ctrl+c, twice.
@@ -17,24 +17,41 @@ import { useState } from 'react';
 /** 128 + SIGINT, which is what a shell reports for an interrupted program. */
 export const INTERRUPTED = 130;
 
+/** How long the second press has to arrive in. */
+export const EXIT_WINDOW_MS = 2000;
+
 export interface DoubleCtrlCOptions {
   /**
    * What the second press does. The default unmounts and ends the process;
    * a test passes its own so the suite survives being interrupted.
    */
   onExit?: () => void;
+  /** How long the guard stays armed. A test passes its own rather than waiting. */
+  windowMs?: number;
 }
 
 /**
  * True once ctrl+c has been pressed and is waiting for its second.
  *
- * There is no timer. A guard that expires on a clock is a guard that behaves
- * differently depending on how fast you type — any other key disarms it
- * instead, which is a rule you can see happening.
+ * The two presses have to be within two seconds of each other. Any other key
+ * disarms it as well, which is the rule you can see happening — the timer is
+ * for the presses nobody follows up on: a guard armed by a stray ctrl+c and
+ * left armed all session is one press from ending a review, on a screen that
+ * has long since stopped saying so.
+ *
+ * Nothing announces the two seconds. The red row appears and disappears, and
+ * the only thing to know is that the second press has to be prompt.
  */
 export function useDoubleCtrlC(opts: DoubleCtrlCOptions = {}): boolean {
   const { exit } = useApp();
   const [armed, setArmed] = useState(false);
+  const windowMs = opts.windowMs ?? EXIT_WINDOW_MS;
+
+  useEffect(() => {
+    if (!armed) return;
+    const timer = setTimeout(() => setArmed(false), windowMs);
+    return () => clearTimeout(timer);
+  }, [armed, windowMs]);
 
   useInput(
     (input, key) => {

@@ -94,6 +94,8 @@ export interface ReviewAppProps {
   launchable?: Launchable;
   /** What a second ctrl+c does. Defaults to ending the process with 130. */
   onQuit?: () => void;
+  /** How long the ctrl+c guard stays armed. Defaults to two seconds. */
+  exitWindowMs?: number;
   /**
    * The clock the held-arrow curve is measured against. A test drives it
    * itself; fake timers would fight Ink's render loop for the same one.
@@ -152,7 +154,7 @@ export function ReviewApp(props: ReviewAppProps) {
   const { exit } = useApp();
   const { stdout } = useStdout();
   // Above every mode-scoped handler below, so it fires whatever is being typed.
-  const leaving = useDoubleCtrlC({ onExit: props.onQuit });
+  const leaving = useDoubleCtrlC({ onExit: props.onQuit, windowMs: props.exitWindowMs });
 
   const [versionB, setVersionB] = useState(props.versionB);
   const [versionA, setVersionA] = useState<number | null>(props.versionA);
@@ -915,6 +917,17 @@ export function ReviewApp(props: ReviewAppProps) {
     bodyHeight,
   );
 
+  /**
+   * A question stands alone.
+   *
+   * While one is up, the summary block under it is not drawn: what the version
+   * holds is a thing to read while you are reading the plan, not an answer to
+   * `Execute this?`. The rows are reserved rather than removed — they still
+   * feed `bodyHeight`, and they render blank — because a document that reflows
+   * under the question would leave `esc` putting you somewhere else in the plan.
+   */
+  const asking = leaving || mode.kind === 'leave' || mode.kind === 'handoff';
+
   // Never bold. Colour carries the weight — red for what destroys something,
   // yellow for everything else — and a bold row inside a frame reads as a
   // heading, which a question is not.
@@ -927,10 +940,12 @@ export function ReviewApp(props: ReviewAppProps) {
       : // Yellow, the colour the review already uses for a question. Not red:
         // nothing here destroys anything, and red is the leave warning's.
         mode.kind === 'handoff'
-        ? yellow(
+        ? // A question, because that is what it is — the same as the leave
+          // prompt above it, which has always read that way.
+          yellow(
             mode.intent === 'revise'
-              ? `Submit and revise ${props.planId} v${versionB}.`
-              : `Execute ${props.planId} v${versionB}.`,
+              ? `Submit feedback for ${props.planId} v${versionB}?`
+              : `Execute ${props.planId} v${versionB}?`,
           )
         : statusLine({
             status,
@@ -950,7 +965,7 @@ export function ReviewApp(props: ReviewAppProps) {
       <Text>{frameLine('', inner)}</Text>
       <Text>{frameLine(message, inner)}</Text>
       {summary.map((line, i) => (
-        <Text key={i}>{frameLine(line, inner)}</Text>
+        <Text key={i}>{frameLine(asking ? '' : line, inner)}</Text>
       ))}
       {fit(
         hintLines(

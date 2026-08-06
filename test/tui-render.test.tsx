@@ -134,7 +134,8 @@ function mount(
   rows = 30,
   previous: Feedback[] = [],
   launchable?: Launchable,
-  now?: () => number,
+  /** The clocks the review runs on: the held-arrow one, and the exit guard's. */
+  timing: { now?: () => number; exitWindowMs?: number } = {},
 ): Harness {
   const stdout = new FakeStdout();
   stdout.columns = columns;
@@ -155,7 +156,8 @@ function mount(
       version="9.9.9"
       previous={previous}
       launchable={launchable}
-      now={now}
+      now={timing.now}
+      exitWindowMs={timing.exitWindowMs}
       onQuit={() => quits.push(Date.now())}
       onDone={resolve}
     />,
@@ -1170,7 +1172,7 @@ describe('submitting', () => {
     await new Promise((r) => setTimeout(r, 120));
     // Still on the plan: no prompt, no hand-off, nothing resolved.
     expect(app.stdout.lastFrame).toContain('# Guard the clock regression');
-    expect(app.stdout.lastFrame).not.toContain('Submit and revise');
+    expect(app.stdout.lastFrame).not.toContain('Submit feedback for');
     app.unmount();
   });
 
@@ -1260,7 +1262,7 @@ describe('the hand-off prompt', () => {
     await app.ready();
 
     await app.press('x');
-    await app.frame(`Execute ${id} v1.`);
+    await app.frame(`Execute ${id} v1?`);
     expect(app.stdout.lastFrame).toContain('1 execute in a new agent');
     expect(app.stdout.lastFrame).toContain('2 give me the command');
     expect(app.stdout.lastFrame).toContain('esc back');
@@ -1274,7 +1276,7 @@ describe('the hand-off prompt', () => {
     await app.press('one more thing');
     await app.press(ENTER);
     await app.press('s');
-    await app.frame(`Submit and revise ${id} v1.`);
+    await app.frame(`Submit feedback for ${id} v1?`);
     expect(app.stdout.lastFrame).toContain('1 revise in the agent');
     app.unmount();
   });
@@ -1395,7 +1397,6 @@ describe('ctrl+c, twice', () => {
     app.unmount();
   });
 
-  /** No timer: a guard that expires on a clock behaves differently by typist. */
   it('disarms on any other key', async () => {
     const app = mount(seed(), null, 1);
     await app.ready();
@@ -1424,6 +1425,48 @@ describe('ctrl+c, twice', () => {
     await app.press(CTRL_C);
     await waitFor(() => app.quits.length > 0);
     expect(app.quits).toHaveLength(1);
+    app.unmount();
+  });
+
+  /**
+   * The window is the prop rather than the real two seconds: a test that waits
+   * out a timer is a test that either sleeps for two seconds or flakes.
+   */
+  it('exits on a second press inside the window', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], undefined, { exitWindowMs: 400 });
+    await app.ready();
+
+    await app.press(CTRL_C);
+    await app.frame('Press ctrl+c again to exit.');
+    await app.press(CTRL_C);
+    await waitFor(() => app.quits.length > 0);
+    expect(app.quits).toHaveLength(1);
+    app.unmount();
+  });
+
+  it('disarms on its own once the window has passed, and re-arms on the next press', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], undefined, { exitWindowMs: 200 });
+    await app.ready();
+    await app.press(DOWN);
+    await app.press('f');
+    await app.press('a note');
+    await app.press(ENTER);
+    await app.frame('This version has 1 feedback.');
+
+    await app.press(CTRL_C);
+    await app.frame('Press ctrl+c again to exit.');
+    // The question stands alone while it is up.
+    expect(app.stdout.lastFrame).not.toContain('This version has 1 feedback.');
+
+    await waitFor(() => !app.stdout.lastFrame.includes('Press ctrl+c again'));
+    expect(app.stdout.lastFrame).not.toContain('Press ctrl+c again');
+    // And what the version holds is back underneath.
+    expect(app.stdout.lastFrame).toContain('This version has 1 feedback.');
+
+    // Past the window, so this is a first press again rather than a second.
+    await app.press(CTRL_C);
+    await app.frame('Press ctrl+c again to exit.');
+    expect(app.quits).toEqual([]);
     app.unmount();
   });
 
@@ -1699,6 +1742,45 @@ describe('what the version has to say about itself', () => {
     expect(app.stdout.lastFrame).toContain('s submit');
     app.unmount();
   });
+
+  /**
+   * A prompt is a question, and nothing sits under it. The rows are reserved
+   * rather than removed, or the document would reflow under the question and
+   * backing out would land somewhere else in the plan.
+   */
+  it('says nothing about the version while a prompt is up', async () => {
+    const id = seed();
+    const app = mount(id, null, 1, [1], 100, 30, [], { 1: { revise: true, execute: true } });
+    await app.ready();
+
+    await app.press(DOWN);
+    await app.press('f');
+    await app.press('one');
+    await app.press(ENTER);
+    await app.press('n');
+    await app.press('and a note about the whole thing');
+    await app.press(ENTER);
+    await app.frame('This version has 1 feedback.');
+    expect(app.stdout.lastFrame).toContain('Global Note: and a note about the whole thing');
+    const height = bodyRows(app.stdout.lastFrame).length;
+
+    for (const [key, question] of [
+      ['x', `Execute ${id} v1?`],
+      ['s', `Submit feedback for ${id} v1?`],
+      [ESC, 'Back to the list?'],
+    ] as const) {
+      await app.press(key);
+      await app.frame(question);
+      const frame = app.stdout.lastFrame;
+      expect(frame).not.toContain('This version has 1 feedback.');
+      expect(frame).not.toContain('Global Note:');
+      expect(bodyRows(frame)).toHaveLength(height);
+      // And back, with everything under it again.
+      await app.press(ESC);
+      await app.frame('This version has 1 feedback.');
+    }
+    app.unmount();
+  });
 });
 
 describe('the plan, the diff and the versions', () => {
@@ -1867,7 +1949,9 @@ describe('getting around a long plan', () => {
    */
   it('takes more rows the longer the arrow is held', async () => {
     let clock = 0;
-    const app = mount(seedLongPlan(), null, 1, [1], 100, 30, [], undefined, () => clock);
+    const app = mount(seedLongPlan(), null, 1, [1], 100, 30, [], undefined, {
+      now: () => clock,
+    });
     await app.ready();
 
     const lineNow = () => Number(/\d+/.exec(cursorRow(bodyRows(app.stdout.lastFrame))!)![0]);
