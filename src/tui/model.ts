@@ -357,7 +357,7 @@ export interface BoxOptions {
   blockIndex: number;
   boxWidth: number;
   collapsed: boolean;
-  /** The note being typed: reserve the caret a column, and draw one in it. */
+  /** The note being typed: draw a caret in it. */
   editing?: boolean;
   /** Where the caret sits, as an offset into the note's text. */
   caret?: number;
@@ -393,10 +393,12 @@ export function feedbackRows(id: string, comment: string, opts: BoxOptions): Fee
     return [{ ...base, part: 'collapsed', text: `├─${title}${'─'.repeat(fill)}`, skip: false }];
   }
 
-  // The caret needs a column of its own on the last line. Wrapping a column
-  // early gives it one; truncating the line to make room is what used to hold
-  // an over-long word on one line until the next space was typed.
-  const width = boxWidth - BOX_PADDING - (opts.editing ? 1 : 0);
+  // The full width, whether or not it is being typed into. The column that used
+  // to be reserved here was for a caret that sat past the last character — so
+  // the text wrapped early while you typed and re-wrapped a column wider the
+  // moment you pressed enter, visibly shifting into a better alignment. The
+  // caret lives inside the text now, and needs no column of its own.
+  const width = boxWidth - BOX_PADDING;
   const wrapped = comment.length ? wrapLines(comment, width) : [{ text: '', start: 0 }];
   const at = opts.editing ? caretAt(wrapped, opts.caret ?? 0) : null;
   // The first line of the note is the row the cursor stops on; the edges and

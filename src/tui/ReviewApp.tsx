@@ -971,14 +971,11 @@ function renderRow(row: ViewRow, opts: RowOptions): string {
     if (row.part !== 'body') return `${arrow} ${pad}${signal(row.text)}`;
 
     const box = row.boxWidth - BOX_PADDING;
-    // The caret sits inside the text, at the column the model worked out, not
-    // after the final character — so walking back through a wrap with ⌥← shows
-    // where the next keystroke will land rather than where the last one did.
     const text =
       opts.editing && row.caret !== null
-        ? caretLine(row.text, row.caret, box + 1)
-        : truncate(row.text, box);
-    return `${arrow} ${pad}${signal('│')} ${padEnd(text, box)} ${signal('│')}`;
+        ? boxBody(row.text, row.caret, box)
+        : padEnd(truncate(row.text, box), box);
+    return `${arrow} ${pad}${signal('│')} ${text} ${signal('│')}`;
   }
 
   const gutter = opts.cursor ? row.gutterActive : row.gutter;
@@ -997,6 +994,23 @@ function renderRow(row: ViewRow, opts: RowOptions): string {
 
   const rail = row.rail ? signal('│') : ' ';
   return `${arrow} ${gutter}${rail} ${text}`;
+}
+
+/**
+ * A row of the note box with the caret drawn on it, padded to the box.
+ *
+ * The caret goes *over* a column rather than after the text, so the row is the
+ * width it would be without one — which is what lets the box wrap to its full
+ * width whether or not it is being typed into. A caret past the last character
+ * of a row that fills the box holds on that last column rather than scrolling
+ * the text out from under it: there is nowhere further right to go, and a note
+ * that shifts sideways for one keystroke is worse than a caret that stops.
+ */
+function boxBody(text: string, caret: number, box: number): string {
+  if (text.length > box) return padEnd(caretLine(text, caret, box + 1), box);
+  const padded = padEnd(text, box);
+  const at = Math.min(caret, box - 1);
+  return `${padded.slice(0, at)}${inverse(padded[at] ?? ' ')}${padded.slice(at + 1)}`;
 }
 
 /**

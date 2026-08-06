@@ -477,6 +477,28 @@ describe('feedback lives in the document', () => {
     app.unmount();
   });
 
+  /**
+   * The box used to wrap a column narrower while it was being typed, to reserve
+   * one for a caret sitting past the last character — so the text re-wrapped a
+   * column wider the moment you pressed enter and visibly shifted.
+   */
+  it('lays the note out where it will sit once committed', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('f');
+    await app.press('the poller reads a snapshot every fifteen seconds and writes it back');
+    await new Promise((r) => setTimeout(r, 200));
+    const typing = noteBox(app.stdout.lastFrame);
+
+    await app.press(ENTER);
+    await new Promise((r) => setTimeout(r, 200));
+
+    expect(noteBox(app.stdout.lastFrame)).toEqual(typing);
+    expect(typing.length).toBeGreaterThan(2);
+    app.unmount();
+  });
+
   it('wraps a word wider than the box instead of ending it in an ellipsis', async () => {
     const app = mount(seed(), null, 1);
     await app.ready();
@@ -1165,6 +1187,14 @@ describe('submitting', () => {
 });
 
 /** The text between the frame's two edges. */
+/** The note box, top edge to bottom, as it is drawn inside the frame. */
+function noteBox(frame: string): string[] {
+  const rows = bodyRows(frame).map((row) => inner(row));
+  const top = rows.findIndex((row) => row.includes('├'));
+  const bottom = rows.findIndex((row) => row.includes('╯'));
+  return top === -1 || bottom === -1 ? [] : rows.slice(top, bottom + 1);
+}
+
 function inner(row: string): string {
   return row.replace(/^│\s*/, '').replace(/\s*│$/, '').trimEnd();
 }

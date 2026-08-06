@@ -991,8 +991,10 @@ function renderRow(
       state.mode.kind === 'editing' &&
       state.mode.annotationId === row.annotationId &&
       row.caret !== null;
-    // The caret sits inside the text, at the column the model worked out.
-    const body: Line = editing ? caretLine(row.text, row.caret!, box + 1) : [p(row.text)];
+    // The caret goes *over* a column rather than after the text, so the row is
+    // the width it would be without one — which is what lets the box wrap to its
+    // full width whether or not it is being typed into.
+    const body: Line = editing ? boxBody(row.text, row.caret!, box) : [p(row.text)];
     return [...gap, p('│', 'sig'), p(' '), ...fit(body, box), p(' '), p('│', 'sig')];
   }
 
@@ -1018,6 +1020,22 @@ function renderRow(
 
   const rail: Line = row.rail ? [p('│', 'sig')] : [p(' ')];
   return [...lead, ...gutter, ...rail, p(' '), ...text];
+}
+
+/**
+ * A row of the note box with the caret drawn on it.
+ *
+ * The caret goes *over* a column rather than after the text, so the row is the
+ * width it would be without one — which is what lets the box wrap to its full
+ * width whether or not it is being typed into. A caret past the last character
+ * of a row that fills the box holds on that last column rather than scrolling
+ * the text out from under it.
+ */
+function boxBody(text: string, caret: number, box: number): Line {
+  if (text.length > box) return caretLine(text, caret, box + 1);
+  const padded = text.padEnd(box, ' ');
+  const at = Math.min(caret, box - 1);
+  return [p(padded.slice(0, at)), p(padded[at] ?? ' ', 'caret'), p(padded.slice(at + 1))];
 }
 
 /** The line being rewritten, scrolled horizontally under the caret. */
