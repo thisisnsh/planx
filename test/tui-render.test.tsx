@@ -1602,6 +1602,33 @@ describe('the keys, and where they sit', () => {
     app.unmount();
   });
 
+  /**
+   * A key says whether it adds or edits, because that is the half of it you
+   * cannot see from the row. The old wordings said neither.
+   */
+  it('says add or edit, and never the wordings it replaced', async () => {
+    const app = mount(seed(), null, 1, [1], 200);
+    await app.ready();
+    await app.frame('n add note');
+    expect(app.stdout.lastFrame).toContain('f add feedback');
+
+    await app.press('n');
+    await app.press('about the whole plan');
+    await app.press(ENTER);
+    await app.frame('n edit note');
+
+    await app.press('f');
+    await app.press('about these lines');
+    await app.press(ENTER);
+    await app.frame('f edit feedback');
+
+    const frame = app.stdout.lastFrame;
+    for (const gone of ['n note', 'f feedback', 'f edit ·', 'rewrite line', 'fold section']) {
+      expect(frame).not.toContain(gone);
+    }
+    app.unmount();
+  });
+
   it('folds the bar at 80 columns instead of cutting the keys that end it', async () => {
     const app = mount(seedTwoVersions(), 1, 2, [1, 2], 80);
     await app.ready();
