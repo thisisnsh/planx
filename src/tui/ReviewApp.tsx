@@ -19,7 +19,14 @@ import type { Annotation, Feedback } from '../store/types.js';
 import { EXIT_PROMPT, useDoubleCtrlC } from './exit.js';
 import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO, topRule } from './frame.js';
 import { hintLines, orderHints, type Hint } from './hints.js';
-import { BOX_PADDING, buildModel, foldEnd, wrapComment, type ViewRow } from './model.js';
+import {
+  BOX_PADDING,
+  buildModel,
+  enclosingHeading,
+  foldEnd,
+  wrapComment,
+  type ViewRow,
+} from './model.js';
 import { pressArrow, type HeldRun } from './repeat.js';
 import {
   initialSelection,
@@ -133,6 +140,18 @@ type Mode =
   | { kind: 'help' };
 
 /**
+ * What `space` would do where the cursor is.
+ *
+ * `folded` is which way it goes, which is the only thing about it you cannot
+ * see — what it acts on is the row you are pointing at.
+ */
+type SpaceAction =
+  | { kind: 'gap'; gap: number }
+  | { kind: 'note'; id: string; folded: boolean }
+  /** `inside` marks a section reached from one of its own lines, not its heading. */
+  | { kind: 'section'; heading: number; folded: boolean; inside?: boolean };
+
+/**
  * Top rule, the gaps above and below the body, the status line, the bottom
  * rule. Five rows, not the seven the old constant claimed — and the extra row
  * it reserved is why the frame stopped one line short of the terminal and Ink
@@ -184,6 +203,8 @@ export function ReviewApp(props: ReviewAppProps) {
   const [status, setStatus] = useState<string | null>(null);
   /** An annotation `j` is on its way to, once the rows have caught up. */
   const [pendingJump, setPendingJump] = useState<string | null>(null);
+  /** A section just collapsed from inside, whose stand-in row the cursor follows. */
+  const [pendingFold, setPendingFold] = useState<number | null>(null);
   /**
    * The arrow run in progress. A ref rather than state: it is read on the next
    * keypress and never drawn, and re-rendering the document on every repeat of
@@ -480,32 +501,67 @@ export function ReviewApp(props: ReviewAppProps) {
   }
 
   /**
-   * Space folds what is under the cursor: a section away, a note into its rail,
-   * a gap open.
+   * Space acts on what is under the cursor, and the bar says which way it goes.
    *
-   * The heading wins over a note that happens to cover it. A heading is the row
-   * you press space on to move past a whole section, and that reading has to
-   * hold whether or not somebody left a comment on the heading line — the note
-   * still has its own box, one row down, where space folds the note.
-   *
-   * Any row of the box does it, not only the line it hangs off — the cursor can
-   * reach the box now, and a key that works on the thing you are pointing at is
-   * the one that needs no explaining. The dim row a folded section leaves
-   * behind answers to it too, for the same reason: it is the thing on screen
-   * saying the section is there.
+   * The key is one function so the hint and the keypress cannot disagree about
+   * whether space does anything here — the bar reads this, and so does the
+   * handler.
    */
-  function toggleFold() {
+  function spaceAction(): SpaceAction | null {
     const row = rows[selection.cursor];
-    const heading = foldTarget(row);
-    if (heading !== null) {
-      return setFoldedSections((set) =>
-        set.has(heading) ? withoutLine(set, heading) : new Set(set).add(heading),
-      );
+
+    // Where something is hidden under the cursor, space brings it back. That
+    // reading wins over every other: the dim row a fold left behind, and the
+    // row standing in for a collapsed run, are on screen saying what they hide.
+    if (row?.kind === 'doc') {
+      if (row.fold !== null) return { kind: 'section', heading: row.fold, folded: true };
+      if (row.gapIndex !== null) return { kind: 'gap', gap: row.gapIndex };
     }
 
+    // The heading wins over a note that happens to cover it. A heading is the
+    // row you press space on to move past a whole section, and that reading has
+    // to hold whether or not somebody left a comment on the heading line — the
+    // note still has its own box, one row down, where space folds the note.
+    if (row?.kind === 'doc' && row.newLine !== null && canFold(row.newLine)) {
+      return { kind: 'section', heading: row.newLine, folded: foldedSections.has(row.newLine) };
+    }
+
+    // Any row of the box does it, not only the line it hangs off — the cursor
+    // can reach the box now, and a key that works on the thing you are pointing
+    // at is the one that needs no explaining.
     const note = annotationAtCursor();
     if (note) {
-      const id = note.id;
+      return {
+        kind: 'note',
+        id: note.id,
+        folded: hiddenFeedback || collapsedFeedback.has(note.id),
+      };
+    }
+
+    // Anywhere else in the document: the section you are standing in. Folding
+    // what you have just read used to mean scrolling back to its heading first,
+    // which is a trip up the plan to do something to the part you are looking at.
+    if (row?.kind === 'doc' && row.newLine !== null) {
+      const heading = enclosingHeading(model.docLines, row.newLine);
+      if (heading !== null) {
+        return { kind: 'section', heading, folded: foldedSections.has(heading), inside: true };
+      }
+    }
+    return null;
+  }
+
+  function toggleFold() {
+    const action = spaceAction();
+    if (action === null) return;
+
+    if (action.kind === 'gap') {
+      // A gap only expands: once it has, the row that stood for it is gone, and
+      // there is nothing left under the cursor to press space on.
+      return setExpandedGaps((set) => new Set(set).add(action.gap));
+    }
+
+    if (action.kind === 'note') {
+      const id = action.id;
       // Folding from inside the box takes it down to one row, so the cursor
       // moves to where the box starts rather than to whatever line happens to
       // slide up underneath it. Unfolding lands there too, and the settling
@@ -515,24 +571,21 @@ export function ReviewApp(props: ReviewAppProps) {
       }
       return setCollapsedFeedback((set) => (set.has(id) ? without(set, id) : withId(set, id)));
     }
-    // A gap only expands: once it has, the row that stood for it is gone, and
-    // there is nothing left under the cursor to press space on.
-    const gap = row?.gapIndex;
-    if (gap === null || gap === undefined) return;
-    setExpandedGaps((set) => new Set(set).add(gap));
+
+    const heading = action.heading;
+    // Collapsing from inside takes the cursor's own rows away with the section,
+    // so it follows the collapse onto the row that now stands for where it was.
+    // The jump is explicit because settling only clamps: it would leave the
+    // cursor wherever the rows below the fold happened to slide up to.
+    if (action.inside && !action.folded) setPendingFold(heading);
+    setFoldedSections((set) =>
+      set.has(heading) ? withoutLine(set, heading) : new Set(set).add(heading),
+    );
   }
 
-  /**
-   * The heading line `space` would fold or unfold from this row, or null.
-   *
-   * Two rows answer to the same section: the heading itself, and the dim row
-   * standing in for what it hides.
-   */
-  function foldTarget(row: ViewRow | undefined): number | null {
-    if (row?.kind !== 'doc') return null;
-    if (row.fold !== null) return row.fold;
-    if (row.newLine === null) return null;
-    return foldEnd(model.docLines, row.newLine) === null ? null : row.newLine;
+  /** Is there a section rooted at this line for `space` to hide? */
+  function canFold(line: number): boolean {
+    return foldEnd(model.docLines, line) !== null;
   }
 
   /**
@@ -877,6 +930,15 @@ export function ReviewApp(props: ReviewAppProps) {
     if (index !== undefined) jumpTo(index);
   }, [rows, pendingJump, jumpTo]);
 
+  // The row it lands on does not exist until the fold has been built, so this
+  // waits for the rows rather than guessing an index.
+  useEffect(() => {
+    if (pendingFold === null) return;
+    const index = rows.findIndex((r) => r.kind === 'doc' && r.fold === pendingFold);
+    setPendingFold(null);
+    if (index !== -1) jumpTo(index);
+  }, [rows, pendingFold, jumpTo]);
+
   useEffect(() => () => exit(), [exit]);
 
   /* ------------------------------------------------------------ render */
@@ -890,13 +952,7 @@ export function ReviewApp(props: ReviewAppProps) {
   // gap the chrome constant was leaving.
   // What space would do where the cursor is, so the hint says it rather than
   // making you press it to find out.
-  const cursorRow = rows[selection.cursor];
-  const headingLine = foldTarget(cursorRow);
-  const headingHint =
-    headingLine === null ? null : foldedSections.has(headingLine) ? 'unfold' : 'fold';
-  const noteFolded =
-    cursorRow?.kind === 'feedback' &&
-    (hiddenFeedback || collapsedFeedback.has(cursorRow.annotationId));
+  const space = spaceAction();
 
   const body = fit(
     mode.kind === 'help'
@@ -971,8 +1027,7 @@ export function ReviewApp(props: ReviewAppProps) {
         hintLines(
           hintsFor(mode, rows[selection.cursor], {
             anyFeedback: annotations.length > 0,
-            heading: headingHint,
-            noteFolded,
+            space,
             // Where `e` cannot work it is not offered: a key that declines one
             // press after being advertised teaches the wrong thing.
             canEdit: versionB === latest,
@@ -1223,10 +1278,8 @@ function summaryLines(opts: SummaryOptions): string[] {
 interface HintContext {
   /** There is feedback to walk, so `j` has somewhere to go. */
   anyFeedback: boolean;
-  /** What `space` would do to the section under the cursor, if it is a heading. */
-  heading: 'fold' | 'unfold' | null;
-  /** The note under the cursor is already folded, so `space` opens it. */
-  noteFolded: boolean;
+  /** What `space` would do here, or null where it would do nothing. */
+  space: SpaceAction | null;
   /** `e` can work here: the latest version of the plan. */
   canEdit: boolean;
   annotated: boolean;
@@ -1303,22 +1356,17 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
     ['esc', 'back'],
   ];
 
-  // Folding is offered on the box, which the cursor can now reach — a document
-  // line beside a note is a line, and the note has a row of its own. `space`
-  // names what it folds rather than saying `fold`, because there are two kinds
-  // of fold now and the cursor is what decides between them.
+  // Space is offered wherever it does something, which the same function the
+  // key itself reads has already worked out.
+  if (ctx.space) hints.push(['space', spaceHint(ctx.space)]);
+
   if (row?.kind === 'feedback') {
-    hints.push(['space', ctx.noteFolded ? 'unfold feedback' : 'fold feedback'], ['f', 'edit']);
+    hints.push(['f', 'edit']);
   } else if (standsInForHiddenLines(row)) {
     // Nothing on a stand-in row can be commented on, so `f` is not offered.
-    // `space` is the only key that means anything here.
-    hints.push(
-      ['space', ctx.heading ? 'unfold section' : 'expand'],
-      ['v', ctx.selecting ? 'unselect lines' : 'select lines'],
-    );
+    hints.push(['v', ctx.selecting ? 'unselect lines' : 'select lines']);
   } else {
     const lines = ctx.plural ? 'lines' : 'line';
-    if (ctx.heading) hints.push(['space', `${ctx.heading} section`]);
     hints.push(['v', ctx.selecting ? 'unselect lines' : 'select lines']);
     hints.push(['f', ctx.annotated ? 'edit' : 'feedback']);
     if (ctx.canEdit) hints.push(['e', `rewrite ${lines}`]);
@@ -1332,6 +1380,13 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
   if (ctx.canSubmit) hints.push(['s', 'submit']);
   hints.push(['?', 'help']);
   return hints;
+}
+
+/** Which way `space` goes here. */
+function spaceHint(action: SpaceAction): string {
+  if (action.kind === 'gap') return 'expand';
+  if (action.kind === 'note') return action.folded ? 'unfold feedback' : 'fold feedback';
+  return action.folded ? 'unfold section' : 'fold section';
 }
 
 /** A collapsed run or a folded section: a row that stands in for hidden lines. */

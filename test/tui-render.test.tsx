@@ -1046,14 +1046,69 @@ describe('folding a section', () => {
     expect(app.stdout.lastFrame).toContain('## Two');
 
     // `#####` is a paragraph with a title on it; folding it saves nothing, so
-    // it is neither offered nor done. Unfolding first, because it is buried in
-    // the section that was just folded away.
+    // the section it is standing in is what space takes. Unfolding first,
+    // because it is buried in the section that was just folded away.
     await app.press(SPACE);
     await app.frame('### Under one');
     await app.press('g');
     for (let i = 0; i < 8; i++) await app.press(DOWN);
     expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('##### Too deep');
-    expect(app.stdout.lastFrame).not.toContain('space fold section');
+
+    await app.press(SPACE);
+    await app.frame('⋯');
+    expect(app.stdout.lastFrame).toContain('### Under one');
+    expect(app.stdout.lastFrame).not.toContain('##### Too deep');
+    // `## One` is still open around it: the `###` is the nearest thing to fold.
+    expect(app.stdout.lastFrame).toContain('## One');
+    app.unmount();
+  });
+
+  /**
+   * Folding what you have just read used to mean scrolling back up to its
+   * heading first. Space now takes the section you are standing in.
+   */
+  it('collapses the enclosing section from a line inside it', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    // Three rows down: inside `## Context`, not on its heading.
+    await app.press(DOWN);
+    await app.press(DOWN);
+    await app.press(DOWN);
+    await app.frame('The poller reads a snapshot');
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).not.toContain('## Context');
+
+    await app.press(SPACE);
+    await app.frame('(space to expand)');
+    expect(app.stdout.lastFrame).not.toContain('The poller reads a snapshot');
+    expect(app.stdout.lastFrame).toContain('## Context');
+
+    // The rows it was on are gone, so the cursor lands on the one that now
+    // stands for where it was.
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('(space to expand)');
+
+    // And on that row space expands rather than collapsing again.
+    await app.press(SPACE);
+    await app.frame('The poller reads a snapshot');
+    app.unmount();
+  });
+
+  it('does nothing, and offers nothing, above the first heading', async () => {
+    const id = capture({
+      text: ['a line before anything', '', '## One', 'a', 'b', ''].join('\n'),
+      source: 'test',
+    }).planId;
+    const app = mount(id, null, 1);
+    await app.ready();
+
+    // There is no heading above this line for space to reach.
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('a line before anything');
+    expect(app.stdout.lastFrame).not.toContain('space ');
+
+    const before = bodyRows(app.stdout.lastFrame);
+    await app.press(SPACE);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(bodyRows(app.stdout.lastFrame)).toEqual(before);
     app.unmount();
   });
 
@@ -1529,7 +1584,7 @@ describe('the keys, and where they sit', () => {
     const keys = inner(bodyRows(app.stdout.lastFrame).at(-1)!)
       .split(' · ')
       .map((part) => part.split(' ')[0]!);
-    expect(keys).toEqual(['←→', 'd', 'e', 'f', 'j', 'n', 's', 'v', 'x', 'esc', '?']);
+    expect(keys).toEqual(['←→', 'd', 'e', 'f', 'j', 'n', 's', 'space', 'v', 'x', 'esc', '?']);
     app.unmount();
   });
 

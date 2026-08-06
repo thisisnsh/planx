@@ -276,6 +276,25 @@ export function foldEnd(lines: readonly string[], line: number): number | null {
   return end > heading.line ? end : null;
 }
 
+/**
+ * The heading a line sits under — the nearest one at or above it that has
+ * something to hide.
+ *
+ * It is what `space` collapses from inside a section, so it skips the headings
+ * `foldEnd` declines: a line under a `#####` collapses the `###` it is really
+ * inside, rather than declining because the title immediately above it is a
+ * paragraph's.
+ */
+export function enclosingHeading(lines: readonly string[], line: number): number | null {
+  const all = headingsIn(lines);
+  for (let i = all.length - 1; i >= 0; i--) {
+    const heading = all[i]!;
+    if (heading.line > line) continue;
+    if (foldEnd(lines, heading.line) !== null) return heading.line;
+  }
+  return null;
+}
+
 /** heading line → last line hidden, for the sections currently folded. */
 function foldsIn(lines: readonly string[], folded?: ReadonlySet<number>): Map<number, number> {
   const out = new Map<number, number>();
