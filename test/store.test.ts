@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { previousStoredVersion } from '../src/cli/commands.js';
 import { StoreCorruptionError } from '../src/store/atomic.js';
 import { contentHash, planId, slugify, ulid } from '../src/store/ids.js';
@@ -245,9 +245,22 @@ describe('marking a plan executed', () => {
 
     // Twice is not a failure: an execute picked up after a break should not
     // have to care whether it already said so.
+    //
+    // The clock is held rather than trusted. Both calls land in the same
+    // millisecond whenever the machine is quick enough, and a restamp that has
+    // to be slower than the filesystem to be observed is a flake, not a test.
     const first = readMeta(id)!.executed!.at;
-    markExecuted(id, 2);
-    expect(readMeta(id)?.executed?.at).not.toBe(first);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(Date.parse(first) + 60_000);
+      markExecuted(id, 2);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const again = readMeta(id)?.executed;
+    expect(again?.at).not.toBe(first);
+    expect(again).toMatchObject({ version: 2, agent: 'claude' });
   });
 
   it('survives a rebuild from the plan directories', () => {
