@@ -1,4 +1,4 @@
-import { Box, Text, useApp, useInput, useStdout } from 'ink';
+import { Box, Text, useInput, useStdout } from 'ink';
 import { useMemo, useState } from 'react';
 import {
   bold,
@@ -47,7 +47,6 @@ export interface PickerProps<T> {
   /** What a second ctrl+c does. Defaults to ending the process with 130. */
   onQuit?: () => void;
   onDone: (chosen: T[]) => void;
-  onCancel: () => void;
 }
 
 /** One drawn row: a top-level item, or a child of one. */
@@ -144,9 +143,7 @@ export function Picker<T>({
   onDelete,
   onQuit,
   onDone,
-  onCancel,
 }: PickerProps<T>) {
-  const { exit } = useApp();
   const { stdout } = useStdout();
   // Above the handler below, so it fires while the confirmation is waiting for
   // the word as well as on the list itself.
@@ -221,13 +218,12 @@ export function Picker<T>({
       return;
     }
 
-    // ctrl+c is not cancel any more — leaving planx is two of them, wherever
-    // you are, and `useDoubleCtrlC` above owns the key.
-    if (key.escape) {
-      onCancel();
-      exit();
-      return;
-    }
+    // `esc` does not leave the list. Leaving planx is ctrl+c twice wherever you
+    // are, and this was the one screen where a single key still ended the
+    // session — on a list you reach by typing `planx` with no arguments, which
+    // is where a stray escape is likeliest. It still means *not this row*
+    // inside the delete confirmation above, which is backing out of a
+    // question rather than leaving.
     if (key.downArrow || (key.ctrl && input === 'n')) {
       return setCursor((c) => Math.min(rows.length - 1, c + 1));
     }
@@ -273,7 +269,7 @@ export function Picker<T>({
   const hints: Hint[] = [
     ['↑↓', 'choose'],
     ['enter', 'open'],
-    ['esc', 'cancel'],
+    ['^c', 'exit'],
   ];
   // The tree is the only thing on this screen with no key on the bar saying it
   // is there. Contextual, the way the review varies `d show diff` / `d hide

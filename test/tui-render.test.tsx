@@ -2350,7 +2350,6 @@ function mountPicker<T>(
       onDelete={onDelete}
       onQuit={() => quits.push(Date.now())}
       onDone={resolve}
-      onCancel={() => resolve([])}
     />,
     {
       stdout: stdout as unknown as NodeJS.WriteStream,
@@ -2442,7 +2441,24 @@ describe('the picker as a version tree', () => {
     const keys = inner(bodyRows(app.stdout.lastFrame).at(-1)!)
       .split(' · ')
       .map((part) => part.split(' ')[0]!);
-    expect(keys).toEqual(['→', '↑↓', '^d', 'enter', 'esc']);
+    expect(keys).toEqual(['→', '↑↓', '^d', 'enter', '^c']);
+    app.unmount();
+  });
+
+  /**
+   * The list was the one screen where a single key still ended the session.
+   * Leaving planx is ctrl+c twice, everywhere.
+   */
+  it('does not close on esc, and says ^c exit instead', async () => {
+    const app = mountPicker(planRows(), () => []);
+    await app.ready();
+    expect(app.stdout.lastFrame).toContain('^c exit');
+    expect(app.stdout.lastFrame).not.toContain('esc cancel');
+
+    const before = bodyRows(app.stdout.lastFrame);
+    await app.press(ESC);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(bodyRows(app.stdout.lastFrame)).toEqual(before);
     app.unmount();
   });
 

@@ -251,7 +251,6 @@ export async function runPicker<T>(opts: RunPickerOptions<T>): Promise<T[]> {
         onDelete={opts.onDelete}
         version={opts.version}
         onDone={finish}
-        onCancel={() => finish([])}
       />,
       { exitOnCtrlC: false },
     );
