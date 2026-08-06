@@ -1,6 +1,5 @@
 import { Box, Text, useApp, useInput, useStdout } from 'ink';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { contextSha } from '../locks/anchor.js';
 import { buildAnnotation } from '../protocol/submit.js';
 import {
   bold,
@@ -15,10 +14,10 @@ import {
 } from '../render/ansi.js';
 import type { RenderMode } from '../render/diff.js';
 import type { LineEdit } from '../store/plans.js';
+import { contextSha } from '../store/text.js';
 import type { Annotation, Feedback } from '../store/types.js';
 import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO, topRule } from './frame.js';
 import { hintLines, orderHints, type Hint } from './hints.js';
-import { lockLines, unlockLines } from './locking.js';
 import { BOX_PADDING, buildModel, foldEnd, wrapComment, type ViewRow } from './model.js';
 import {
   initialSelection,
@@ -27,7 +26,6 @@ import {
   scrollFor,
   settleCursor,
   spanAtCursor,
-  type LineSpan,
   type SelectionState,
 } from './selection.js';
 
@@ -147,9 +145,6 @@ export function ReviewApp(props: ReviewAppProps) {
   const [foldedSections, setFoldedSections] = useState<ReadonlySet<number>>(() => new Set());
   const [collapsedFeedback, setCollapsedFeedback] = useState<ReadonlySet<string>>(() => new Set());
   const [hiddenFeedback, setHiddenFeedback] = useState(false);
-  // Locks are written the moment they are made, so the model has to be told to
-  // read them back. Nothing else in this component changes what is on disk.
-  const [lockRevision, setLockRevision] = useState(0);
   const [mode, setMode] = useState<Mode>({ kind: 'browse' });
   const [status, setStatus] = useState<string | null>(null);
   /** An annotation `j` is on its way to, once the rows have caught up. */
@@ -202,7 +197,6 @@ export function ReviewApp(props: ReviewAppProps) {
       shownEdits,
       draftId,
       draftText,
-      lockRevision,
     ],
   );
 
@@ -312,12 +306,8 @@ export function ReviewApp(props: ReviewAppProps) {
     const span = spanAtCursor(rows, selection);
     if (!span) return null;
     return (
-      annotations.find(
-        (a) =>
-          a.kind === 'comment' &&
-          a.anchor.start_line <= span.end &&
-          a.anchor.end_line >= span.start,
-      ) ?? null
+      annotations.find((a) => a.anchor.start_line <= span.end && a.anchor.end_line >= span.start) ??
+      null
     );
   }
 
@@ -328,14 +318,6 @@ export function ReviewApp(props: ReviewAppProps) {
   /** This version now differs from what is stored, so a submit has to say so. */
   function touch(version: number) {
     setTouched((set) => new Set(set).add(version));
-  }
-
-  /** Does a lock cover any line of this span? */
-  function isLocked(span: LineSpan): boolean {
-    for (let line = span.start; line <= span.end; line++) {
-      if (model.lockedLines.has(line)) return true;
-    }
-    return false;
   }
 
   function startFeedback() {
@@ -357,11 +339,6 @@ export function ReviewApp(props: ReviewAppProps) {
     if (!span) {
       return setStatus('Nothing to annotate there — that row is a deletion or a collapsed gap.');
     }
-    // A locked passage is settled. Commenting on it would ask for a change to
-    // text that cannot change, so the answer is to unlock it first.
-    if (isLocked(span)) {
-      return setStatus('Those lines are locked — press l to unlock them before commenting.');
-    }
 
     // Past the highest id already on this version, not past the count: the
     // stored ones are `a1`, `a2`, … and a new note beside them must not land on
@@ -371,7 +348,6 @@ export function ReviewApp(props: ReviewAppProps) {
       ...current,
       buildAnnotation(
         model.docLines,
-        'comment',
         span.start,
         span.end,
         '',
@@ -412,16 +388,12 @@ export function ReviewApp(props: ReviewAppProps) {
    * The reviewer rewrites the words themselves and what they submit is what
    * they meant — no round trip through an agent that has to guess which word.
    * It refuses where an edit would mean something other than it says: an older
-   * version is the text a newer one was built from, a sealed plan was closed by
-   * approving it, and a locked line is the reviewer's own record that a passage
-   * is settled.
+   * version is the text a newer one was built from, so rewriting it would
+   * change what a later version was revised away from.
    */
   function startEdit() {
     const row = rows[selection.cursor];
     if (row?.kind === 'feedback') return setStatus('That is feedback — press f to edit it.');
-    if (model.locks.sealed_at !== null) {
-      return setStatus('This plan is sealed — approving locked every section.');
-    }
     if (versionB !== latest) {
       return setStatus(`Only v${latest} can be edited — press → to reach it.`);
     }
@@ -429,20 +401,10 @@ export function ReviewApp(props: ReviewAppProps) {
     const span = spanAtCursor(rows, selection);
     if (!span) return setStatus('Nothing to edit there.');
 
-    const open: number[] = [];
-    let locked = 0;
-    for (let line = span.start; line <= span.end; line++) {
-      if (model.lockedLines.has(line)) locked++;
-      else open.push(line);
-    }
-    if (!open.length) {
-      return setStatus('That line is locked — press l to unlock it before editing.');
-    }
-
     setSelection((s) => reduceSelection(s, { type: 'clear' }, rows));
-    // A selection walks: the lines open one at a time from the top, and the
-    // ones a lock covers are stepped over rather than silently included.
-    if (locked) setStatus(`Skipped ${locked} locked line${locked === 1 ? '' : 's'}.`);
+    // A selection walks: the lines open one at a time, from the top.
+    const open: number[] = [];
+    for (let line = span.start; line <= span.end; line++) open.push(line);
     openLine(open[0]!, open.slice(1));
   }
 
@@ -467,51 +429,6 @@ export function ReviewApp(props: ReviewAppProps) {
       else next.set(line, draft);
       return next;
     });
-  }
-
-  /**
-   * `l` is a toggle, so a selection that is already locked comes back off.
-   * A partly locked selection locks the rest: the intent of pressing lock on
-   * something half locked is to end up with it locked. Only the parts that are
-   * not locked already get a record — see ../locks/manage.ts.
-   *
-   * Both halves write to the lock file straight away — see ./locking.ts.
-   */
-  function toggleLock() {
-    const span = spanAtCursor(rows, selection);
-    if (!span) return setStatus('Nothing to lock there.');
-
-    let allLocked = true;
-    for (let line = span.start; line <= span.end; line++) {
-      if (!model.lockedLines.has(line)) allLocked = false;
-    }
-
-    if (allLocked) {
-      const removed = unlockLines(props.planId, model.docLines, span);
-      const lines = `line${span.start === span.end ? '' : 's'} ${describeSpan(span)}`;
-      setStatus(removed.length ? `Unlocked ${lines}.` : `Nothing was locking ${lines}.`);
-    } else {
-      const result = lockLines(props.planId, model.docLines, versionB, span);
-      // Say what happened rather than claiming the whole span: half of it may
-      // already have been frozen by an earlier press. Not which lock it became:
-      // the id is an internal handle, `planx locks` prints it, and the ⚿ in the
-      // gutter has already said the line is frozen.
-      const parts = result.locked.map(
-        (l) => `locked line${l.start === l.end ? '' : 's'} ${describeSpan(l)}`,
-      );
-      if (result.skipped.length) {
-        const single =
-          result.skipped.length === 1 && result.skipped[0]!.start === result.skipped[0]!.end;
-        parts.push(
-          `${result.skipped.map(describeSpan).join(', ')} ${single ? 'was' : 'were'} already locked`,
-        );
-      }
-      // The capital and the stop belong to the finished line, not to each part.
-      setStatus(sentence(parts.join(' · ')));
-    }
-
-    setLockRevision((n) => n + 1);
-    setSelection((s) => reduceSelection(s, { type: 'clear' }, rows));
   }
 
   /**
@@ -582,9 +499,9 @@ export function ReviewApp(props: ReviewAppProps) {
    * exactly the feedback worth being taken to.
    */
   function nextFeedback() {
-    const ordered = [...annotations]
-      .filter((a) => a.kind === 'comment')
-      .sort((a, b) => a.anchor.end_line - b.anchor.end_line || a.id.localeCompare(b.id));
+    const ordered = [...annotations].sort(
+      (a, b) => a.anchor.end_line - b.anchor.end_line || a.id.localeCompare(b.id),
+    );
     if (!ordered.length) return setStatus('No feedback on this version.');
 
     const row = rows[selection.cursor];
@@ -711,7 +628,6 @@ export function ReviewApp(props: ReviewAppProps) {
       if (input === 'e') return startEdit();
       if (input === 'f') return startFeedback();
       if (input === 'j') return nextFeedback();
-      if (input === 'l') return toggleLock();
       if (input === 'd' && previousVersion !== null) return toggleDiff();
       if (input === 'h') return setHiddenFeedback((on) => !on);
       if (input === 'n') return setMode({ kind: 'note', draft: general });
@@ -916,9 +832,7 @@ export function ReviewApp(props: ReviewAppProps) {
 
   return (
     <Box flexDirection="column">
-      <Text>
-        {topRule(frameWidth, headerText(props, versionA, versionB, model.locks.sealed_at !== null))}
-      </Text>
+      <Text>{topRule(frameWidth, headerText(props, versionA, versionB))}</Text>
       <Text>{frameLine('', inner)}</Text>
       {body.map((line, i) => (
         <Text key={i}>{frameLine(line, inner)}</Text>
@@ -935,10 +849,9 @@ export function ReviewApp(props: ReviewAppProps) {
             anyFeedback: annotations.length > 0,
             heading: headingHint,
             noteFolded,
-            locked: isCursorLocked(model, rows, selection),
             // Where `e` cannot work it is not offered: a key that declines one
             // press after being advertised teaches the wrong thing.
-            canEdit: model.locks.sealed_at === null && versionB === latest,
+            canEdit: versionB === latest,
             annotated: Boolean(annotationAtCursor()),
             selecting: selection.active,
             plural: spanSize(rows, selection) > 1,
@@ -957,17 +870,9 @@ export function ReviewApp(props: ReviewAppProps) {
   );
 }
 
-function headerText(
-  props: ReviewAppProps,
-  versionA: number | null,
-  versionB: number,
-  sealed: boolean,
-): string {
+function headerText(props: ReviewAppProps, versionA: number | null, versionB: number): string {
   const versions = `v${versionB}${versionA === null ? '' : ` ← v${versionA}`}`;
-  return brandTitle(
-    props.version,
-    `${props.planId}  ${dim(versions)}${sealed ? `  ${bold(signal('sealed'))}` : ''}`,
-  );
+  return brandTitle(props.version, `${props.planId}  ${dim(versions)}`);
 }
 
 /* ------------------------------------------------------- what is stored */
@@ -1021,30 +926,12 @@ function approveBlocked(count: number, note: string): string {
   return `This version has ${has.join(' and ')}. Delete ${single ? 'it' : 'them'} or press s to submit.`;
 }
 
-function describeSpan(span: LineSpan): string {
-  return span.start === span.end ? `${span.start}` : `${span.start}–${span.end}`;
-}
-
-/**
- * Every message the review puts on the status line is a sentence: a leading
- * capital and a closing stop, the rule planx's printed output already follows.
- *
- * Applied to a line that was assembled from parts rather than written whole, so
- * the capital and the stop belong to the finished line.
- */
-function sentence(text: string): string {
-  const trimmed = text.trim();
-  if (!trimmed) return trimmed;
-  const capitalised = `${trimmed[0]!.toUpperCase()}${trimmed.slice(1)}`;
-  return /[.!?…]$/.test(capitalised) ? capitalised : `${capitalised}.`;
-}
-
 /** What `a` is about to do — including the edits it saves on the way in. */
 function approveMessage(version: number, edits: number): string {
-  const seals = edits
-    ? `This saves ${edits} edited line${edits === 1 ? '' : 's'}, then seals`
-    : 'This seals';
-  return `Approve v${version}? ${seals} the plan — every section becomes locked.`;
+  const saves = edits
+    ? ` This saves ${edits} edited line${edits === 1 ? '' : 's'} on the way in.`
+    : '';
+  return `Approve v${version}?${saves}`;
 }
 
 /**
@@ -1217,8 +1104,7 @@ interface HintContext {
   heading: 'fold' | 'unfold' | null;
   /** The note under the cursor is already folded, so `space` opens it. */
   noteFolded: boolean;
-  locked: boolean;
-  /** `e` can work here: the latest version of a plan nobody has sealed. */
+  /** `e` can work here: the latest version of the plan. */
   canEdit: boolean;
   annotated: boolean;
   /** A selection is live, so `v` ends it rather than starting one. */
@@ -1233,10 +1119,10 @@ interface HintContext {
 /**
  * The hints offer what this row can actually do, in the one order.
  *
- * Feedback and approval are both conditional: you cannot comment on a locked
- * passage, and approving a plan you have notes on would seal the lines the
- * notes are about. `d` is missing on v1 rather than bound to an apology.
- * Showing keys that refuse to work teaches the wrong thing.
+ * Approval is conditional — approving a plan you have notes on would say the
+ * plan is settled while asking for it to change — and `d` is missing on v1
+ * rather than bound to an apology. Showing keys that refuse to work teaches the
+ * wrong thing.
  *
  * `g G ^d ^u` are gone from here and stay in `?`. They are the keys you already
  * know from every pager, and they were the third of the line that never
@@ -1274,7 +1160,6 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
     ];
   if (mode.kind === 'help') return [['any key', 'to close']];
 
-  const lines = ctx.plural ? 'lines' : 'line';
   const hints: Hint[] = [
     ['n', 'note'],
     ['x', 'exit'],
@@ -1288,20 +1173,18 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
   if (row?.kind === 'feedback') {
     hints.push(['space', ctx.noteFolded ? 'unfold feedback' : 'fold feedback'], ['f', 'edit']);
   } else if (standsInForHiddenLines(row)) {
-    // Nothing on a stand-in row can be commented on or locked, so neither key
-    // is offered. `space` is the only one that means anything here.
+    // Nothing on a stand-in row can be commented on, so `f` is not offered.
+    // `space` is the only key that means anything here.
     hints.push(
       ['space', ctx.heading ? 'unfold section' : 'expand'],
       ['v', ctx.selecting ? 'unselect lines' : 'select lines'],
     );
   } else {
+    const lines = ctx.plural ? 'lines' : 'line';
     if (ctx.heading) hints.push(['space', `${ctx.heading} section`]);
     hints.push(['v', ctx.selecting ? 'unselect lines' : 'select lines']);
-    if (ctx.locked) hints.push(['l', `unlock ${lines}`]);
-    else {
-      hints.push(['f', ctx.annotated ? 'edit' : 'feedback'], ['l', `lock ${lines}`]);
-      if (ctx.canEdit) hints.push(['e', `rewrite ${lines}`]);
-    }
+    hints.push(['f', ctx.annotated ? 'edit' : 'feedback']);
+    if (ctx.canEdit) hints.push(['e', `rewrite ${lines}`]);
   }
 
   if (ctx.anyFeedback) hints.push(['j', 'next feedback']);
@@ -1319,11 +1202,11 @@ function standsInForHiddenLines(row: ViewRow | undefined): boolean {
 /**
  * The widest bar browse mode can produce, for the height to be reserved from.
  *
- * It is one real hint set rather than the union of all of them: an unlocked
- * heading on a version carrying feedback, with every either/or resolved to the
- * longer side. That branch offers the most keys of any row — `space` for the
- * section on top of the three a document line always has — and `j` rides along
- * with it, so nothing the cursor can land on needs more rows than this.
+ * It is one real hint set rather than the union of all of them: a heading on a
+ * version carrying feedback, with every either/or resolved to the longer side.
+ * That branch offers the most keys of any row — `space` for the section on top
+ * of the ones a document line always has — and `j` rides along with it, so
+ * nothing the cursor can land on needs more rows than this.
  */
 function widestHints(ctx: Pick<HintContext, 'canDiff' | 'manyVersions'>): Hint[] {
   const hints: Hint[] = [
@@ -1335,7 +1218,6 @@ function widestHints(ctx: Pick<HintContext, 'canDiff' | 'manyVersions'>): Hint[]
     ['e', 'rewrite lines'],
     ['f', 'feedback'],
     ['j', 'next feedback'],
-    ['l', 'lock lines'],
   ];
   if (ctx.canDiff) hints.push(['d', 'show diff']);
   if (ctx.manyVersions) hints.push(['←→', 'version']);
@@ -1356,19 +1238,6 @@ function spanSize(rows: readonly ViewRow[], selection: SelectionState): number {
   return span ? span.end - span.start + 1 : 1;
 }
 
-function isCursorLocked(
-  model: { lockedLines: ReadonlyMap<number, string> },
-  rows: readonly ViewRow[],
-  selection: SelectionState,
-): boolean {
-  const span = spanAtCursor(rows, selection);
-  if (!span) return false;
-  for (let line = span.start; line <= span.end; line++) {
-    if (model.lockedLines.has(line)) return true;
-  }
-  return false;
-}
-
 /**
  * Every key, in the same order the hint line puts them.
  *
@@ -1379,7 +1248,7 @@ function isCursorLocked(
 const HELP: Array<[Hint, 'always' | 'versioned']> = [
   [['←→', 'the previous and next version of the plan'], 'versioned'],
   [['↑↓', 'move a row at a time — a note box is one stop, on its first line'], 'always'],
-  [['a', 'approve — seals the plan, and only when you have no feedback'], 'always'],
+  [['a', 'approve — only when you have no feedback on this version'], 'always'],
   [['d', 'show the diff against the previous version, or hide it'], 'versioned'],
   [['e', 'rewrite the line, or every line of the selection, in place'], 'always'],
   [['f', 'feedback on the selection, or edit the note under the cursor'], 'always'],
@@ -1388,7 +1257,6 @@ const HELP: Array<[Hint, 'always' | 'versioned']> = [
   [['^f ^b', 'a whole screen down or up'], 'always'],
   [['h', 'fold or unfold every note at once'], 'always'],
   [['j', 'the next feedback on this version, wrapping at the end'], 'always'],
-  [['l', 'lock or unlock the selection — applied immediately'], 'always'],
   [['n', 'a note about the whole plan'], 'always'],
   [['s', 'submit everything at once'], 'always'],
   [['space', 'fold the section or the note, or expand the run, under the cursor'], 'always'],

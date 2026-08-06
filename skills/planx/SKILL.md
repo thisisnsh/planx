@@ -74,8 +74,8 @@ only way to tell you about it is to annotate a plan built without it.
 
 Now do the actual work: read the code, understand the problem, make the
 decisions. Write the plan as markdown with an H1 title and `##` sections. The
-`##` sections matter — they are the unit the user locks, and the unit you will
-later collapse to save tokens.
+`##` sections matter — they are the unit the user folds, and the unit a comment
+is labelled with when it comes back.
 
 If the user already has an approved plan and is asking for a different one, this
 is a new plan. Do not revise the old one.
@@ -160,5 +160,3 @@ Never silently start a second plan, and never silently start implementing.
 - One `capture` per revision. Capturing identical content is a safe no-op, so
   you may call it defensively.
 - Never edit files under `~/.planx` yourself. Every change goes through the CLI.
-- Never work around a lock. Editing the store to defeat one is a serious breach
-  of the user's trust.

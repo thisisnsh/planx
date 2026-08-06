@@ -35,7 +35,6 @@ export default defineConfig({
           { text: 'Claude Code', link: '/claude-code' },
           { text: 'Codex', link: '/codex' },
           { text: 'Review Loop', link: '/review-loop' },
-          { text: 'Locking', link: '/locking' },
           { text: 'Diffing', link: '/diffing' },
           { text: 'Executing', link: '/executing' },
           { text: 'Deleting', link: '/retention' },

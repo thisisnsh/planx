@@ -36,7 +36,7 @@ prints the command to paste back, and that starts the next round.
 Check the feedback is actually stored and still open:
 
 ```bash
-planx locks <id> --json
+planx revise <id>
 ls ~/.planx/plans/<id>/feedback/
 ```
 
@@ -47,45 +47,6 @@ version:
 ```bash
 planx diff <id>
 ```
-
-## `capture` keeps getting rejected
-
-Read the message: it names the lock and shows the diff. Two ways forward.
-
-**You did not mean to change it.** Use the marker instead of retyping the block:
-
-```bash
-planx show <id> latest --skeleton    # locked blocks become [[planx:keep L2]]
-# edit, keeping the markers as-is
-planx capture --plan-id <id> --splice --stdin
-```
-
-**You did mean to change it.** Ask:
-
-It has to explain the change to you first, and only run this once you agree:
-
-```bash
-planx unlock <id> L2 --reason "..."
-```
-
-The reason lands on the record. `planx locks <id>` shows every grant that was
-issued, which is how you spot one you never agreed to.
-
-## "locked block L2 now appears more than once"
-
-The locked text got duplicated into a second copy, and planx will not guess
-which one is the locked one. Remove the duplicate, or unlock the block and
-re-lock the copy you meant.
-
-## "a `[[planx:keep …]]` marker must be alone on its line"
-
-Markers are only expanded when they are the entire line. A marker mid-sentence
-is an error rather than silently passed through, because a dropped marker means
-silently deleting a section of the plan.
-
-Markers **inside a fenced code block are left literal** and not expanded — so
-you can document the syntax. `capture` prints a note saying which lines those
-were.
 
 ## The TUI looks broken, or colours bleed
 
@@ -103,8 +64,8 @@ If the terminal is left in a strange state after a crash, run `reset`.
 planx doctor
 ```
 
-It reports plans whose version files are missing or whose locks cannot be
-located, and rebuilds `index.json` from the plan directories.
+It reports plans with no versions recorded and versions whose files are
+missing, and rebuilds `index.json` from the plan directories.
 
 If a stale lockfile is left by a killed process, planx steals it after 10
 seconds. If it complains about one persistently and no planx process is running,
@@ -112,12 +73,12 @@ delete the named `.lock` file.
 
 ## I deleted a plan by accident
 
-It is gone. There is no trash and nothing to restore from — `d` in the picker
-deletes permanently, which is what the red confirmation naming the plan in full
+It is gone. There is no trash and nothing to restore from — deleting from the
+picker is permanent, which is what the red confirmation naming the plan in full
 is there to say. See [Deleting](/retention).
 
 The one thing that survives is a version you deleted from a plan you kept: the
-plan, its other versions and its locks are all still there.
+plan and its other versions are all still there.
 
 ## Filing a bug
 

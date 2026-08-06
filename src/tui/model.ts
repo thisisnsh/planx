@@ -1,8 +1,6 @@
 import { collapse } from '../diff/collapse.js';
 import { diffVersions, rowsForSingleVersion } from '../diff/lines.js';
 import type { Block } from '../diff/types.js';
-import { normalizedLines } from '../locks/anchor.js';
-import { lockedLineMap } from '../locks/manage.js';
 import {
   hiddenLine,
   renderRichLines,
@@ -10,8 +8,9 @@ import {
   type RenderedLine,
   type RenderMode,
 } from '../render/diff.js';
-import { readLocks, readVersionText } from '../store/plans.js';
-import type { Annotation, LocksFile } from '../store/types.js';
+import { readVersionText } from '../store/plans.js';
+import { normalizedLines } from '../store/text.js';
+import type { Annotation } from '../store/types.js';
 
 /**
  * One drawn line, which is either part of the document or part of a feedback
@@ -66,9 +65,6 @@ export interface ReviewModel {
   versionB: number;
   /** The version under review, split into lines — the annotation coordinate space. */
   docLines: string[];
-  locks: LocksFile;
-  /** new-version line → the lock covering it, for the gutter and the l toggle. */
-  lockedLines: ReadonlyMap<number, string>;
   blocks: Block[];
   rows: ViewRow[];
   /** Columns a note box occupies, rail column included. */
@@ -118,7 +114,6 @@ export function buildModel(opts: BuildModelOptions): ReviewModel {
   const blocks = collapse(rawRows);
 
   const docLines = normalizedLines(newText);
-  const locks = readLocks(opts.planId);
 
   const shown = blocks.map((block, index) =>
     block.kind === 'gap' && opts.expandedGaps.has(index)
@@ -126,8 +121,7 @@ export function buildModel(opts: BuildModelOptions): ReviewModel {
       : block,
   );
 
-  const lockedLines = lockedLineMap(docLines, locks);
-  const rendered = renderRichLines(shown, { mode: opts.mode, lockedLines, edits: opts.edits });
+  const rendered = renderRichLines(shown, { mode: opts.mode, edits: opts.edits });
 
   // The rail runs between the line number and the text, so the box opens off it
   // in the same column and its text starts on the same left edge the plan's
@@ -203,8 +197,6 @@ export function buildModel(opts: BuildModelOptions): ReviewModel {
     versionA: opts.versionA,
     versionB: opts.versionB,
     docLines,
-    locks,
-    lockedLines,
     blocks,
     rows,
     boxWidth,
@@ -326,7 +318,6 @@ function foldRow(fold: OpenFold, metrics: HiddenLineMetrics): DocRow {
 function railedLines(annotations: readonly Annotation[]): Set<number> {
   const lines = new Set<number>();
   for (const annotation of annotations) {
-    if (annotation.kind !== 'comment') continue;
     for (let i = annotation.anchor.start_line; i <= annotation.anchor.end_line; i++) lines.add(i);
   }
   return lines;
@@ -342,7 +333,7 @@ function visibleHeight(block: Block): number {
 
 /** Comment annotations whose last line is `line`. */
 function endingAt(annotations: readonly Annotation[], line: number): Annotation[] {
-  return annotations.filter((a) => a.kind === 'comment' && a.anchor.end_line === line);
+  return annotations.filter((a) => a.anchor.end_line === line);
 }
 
 const MAX_BOX_WIDTH = 72;

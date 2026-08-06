@@ -4,15 +4,14 @@
  * They are a port rather than a screenshot, which is the point — a reader
  * learns the keys by pressing them — and a port is exactly the thing that goes
  * quietly out of date. These tests hold the visible parts of the CLI's screen
- * against the simulator's: the gutter, the rail, the note box, the lock glyph,
- * the hint bar, and the markdown a submit hands the agent.
+ * against the simulator's: the gutter, the rail, the note box, the hint bar,
+ * and the markdown a submit hands the agent.
  */
 
 import { describe, expect, it } from 'vitest';
 import {
   createState,
   frameText,
-  hintsFor,
   layout,
   press,
   type SimState,
@@ -54,17 +53,6 @@ describe('the website demo', () => {
     expect(screen).toContain('This version has 2 feedbacks.');
   });
 
-  it('marks locked lines with the glyph and refuses feedback on them', () => {
-    const state = open('locking');
-    send(state, 'G');
-    expect(frameText(state)).toContain('⚿');
-
-    // Onto a locked line, then f — the review says why rather than opening a box.
-    send(state, 'f');
-    expect(state.status).toContain('locked');
-    expect(hintsFor(state).map((hint) => hint[0])).not.toContain('f');
-  });
-
   it('takes feedback on a selection and quotes it back to the agent', () => {
     const state = open('review');
     send(state, 'down', 'down', 'v', 'down', 'f');
@@ -87,11 +75,10 @@ describe('the website demo', () => {
     expect(state.mode.kind).toBe('browse');
   });
 
-  it('seals every section on approve', () => {
-    const state = open('sealed');
+  it('hands over the execute command on approve', () => {
+    const state = open('executing');
     send(state, 'a', 'enter');
-    expect(state.sealed).toBe(true);
-    expect(state.handoff).toContain('Approved and sealed');
+    expect(state.handoff).toContain('Approved. Implement it as written.');
     expect(frameText(state)).toContain('/planx execute guard-clock-a3f9 v3');
   });
 

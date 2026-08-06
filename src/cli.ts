@@ -9,11 +9,9 @@ import {
   cmdDiff,
   cmdDoctor,
   cmdList,
-  cmdLocks,
   cmdRemoveSkills,
   cmdRevise,
   cmdShow,
-  cmdUnlock,
   cmdUpdate,
   type Ctx,
 } from './cli/commands.js';
@@ -58,16 +56,12 @@ async function dispatch(name: string, ctx: Ctx): Promise<number> {
       return cmdCapture(ctx);
     case 'revise':
       return cmdRevise(ctx);
-    case 'unlock':
-      return cmdUnlock(ctx);
     case 'diff':
       return cmdDiff(ctx);
     case 'show':
       return cmdShow(ctx);
     case 'list':
       return cmdList(ctx);
-    case 'locks':
-      return cmdLocks(ctx);
     case 'add-skills':
       return cmdAddSkills(ctx);
     case 'remove-skills':

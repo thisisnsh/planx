@@ -20,7 +20,7 @@ opens the unchanged lines it stands for:
 
 | Flag | Rendering |
 | --- | --- |
-| *(default)* | **Rich** — highlighted code fences, bold headings, word-level intra-line diff, collapsed runs of unchanged lines, `⚿` lock gutter |
+| *(default)* | **Rich** — highlighted code fences, bold headings, word-level intra-line diff, collapsed runs of unchanged lines |
 | `--plain` | **Plain** — raw source as a real unified diff with `@@` hunk headers, no ANSI beyond `+`/`-` colouring |
 
 Rendering mode is independent of interactivity: `--plain` works in the TUI and
@@ -76,19 +76,18 @@ Accepted anywhere a version is named:
 | `v` | Start or end a selection, then `↑` `↓` to extend |
 | `space` | Fold the note, or expand the collapsed run, under the cursor |
 | `f` | Feedback on the selection, or edit the note under the cursor |
-| `l` | Lock or unlock the selection — written immediately |
-| `d` | Delete the note under the cursor |
+| `e` | Rewrite the line, or every line of the selection, in place |
 | `h` | Fold or unfold every note at once |
 | `n` | A note about the whole plan |
 | `s` | Submit everything at once |
-| `a` | Approve — seals the plan |
+| `a` | Approve — marks the version settled |
 | `x` | Leave without submitting |
 | `?` | Help |
 
 The hints along the bottom offer only what the row under the cursor can do, so
 `s` and `a` are never both on screen: `a` while you have nothing to say, `s`
-once you do. A locked passage offers `l unlock` and no `f` at all — see
-[Locking](/locking).
+once you do. `e` is offered on the latest version and nowhere else — rewriting
+v2 while v3 exists would change the text v3 was built from.
 
 All lowercase, and there is no `c`: it sits next to `ctrl-c`, which is how you
 leave a terminal program.

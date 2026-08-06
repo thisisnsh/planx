@@ -71,57 +71,6 @@ export const VersionsFileSchema = z.object({
 });
 export type VersionsFile = z.infer<typeof VersionsFileSchema>;
 
-/* ----------------------------------------------------------------- locks */
-
-export const LockRecordSchema = z.object({
-  id: z.string(),
-  created: z.string(),
-  /** "user" — locked by hand in the TUI. "seal" — created by approving a version. */
-  origin: z.enum(['user', 'seal']),
-  section: z.string().nullable().default(null),
-  /** sha256 of the normalized locked text. */
-  sha256: z.string(),
-  /**
-   * sha256 of the lines immediately surrounding the lock. Only consulted when
-   * the locked text appears more than once, to pick the right occurrence
-   * instead of guessing.
-   */
-  context_sha: z.string().default(''),
-  /** Verbatim locked text, so it can be re-spliced into a later version. */
-  text: z.string(),
-  first_locked_version: z.number().int(),
-  still_present_in: z.number().int(),
-  /** Grant id consumed by the capture that last legitimately modified this lock. */
-  consumed_grant: z.string().nullable().default(null),
-});
-export type LockRecord = z.infer<typeof LockRecordSchema>;
-
-/**
- * A single-use permission to modify exactly one lock, issued by the human in
- * response to an `unlock-request`. It authorises one capture and then burns.
- */
-export const GrantRecordSchema = z.object({
-  id: z.string(),
-  lock_id: z.string(),
-  granted_at: z.string(),
-  reason: z.string().default(''),
-  note: z.string().default(''),
-  used_at: z.string().nullable().default(null),
-  used_by_version: z.number().int().nullable().default(null),
-});
-export type GrantRecord = z.infer<typeof GrantRecordSchema>;
-
-export const LocksFileSchema = z.object({
-  format_version: formatVersion,
-  /** Set when a version is approved; null before. */
-  sealed_at: z.string().nullable().default(null),
-  sealed_version: z.number().int().nullable().default(null),
-  next_seq: z.number().int().default(1),
-  locks: z.record(z.string(), LockRecordSchema).default({}),
-  grants: z.record(z.string(), GrantRecordSchema).default({}),
-});
-export type LocksFile = z.infer<typeof LocksFileSchema>;
-
 /* ----------------------------------------------------------------- index */
 
 export const IndexEntrySchema = z.object({
@@ -131,7 +80,6 @@ export const IndexEntrySchema = z.object({
   updated: z.string(),
   latest: z.number().int(),
   approved: z.boolean().default(false),
-  sealed: z.boolean().default(false),
 });
 export type IndexEntry = z.infer<typeof IndexEntrySchema>;
 
@@ -153,7 +101,7 @@ export type Anchor = z.infer<typeof AnchorSchema>;
 
 export const AnnotationSchema = z.object({
   id: z.string(),
-  kind: z.enum(['comment', 'lock', 'unlock']),
+  kind: z.enum(['comment']),
   anchor: AnchorSchema,
   /**
    * The verbatim text of the anchored lines. Anchoring is quote-first: line

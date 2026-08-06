@@ -31,11 +31,10 @@ Press `v` to start a selection, extend it with the arrows, and then:
 | --- | --- |
 | `f` | Feedback on the selection — or edit the note under the cursor |
 | `e` | Rewrite the line yourself, in place |
-| `l` | Lock the selection, or lift a lock |
 | `n` | A note about the whole plan |
 | `d` `←` `→` | The diff against the previous version, and the history |
 | `s` | Submit everything at once |
-| `a` | Approve — seals the plan |
+| `a` | Approve — marks the version settled |
 | `?` | Every key |
 
 <PlanxSim scenario="agents" :rows="14" />
@@ -54,25 +53,9 @@ That is gone. Claude captures the plan, tells you to run `planx`, and ends its
 turn. You review whenever you like. The reviewer prints the command to hand
 back, and pasting it starts the next round with the session's context intact.
 
-## When Claude hits a lock
-
-If Claude tries to modify a locked block, `capture` exits non-zero and nothing
-is written. The skill tells it to either fix its output — usually by using the
-`[[planx:keep L2]]` marker instead of retyping the block — or to ask:
-
-It has to ask you in chat first — what the block says, what it wants instead,
-and why. Only once you agree does it run:
-
-```bash
-planx unlock <plan-id> L2 --reason "the flag adds no value here"
-```
-
-That grants exactly one capture and records the reason, which is what makes the
-decision reviewable later in `planx locks`.
-
 ## After approval
 
-Approving seals the plan and prints one command to paste back — no questions
-about agents or models. planx cannot switch a running session's model and no
-agent CLI lets it, so it prints the command and you run it wherever you like.
-See [Executing](/executing).
+Approving prints one command to paste back — no questions about agents or
+models. planx cannot switch a running session's model and no agent CLI lets it,
+so it prints the command and you run it wherever you like. See
+[Executing](/executing).

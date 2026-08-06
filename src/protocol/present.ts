@@ -1,30 +1,11 @@
-import { locateLock } from '../locks/anchor.js';
-import type { EditRecord, Feedback, LocksFile } from '../store/types.js';
+import type { EditRecord, Feedback } from '../store/types.js';
 
 interface PresentOptions {
   planId: string;
   version: number;
   feedback: Feedback[];
-  locks: LocksFile;
-  /** The version's lines, for reporting where each lock currently sits. */
-  docLines: string[];
   /** Lines the reviewer rewrote in place, as the version records them. */
   edits?: readonly EditRecord[];
-}
-
-function describeLocks(opts: PresentOptions): string[] {
-  const rows: string[] = [];
-  for (const lock of Object.values(opts.locks.locks)) {
-    const found = locateLock(opts.docLines, lock);
-    const where = found.ok
-      ? found.range.start === found.range.end
-        ? `(line ${found.range.start + 1})`
-        : `(lines ${found.range.start + 1}–${found.range.end + 1})`
-      : '(not located in this version)';
-    const label = lock.section ? `${JSON.stringify(lock.section)} ` : '';
-    rows.push(`- **${lock.id}** ${label}${where} — do not modify`);
-  }
-  return rows.sort();
 }
 
 /**
@@ -63,7 +44,7 @@ export interface CarriedComment {
  *
  * `await` used to deliver this by blocking until the reviewer submitted. The
  * reviewer now hands over a command instead, so the same payload is assembled
- * on demand: what was asked of the plan, and what may not change.
+ * on demand.
  *
  * Not the plan itself. It used to emit the whole thing as a fenced skeleton on
  * every call, which for a plan of any size dwarfed the feedback it exists to
@@ -108,11 +89,8 @@ export function presentResume(opts: ResumeOptions): string {
 
   if (opts.carried.length) out.push(...carriedSection(opts.carried));
 
-  const locked = describeLocks(opts);
-  if (locked.length) out.push('### Locked', ...locked, '');
-
   if (verdict === 'approve') {
-    out.push('---', 'Approved and sealed — every section is locked. Implement it as written.', '');
+    out.push('---', 'Approved. Implement it as written.', '');
     return out.join('\n');
   }
   if (verdict === 'reject') {
@@ -127,18 +105,8 @@ export function presentResume(opts: ResumeOptions): string {
   const lead = asked.length
     ? 'Revise the plan addressing every comment.'
     : 'Revise the plan, keeping every edited line exactly as it now reads.';
-  if (locked.length) {
-    out.push(
-      `${lead} Locked blocks must be reproduced`,
-      'as `[[planx:keep L1]]` markers — do not re-emit their text. Then run:',
-    );
-  } else {
-    out.push(`${lead} Then run:`);
-  }
-  out.push(
-    `  planx capture --plan-id ${opts.planId} --parent v${opts.version} --splice --stdin`,
-    '',
-  );
+  out.push(`${lead} Then run:`);
+  out.push(`  planx capture --plan-id ${opts.planId} --parent v${opts.version} --stdin`, '');
   return out.join('\n');
 }
 
@@ -217,7 +185,6 @@ function renderAnnotations(feedback: Feedback[]): string[] {
   let index = 0;
   for (const record of feedback) {
     for (const annotation of record.annotations) {
-      if (annotation.kind !== 'comment') continue;
       index++;
       const where = annotation.section ? ` under ${JSON.stringify(annotation.section)}` : '';
       const lines =
@@ -255,7 +222,6 @@ export function carriedOver(
   for (const record of feedback) {
     if (record.version >= currentVersion) continue;
     for (const annotation of record.annotations) {
-      if (annotation.kind !== 'comment') continue;
       const quote = annotation.quote.replace(/\r\n/g, '\n').trim();
       if (!quote || !haystack.includes(quote)) continue;
       const key = `${quote} ${annotation.comment}`;

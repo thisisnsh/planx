@@ -26,8 +26,6 @@ export type RenderMode = 'rich' | 'plain';
 
 export interface DiffRenderOptions {
   mode: RenderMode;
-  /** new-version line number → lock id, drawn in the gutter. */
-  lockedLines?: ReadonlyMap<number, string>;
   /** new-version line number → the text the reviewer has rewritten it to. */
   edits?: ReadonlyMap<number, string>;
   context?: number;
@@ -35,14 +33,6 @@ export interface DiffRenderOptions {
   newLabel?: string;
 }
 
-/**
- * A glyph, not the padlock emoji.
- *
- * Emoji are two cells wide in some terminals and one in others, which is fatal
- * for a fixed-width gutter: the text column moves depending on whether a line
- * happens to be locked. This is one cell everywhere.
- */
-const LOCK_ICON = '⚿';
 const GAP_MARKER = '⋯';
 
 /* ------------------------------------------------------------------ rich */
@@ -54,7 +44,6 @@ export function lineNumberWidth(rows: DiffRow[]): number {
 
 export interface GutterOptions {
   numberWidth: number;
-  lockId?: string | undefined;
   /** Reserve the +/- column. Off when there is no diff to sign. */
   signs?: boolean;
   /** The reviewer rewrote this line and has not submitted it yet. */
@@ -65,11 +54,11 @@ export interface GutterOptions {
 
 /** Columns a gutter built with these options occupies. */
 export function gutterWidth(opts: { numberWidth: number; signs?: boolean }): number {
-  return 2 + (opts.signs === false ? 0 : 1) + opts.numberWidth + 1;
+  return (opts.signs === false ? 0 : 1) + opts.numberWidth + 1;
 }
 
 /**
- * The fixed-width prefix: lock marker, change sign, number.
+ * The fixed-width prefix: change sign, number.
  *
  * Fixed width is what keeps the text column aligned, so a multi-line selection
  * reads as a block rather than a ragged stack. Every column here has to earn its
@@ -81,7 +70,6 @@ export function gutterWidth(opts: { numberWidth: number; signs?: boolean }): num
  * an arrow one row.
  */
 export function renderGutter(row: DiffRow, opts: GutterOptions): string {
-  const lock = opts.lockId ? signal(LOCK_ICON) : ' ';
   // A pending edit signs itself `~`, in the column a diff signs `+` and `-`:
   // it is the third thing that can have happened to a line, so it belongs where
   // the eye is already looking for what happened to one.
@@ -102,10 +90,9 @@ export function renderGutter(row: DiffRow, opts: GutterOptions): string {
   // view. Under the cursor it goes yellow instead — finding where you are beats
   // knowing what changed on the one line you are looking at.
   const paint = opts.active ? signal : row.kind === 'add' ? green : row.kind === 'del' ? red : dim;
-  // One space after the marker, so `⚿10` does not read as one token, and one
-  // after the number. The second space the number used to get belongs to the
+  // One space after the number. The second space it used to get belongs to the
   // annotation rail, which sits between this and the text.
-  return `${lock} ${sign}${paint(num)} `;
+  return `${sign}${paint(num)} `;
 }
 
 /**
@@ -159,8 +146,6 @@ export interface RenderedLine {
   /** The new-version line this row occupies, or null (deletions, gaps). */
   newLine: number | null;
   gapIndex: number | null;
-  /** Whether a lock covers this line — the TUI refuses to comment on it. */
-  locked: boolean;
 }
 
 export interface RichLines {
@@ -196,7 +181,6 @@ export function hiddenLine(text: string, metrics: HiddenLineMetrics): RenderedLi
     text: dim(`${GAP_MARKER} ${text}`),
     newLine: null,
     gapIndex: null,
-    locked: false,
   };
 }
 
@@ -234,18 +218,14 @@ export function renderRichLines(blocks: Block[], opts: DiffRenderOptions): RichL
     }
 
     for (const row of block.rows) {
-      const lockId = row.newLine === null ? undefined : opts.lockedLines?.get(row.newLine);
       const rewritten = row.newLine === null ? undefined : opts.edits?.get(row.newLine);
       const edited = rewritten !== undefined;
-      // The lock id is not repeated after the text: the marker in the gutter
-      // already says the line is frozen, and `planx locks` says by which lock.
       lines.push({
-        gutter: renderGutter(row, { numberWidth, lockId, signs, edited }),
-        gutterActive: renderGutter(row, { numberWidth, lockId, signs, edited, active: true }),
+        gutter: renderGutter(row, { numberWidth, signs, edited }),
+        gutterActive: renderGutter(row, { numberWidth, signs, edited, active: true }),
         text: edited ? renderEditedText(row, rewritten, state) : renderRowText(row, state),
         newLine: row.newLine,
         gapIndex: null,
-        locked: Boolean(lockId),
       });
     }
   });
@@ -292,23 +272,9 @@ export function renderUnified(rows: DiffRow[], opts: DiffRenderOptions): string[
 /* ------------------------------------------------------------- documents */
 
 /** `planx show` — the plan itself, not a diff. */
-export function renderDocument(
-  text: string,
-  mode: RenderMode,
-  lockedLines?: ReadonlyMap<number, string>,
-): string[] {
+export function renderDocument(text: string, mode: RenderMode): string[] {
   const lines = splitLines(text);
-  if (mode === 'plain') return lines;
-
-  const highlighted = highlightMarkdown(lines);
-  if (!lockedLines?.size) return highlighted;
-
-  const width = Math.max(2, String(lines.length).length);
-  return highlighted.map((line, i) => {
-    const lockId = lockedLines.get(i + 1);
-    const marker = lockId ? signal(LOCK_ICON) : ' ';
-    return `${marker} ${dim(padStart(String(i + 1), width))}  ${line}`;
-  });
+  return mode === 'plain' ? lines : highlightMarkdown(lines);
 }
 
 export function renderStatLine(rows: DiffRow[]): string {

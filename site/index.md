@@ -5,17 +5,16 @@ title: What planx is
 # What planx is
 
 planx turns the plan your coding agent writes into a versioned artifact you can
-annotate line by line, lock in place, and hand back. Nothing blocks and nothing
-polls — and the agent cannot change a section you locked without asking you
-first.
+annotate line by line, rewrite by hand, and hand back. Nothing blocks and
+nothing polls.
 
 <div class="pnx-lede">
 
 Reviewing an agent's plan today means reading a wall of markdown in a chat
 window and answering it with more prose. Nothing is anchored, so the agent
-re-reads the whole plan to guess which paragraph you meant. And **nothing you
-settle stays settled** — the next revision quietly rewrites the section you
-already agreed on, and you only notice three versions later.
+re-reads the whole plan to guess which paragraph you meant. And **you cannot see
+what changed** — the next revision arrives as a fresh wall of markdown, and the
+diff is something you do in your head.
 
 </div>
 
@@ -38,33 +37,31 @@ Every page on this site carries one of these beside the feature it explains.
 | `v` | Start a selection; `↑` `↓` extend it. Selection is always whole lines. | [Review Loop](/review-loop#selection-is-line-based-everywhere) |
 | `f` | Feedback on the selection, anchored to those exact lines. `f` on a note edits it; empty it to delete it. | [Review Loop](/review-loop) |
 | `e` | Rewrite the line yourself, in place, as raw markdown. | [Review Loop](/review-loop#rewrite-a-line-yourself-with-e) |
-| `l` | Lock the selection, or lift a lock. Applied the moment you press it. | [Locking](/locking) |
 | `space` | Fold the section, or the note, or expand a collapsed run. | [Review Loop](/review-loop#getting-around-a-plan-you-have-read-before) |
 | `j` `h` | Walk the feedback; fold every note at once. | [Review Loop](/review-loop) |
 | `d` `←` `→` | The diff against the previous version, and the history. | [Diffing](/diffing) |
 | `n` | One note about the whole plan. | [Review Loop](/review-loop) |
 | `s` | Submit everything at once, and print the command to paste back. | [Review Loop](/review-loop#what-the-agent-sees) |
-| `a` | Approve — seals the plan and locks every section. | [Executing](/executing) |
+| `a` | Approve — marks the version settled, and prints the command that builds it. | [Executing](/executing) |
 | `?` | Every key, in the same order the hint bar puts them. | — |
 
 The hint bar along the bottom of the frame only ever offers keys that work on
-the row you are pointing at. `f` disappears on a locked passage, `d` is missing
-on v1, and `s submit` and `a approve` are never on the bar at the same time.
+the row you are pointing at. `e` disappears on any version but the latest, `d`
+is missing on v1, and `s submit` and `a approve` are never on the bar at the
+same time.
 
 ## The problem, concretely
 
-An agent proposes a plan across forty lines. You disagree with two of them, you
-want the rollout section left exactly as written, and the rest is fine.
+An agent proposes a plan across forty lines. You disagree with two of them, one
+sentence would be quicker to fix than to describe, and the rest is fine.
 
 Chat gives you one move: type a paragraph and hope. The agent maps your prose
 back onto its own text, revises everything at once, and returns a new wall of
-markdown. To find out what actually changed you diff it in your head. Meanwhile
-the rollout section you were happy with has picked up a new sentence, because
-nothing was holding it.
+markdown. To find out what actually changed you diff it in your head.
 
 The failure is not that agents write bad plans. It is that plan review has no
 artifact — no stable text to point at, no record of which version you saw, and
-no way to say "this part is finished" that survives the next generation.
+no way to change one line without asking for the whole thing again.
 
 ## What planx does instead
 
@@ -77,9 +74,8 @@ work on the text directly:
 - **Rewrite what you can say yourself.** `e` opens a line as its source and what
   you type is what the plan says — no round trip through an agent that has to
   guess which word you meant.
-- **Lock what is settled.** Select lines, press `l`. Locked blocks come back to
-  the agent as `[[planx:keep L1]]` markers it must reproduce verbatim.
-- **Approve when you are done.** The plan seals and every section locks.
+- **Approve when you are done.** The version is marked settled, and the review
+  prints the one command that builds it.
 
 A note hangs off a rail that runs down the lines it is about, between the line
 number and the text, so it is never a comment floating near a passage — it is
@@ -92,24 +88,6 @@ instead, and `←` and `→` walk the history.
 You press `s`. It prints a command to paste back to your agent, which picks the
 plan up with your annotations attached to the lines they came from, and it
 revises.
-
-## Why a lock is different from an instruction
-
-Enforcement lives in the storage layer, not in the prompt. `planx capture`
-refuses to write a version that mutates a locked block — so the agent physically
-cannot land the change, and has one path forward, which is to ask you.
-
-Walk it:
-
-<PlanxCapture />
-
-That distinction is the whole point. A prompt is advice, and an unattended agent
-in bypass-permissions mode will eventually ignore it. A rejected write is not
-advice, and the unlock you then agree to grants exactly one capture before the
-lock re-arms.
-
-Locks are an integrity mechanism against agent drift, not a security boundary
-against a hostile agent. See [Locking](/locking).
 
 ## Every plan you have, in one list
 
@@ -126,7 +104,7 @@ to manage:
 
 ```
 ~/.planx/plans/guard-clock-a3f9/
-  meta.json  versions.json  locks.json
+  meta.json  versions.json
   v1.md  v2.md  v3.md
   feedback/
 ```
@@ -146,5 +124,4 @@ Then type `/planx` in Claude Code or Codex.
 
 - [Install](/install) — what the installer touches, channels, rollback
 - [Review Loop](/review-loop) — capture, review, revise, approve
-- [Locking](/locking) — how locks are enforced and lifted
 - [CLI reference](/reference/cli) — every command and flag

@@ -2,13 +2,13 @@
  * What each page's demo opens on, and what it asks you to try.
  *
  * A demo that opens on an empty plan teaches nothing, so every scenario starts
- * mid-review: feedback already left, a section already locked, versions already
- * behind it. The checklist beside the frame is the page's own argument, one key
- * at a time — it ticks off what you actually did, and nothing is gated on it.
+ * mid-review: feedback already left, versions already behind it. The checklist
+ * beside the frame is the page's own argument, one key at a time — it ticks off
+ * what you actually did, and nothing is gated on it.
  */
 
 import type { SimOptions } from './engine.js';
-import { guardClock, guardClockSealed, lineOf, VERSIONS } from './plans.js';
+import { guardClock, lineOf, VERSIONS } from './plans.js';
 
 export interface Task {
   /** An entry the engine records in `did` when the key lands. */
@@ -31,12 +31,12 @@ export const SCENARIOS: Record<string, () => Scenario> = {
     plan: guardClock({ folded: [lineOf(V3, '## Context')] }),
     version: 3,
     diff: false,
-    lede: 'A real review, mid-flight: v3 of a plan, one comment already on it, the context section folded away, the rollout section frozen. Press d for the diff against v2.',
+    lede: 'A real review, mid-flight: v3 of a plan, one comment already on it, the context section folded away. Press d for the diff against v2.',
     tasks: [
       { id: 'move', label: 'Move the cursor with ↑ ↓' },
       { id: 'select', label: 'Select lines with v, then ↑ ↓' },
       { id: 'feedback', label: 'Comment on them with f — type, then enter' },
-      { id: 'lock', label: 'Freeze a section with l' },
+      { id: 'edit', label: 'Rewrite a line yourself with e' },
       { id: 'diff', label: 'Toggle the diff with d' },
       { id: 'fold', label: 'Fold a section or a note with space' },
       { id: 'submit', label: 'Send it all back with s' },
@@ -59,20 +59,6 @@ export const SCENARIOS: Record<string, () => Scenario> = {
     ],
   }),
 
-  /** Locking: freeze, unlock, and what approval does to the whole plan. */
-  locking: () => ({
-    plan: guardClock(),
-    version: 3,
-    diff: false,
-    lede: 'The rollout section carries lock L1. The ⚿ in the gutter is what a frozen line looks like.',
-    tasks: [
-      { id: 'lock', label: 'Select lines and press l to freeze them' },
-      { id: 'unlock', label: 'Press l on a frozen line to lift it' },
-      { id: 'feedback', label: 'Try f on a locked line — it declines, and says why' },
-      { id: 'approve', label: 'Press a to seal the plan: every section locks at once' },
-    ],
-  }),
-
   /** Diffing: versions, the diff toggle, collapsed runs. */
   diffing: () => ({
     plan: guardClock(),
@@ -87,15 +73,15 @@ export const SCENARIOS: Record<string, () => Scenario> = {
     ],
   }),
 
-  /** After approval: sealed, every section locked, nothing left to edit. */
-  sealed: () => ({
-    plan: guardClockSealed(),
+  /** Executing: a version you have nothing left to say about. */
+  executing: () => ({
+    plan: { ...guardClock(), feedback: {}, notes: {} },
     version: 3,
     diff: false,
-    lede: 'The same plan after a. It is sealed — every line carries a lock, and e refuses.',
+    lede: 'v3 with nothing left on it. Submitting an empty review is how you say the plan is fine — and what prints is the one command that builds it.',
     tasks: [
-      { id: 'move', label: 'Every section is frozen: ⚿ on every line' },
-      { id: 'lock', label: 'l still lifts one, if you have to' },
+      { id: 'submit', label: 's submits with nothing, and prints /planx execute' },
+      { id: 'move', label: '↑ ↓ read it through once more first' },
       { id: 'help', label: '? lists every key' },
     ],
   }),

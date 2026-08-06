@@ -7,13 +7,12 @@
  * loop rather than an empty document.
  *
  * Anchors are looked up by their text rather than written as line numbers.
- * Editing a fixture then cannot silently move a lock onto the wrong paragraph.
+ * Editing a fixture then cannot silently move a comment onto the wrong
+ * paragraph.
  */
 
 import type { SimPlan } from './engine.js';
-import type { SimLock } from './locks.js';
 import { splitLines } from './diff.js';
-import { sectionOf } from './markdown.js';
 
 const V1 = `# Guard the clock regression
 
@@ -158,33 +157,17 @@ export function lineOf(text: string, needle: string): number {
   return index + 1;
 }
 
-/** A lock over the lines from one anchor to another, inclusive. */
-export function lockOver(text: string, id: string, from: string, to: string): SimLock {
-  const lines = splitLines(text);
-  const start = lineOf(text, from);
-  const end = lineOf(text, to);
-  return {
-    id,
-    lines: lines.slice(start - 1, end),
-    section: sectionOf(lines, start - 1),
-    origin: 'user',
-  };
-}
-
 export const VERSIONS = [V1, V2, V3];
 
 /**
- * The plan as it stands after two rounds of review: the rollout section locked
- * on v1 and still locked, the feedback that turned the poller guard into an R2
- * guard still on v1, and one open question on v2.
+ * The plan as it stands after two rounds of review: the feedback that turned
+ * the poller guard into an R2 guard still on v1, and one open question on v2.
  */
-export function guardClock(options: { version?: number; folded?: number[] } = {}): SimPlan {
-  const latest = VERSIONS[options.version ? options.version - 1 : VERSIONS.length - 1]!;
+export function guardClock(options: { folded?: number[] } = {}): SimPlan {
   return {
     id: 'guard-clock-a3f9',
     title: 'Guard the clock regression',
     versions: VERSIONS,
-    locks: [lockOver(latest, 'L1', '## Rollout', 'not a fleet of bad clocks.')],
     feedback: {
       1: [
         {
@@ -227,30 +210,5 @@ export function guardClock(options: { version?: number; folded?: number[] } = {}
     },
     notes: { 1: 'Good problem statement. The fix is in the wrong place.' },
     folded: options.folded,
-  };
-}
-
-/** The same plan, approved: sealed, every section locked, nothing left to say. */
-export function guardClockSealed(): SimPlan {
-  const plan = guardClock();
-  const lines = splitLines(V3);
-  const starts: number[] = [];
-  lines.forEach((line, i) => {
-    if (/^#{1,3}\s+\S/.test(line)) starts.push(i + 1);
-  });
-  return {
-    ...plan,
-    feedback: {},
-    notes: {},
-    sealed: true,
-    locks: starts.map((start, i) => {
-      const end = i + 1 < starts.length ? starts[i + 1]! - 1 : lines.length;
-      return {
-        id: `L${i + 1}`,
-        lines: lines.slice(start - 1, end),
-        section: sectionOf(lines, start - 1),
-        origin: 'seal' as const,
-      };
-    }),
   };
 }

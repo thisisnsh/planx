@@ -64,12 +64,11 @@ which word you meant.
 It is a line editor, not a note box. `←` `→` move the caret, `^a` and `^e` reach
 the ends of the line, `enter` commits it and `esc` throws the draft away. There
 is no key that splits a line or joins two, so the line count never changes and
-every comment and lock keeps the line number it already had.
+every comment keeps the line number it already had.
 
 `v` a span first and the lines open one at a time from the top: `enter` commits
 this one and opens the next, `esc` ends the walk and keeps everything already
-committed. Lines a lock covers are stepped over, and the status line says how
-many were.
+committed.
 
 The edit lands **on the version on screen** — no new version is minted, because
 you already settled the wording and there is nothing left for an agent to
@@ -82,9 +81,8 @@ changed are lit against the ones you kept, and the summary counts them.
 ```
 
 `e` refuses where an edit would mean something other than it says, and where it
-refuses it is not on the hint bar at all: a locked line (unlock it with `l`
-first), a sealed plan, and any version but the latest — rewriting v2 while v3
-exists rewrites the text v3 was built from.
+refuses it is not on the hint bar at all: any version but the latest — rewriting
+v2 while v3 exists rewrites the text v3 was built from.
 
 `planx revise` reports what you rewrote in a section of its own, above what was
 asked, as settled text rather than a request:
@@ -102,8 +100,8 @@ asked, as settled text rather than a request:
 A version carrying feedback or a note offers `s submit`. A version carrying
 neither offers `a approve`. **A plan can be approved only when it carries no
 feedback and no note**, which is why the two are never on the bar at once:
-approving seals the plan, and sealing the very lines a comment is asking to
-change would be a contradiction the tool should not let you write.
+calling a version settled while a comment on it asks for a change would be a
+contradiction the tool should not let you write.
 
 Press `a` anyway and it says what is in the way:
 
@@ -163,7 +161,7 @@ what is on disk is what you last saw on screen.
   "annotations": [
     {
       "id": "a1",
-      "kind": "comment",            // "comment" | "lock" | "unlock"
+      "kind": "comment",
       "anchor": { "start_line": 42, "end_line": 47, "context_sha": "9f2c…" },
       "quote": "…the full text of lines 42–47, verbatim…",
       "comment": "Wrong layer. Guard belongs in the R2 write path, not the poller.",
@@ -181,15 +179,14 @@ never the source of truth.
 
 ## Selection is line-based, everywhere
 
-**You cannot select a sub-line span.** Every selection — feedback, lock, unlock
-— snaps to whole lines. `v` anchors a selection and the arrow keys extend it.
+**You cannot select a sub-line span.** Every selection — feedback, a rewrite —
+snaps to whole lines. `v` anchors a selection and the arrow keys extend it.
 
 This is a deliberate constraint. A word-level anchor gives the model an
 ambiguous target ("this word, in a sentence you are about to rewrite anyway"),
 while a line range gives it a self-contained unit it can reason about and
-replace. It also means feedback anchors, lock anchors and diff hunks share one
-coordinate system, so a lock and a comment on overlapping text compose
-predictably instead of needing a character-offset merge.
+replace. It also means feedback anchors, edits and diff hunks share one
+coordinate system.
 
 Word-level highlighting still appears in the diff — as a *reading* aid. It never
 affects what you can select.
@@ -209,18 +206,13 @@ plan, and nothing else:
 
 **Feedback:** Wrong layer. Guard belongs in the R2 write path, not the poller.
 
-### Locked
-- **L1** "## Context" (lines 1–28) — do not modify
-- **L2** "## Rollout" (lines 88–104) — do not modify
-
 ---
-Revise the plan addressing every comment. Locked blocks must be reproduced
-as `[[planx:keep L1]]` markers — do not re-emit their text. Then run:
-  planx capture --plan-id guard-clock-regression-a3f9 --parent v2 --splice --stdin
+Revise the plan addressing every comment. Then run:
+  planx capture --plan-id guard-clock-regression-a3f9 --parent v2 --stdin
 ````
 
-Every comment carries its verbatim quote, the locks are stated as an instruction
-rather than a status, and the last line is the exact command to run next.
+Every comment carries its verbatim quote, and the last line is the exact command
+to run next.
 
 **It does not return the plan.** It used to emit the whole thing as a fenced
 skeleton on every call, which for a plan of any size dwarfed the feedback it

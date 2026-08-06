@@ -2,14 +2,12 @@ import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { closingBlock, handOffLine } from '../src/cli/commands.js';
-import { normalizedLines } from '../src/locks/anchor.js';
-import { addLock } from '../src/locks/manage.js';
-import { renderSkeleton } from '../src/locks/markers.js';
-import { capture, deriveTitle, LockViolationError } from '../src/protocol/capture.js';
+import { capture, deriveTitle } from '../src/protocol/capture.js';
 import { carriedOver, presentResume } from '../src/protocol/present.js';
-import { buildAnnotation, grantUnlock, submitFeedback } from '../src/protocol/submit.js';
+import { buildAnnotation, submitFeedback } from '../src/protocol/submit.js';
 import { setColorEnabled } from '../src/render/ansi.js';
-import { readLocks, readMeta, readVersionText, updateLocks } from '../src/store/plans.js';
+import { readMeta, readVersionText } from '../src/store/plans.js';
+import { normalizedLines } from '../src/store/text.js';
 import { listFeedback } from '../src/store/feedback.js';
 import { paths } from '../src/store/paths.js';
 import { SAMPLE_PLAN, tempStore } from './helpers.js';
@@ -31,7 +29,7 @@ function seed() {
 
 function comment(planId: string, version: number, from: number, to: number, body: string) {
   const doc = normalizedLines(readVersionText(planId, version)!);
-  return buildAnnotation(doc, 'comment', from, to, body, 'a1');
+  return buildAnnotation(doc, from, to, body, 'a1');
 }
 
 describe('capture', () => {
@@ -51,45 +49,6 @@ describe('capture', () => {
     const first = seed();
     const again = capture({ planId: first.planId, text: SAMPLE_PLAN });
     expect(again).toMatchObject({ version: 1, created: false });
-  });
-
-  it('refuses to write a version that mutates a locked block, and writes nothing', () => {
-    const { planId } = seed();
-    updateLocks(planId, (locks) => {
-      addLock(locks, {
-        docLines: normalizedLines(SAMPLE_PLAN),
-        range: { start: 10, end: 11 }, // "## Rollout" and the line under it
-        origin: 'user',
-        version: 1,
-        section: '## Rollout',
-      });
-    });
-
-    const tampered = SAMPLE_PLAN.replace('Deploy behind', 'Skip the flag and deploy');
-    expect(() => capture({ planId, text: tampered })).toThrow(LockViolationError);
-    expect(readVersionText(planId, 2)).toBeNull();
-    expect(readVersionText(planId, 1)).toContain('Deploy behind');
-  });
-
-  it('accepts the same revision once the block arrives as a marker', () => {
-    const { planId } = seed();
-    updateLocks(planId, (locks) => {
-      addLock(locks, {
-        docLines: normalizedLines(SAMPLE_PLAN),
-        range: { start: 10, end: 11 },
-        origin: 'user',
-        version: 1,
-        section: '## Rollout',
-      });
-    });
-
-    const skeleton = renderSkeleton(SAMPLE_PLAN, readLocks(planId));
-    const revised = skeleton.replace('Clocks can jump backwards', 'Clocks may jump backwards');
-    const result = capture({ planId, text: revised, splice: true, parent: 'v1' });
-
-    expect(result.version).toBe(2);
-    expect(result.expandedLocks).toEqual(['L1']);
-    expect(readVersionText(planId, 2)).toContain('Deploy behind the `ff_clock_guard` flag');
   });
 });
 
@@ -232,80 +191,13 @@ describe('one feedback record per version', () => {
 });
 
 describe('approval', () => {
-  it('seals every section and records the approval on the plan', () => {
+  it('records the approval on the plan', () => {
     const { planId } = seed();
-    const result = submitFeedback({ planId, version: 1, verdict: 'approve', annotations: [] });
-
-    expect(result.sealedLocks.length).toBeGreaterThan(0);
-    const locks = readLocks(planId);
-    expect(locks.sealed_at).not.toBeNull();
-    expect(Object.values(locks.locks).map((l) => l.section)).toContain('## Rollout');
+    submitFeedback({ planId, version: 1, verdict: 'approve', annotations: [] });
 
     const meta = readMeta(planId)!;
     expect(meta.approved_version).toBe(1);
     expect(meta.approved_at).not.toBeNull();
-  });
-
-  it('makes any later edit fail until a lock is lifted', () => {
-    const { planId } = seed();
-    submitFeedback({ planId, version: 1, verdict: 'approve', annotations: [] });
-    expect(() =>
-      capture({ planId, text: SAMPLE_PLAN.replace('Deploy behind', 'Deploy straight') }),
-    ).toThrow(LockViolationError);
-  });
-
-  it('lets the reviewer carve a hole in a sealed plan', () => {
-    const { planId } = seed();
-    submitFeedback({ planId, version: 1, verdict: 'approve', annotations: [] });
-
-    const doc = normalizedLines(readVersionText(planId, 1)!);
-    submitFeedback({
-      planId,
-      version: 1,
-      verdict: 'revise',
-      annotations: [buildAnnotation(doc, 'unlock', 12, 12, '', 'u1')],
-    });
-
-    const edited = SAMPLE_PLAN.replace('Deploy behind', 'Deploy straight');
-    expect(capture({ planId, text: edited }).version).toBe(2);
-  });
-});
-
-describe('unlocking a block', () => {
-  it('grants exactly one capture, then re-arms', () => {
-    const { planId } = seed();
-    submitFeedback({ planId, version: 1, verdict: 'approve', annotations: [] });
-    const lockId = Object.values(readLocks(planId).locks).find(
-      (l) => l.section === '## Rollout',
-    )!.id;
-
-    grantUnlock({ planId, lockId, reason: 'the flag adds no value here' });
-
-    const edited = SAMPLE_PLAN.replace('Deploy behind', 'Deploy straight');
-    expect(capture({ planId, text: edited }).version).toBe(2);
-
-    // Burned: the same block cannot be edited again without asking afresh.
-    expect(() =>
-      capture({ planId, text: edited.replace('Deploy straight', 'Deploy sideways') }),
-    ).toThrow(LockViolationError);
-  });
-
-  it('records the stated reason, which is the whole audit trail', () => {
-    const { planId } = seed();
-    submitFeedback({ planId, version: 1, verdict: 'approve', annotations: [] });
-    const lockId = Object.values(readLocks(planId).locks)[0]!.id;
-
-    grantUnlock({ planId, lockId, reason: 'superseded by the R2 path' });
-
-    const [grant] = Object.values(readLocks(planId).grants);
-    expect(grant!.reason).toBe('superseded by the R2 path');
-    expect(grant!.lock_id).toBe(lockId);
-  });
-
-  it('refuses to grant against a lock that does not exist', () => {
-    const { planId } = seed();
-    expect(() => grantUnlock({ planId, lockId: 'L99', reason: 'x' })).toThrow(/no lock L99/);
-    expect(Object.keys(readLocks(planId).grants)).toHaveLength(0);
   });
 });
 
@@ -318,8 +210,6 @@ describe('what the agent sees', () => {
       version,
       feedback: history.filter((f) => f.version === version),
       carried: carriedOver(history, version, text),
-      locks: readLocks(planId),
-      docLines: normalizedLines(text),
     });
   }
 
@@ -339,23 +229,7 @@ describe('what the agent sees', () => {
     expect(text).toContain('> ## Approach');
     expect(text).toContain('**Feedback:** Wrong layer.');
     expect(text).toContain('#### General');
-    expect(text).toContain(`planx capture --plan-id ${planId} --parent v1 --splice --stdin`);
-  });
-
-  it('lists locked blocks as an instruction and demands markers', () => {
-    const { planId } = seed();
-    submitFeedback({ planId, version: 1, verdict: 'approve', annotations: [] });
-    submitFeedback({
-      planId,
-      version: 1,
-      verdict: 'revise',
-      annotations: [comment(planId, 1, 8, 8, 'One more thing.')],
-    });
-
-    const text = resumeOf(planId, 1);
-    expect(text).toContain('### Locked');
-    expect(text).toContain('— do not modify');
-    expect(text).toContain('[[planx:keep L1]]` markers — do not re-emit their text');
+    expect(text).toContain(`planx capture --plan-id ${planId} --parent v1 --stdin`);
   });
 
   it('tells the agent to stop when the verdict is approve', () => {
@@ -364,7 +238,7 @@ describe('what the agent sees', () => {
 
     const text = resumeOf(planId, 1);
     expect(text).toContain('(verdict: approve)');
-    expect(text).toContain('Approved and sealed');
+    expect(text).toContain('Approved. Implement it as written.');
     expect(text).not.toContain('planx capture --plan-id');
   });
 });
@@ -410,7 +284,7 @@ describe('the review hand-off', () => {
       '/planx revise guard-clock-a3f9',
     );
     expect(closingBlock('approve', 'guard-clock-a3f9', 4)).toEqual([
-      'Approved & sealed — guard-clock-a3f9 v4.',
+      'Approved — guard-clock-a3f9 v4.',
       'Paste to your agent:  /planx execute guard-clock-a3f9 v4',
       'Reopen it with:  planx guard-clock-a3f9 v4',
       '',

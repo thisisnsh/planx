@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { capture } from '../src/protocol/capture.js';
 import { carriedOver, presentResume } from '../src/protocol/present.js';
 import { buildAnnotation, submitFeedback } from '../src/protocol/submit.js';
-import { normalizedLines } from '../src/locks/anchor.js';
-import { readLocks, readVersions, readVersionText, rewriteVersion } from '../src/store/plans.js';
+import { readVersions, readVersionText, rewriteVersion } from '../src/store/plans.js';
+import { normalizedLines } from '../src/store/text.js';
 import { listFeedback } from '../src/store/feedback.js';
 import { tempStore } from './helpers.js';
 
@@ -38,8 +38,6 @@ function reviseText(planId: string, version: number): string {
     feedback: history.filter((f) => f.version === version),
     carried: carriedOver(history, version, text),
     edits: readVersions(planId).versions.find((v) => v.n === version)?.edits ?? [],
-    locks: readLocks(planId),
-    docLines: normalizedLines(text),
   });
 }
 
@@ -49,7 +47,7 @@ function comment(planId: string, version: number, from: number, to: number, body
     planId,
     version,
     verdict: 'revise',
-    annotations: [buildAnnotation(doc, 'comment', from, to, body, 'a1')],
+    annotations: [buildAnnotation(doc, from, to, body, 'a1')],
   });
 }
 

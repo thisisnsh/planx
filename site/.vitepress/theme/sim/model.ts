@@ -17,7 +17,6 @@ import {
   type DiffRow,
   type Segment,
 } from './diff.js';
-import { lockedLineMap, type SimLock } from './locks.js';
 import { highlightLine, initialMarkdownState, type MarkdownState } from './markdown.js';
 import { p, spaces, type Line } from './text.js';
 
@@ -38,7 +37,6 @@ export interface DocRow {
   raw: string;
   newLine: number | null;
   gapIndex: number | null;
-  locked: boolean;
   /** A note covers this line, so the rail runs down beside it. */
   rail: boolean;
   /** The heading whose folded section this row stands in for. */
@@ -61,8 +59,6 @@ export interface FeedbackRow {
 
 export type ViewRow = DocRow | FeedbackRow;
 
-/** A glyph, not the padlock emoji: one cell wide in every terminal. */
-const LOCK_ICON = '⚿';
 const GAP_MARKER = '⋯';
 const MAX_BOX_WIDTH = 72;
 /** `│ ` and ` │` — what the box costs the text inside it. */
@@ -74,7 +70,6 @@ export interface BuildOptions {
   /** The previous version's text when the diff is on, null when it is not. */
   oldText: string | null;
   newText: string;
-  locks: readonly SimLock[];
   annotations: readonly Annotation[];
   /** Columns available for gutter, rail and text together. */
   width: number;
@@ -90,7 +85,6 @@ export interface BuildOptions {
 export interface ReviewModel {
   rows: ViewRow[];
   docLines: string[];
-  lockedLines: Map<number, string>;
   blocks: Block[];
   boxWidth: number;
   /** The column the rail runs down, and the one a note box opens in. */
@@ -106,7 +100,6 @@ export function buildModel(opts: BuildOptions): ReviewModel {
       : diffVersions(opts.oldText, opts.newText);
   const blocks = collapse(rawRows);
   const docLines = splitLines(opts.newText);
-  const lockedLines = lockedLineMap(docLines, opts.locks);
 
   const shown: Block[] = blocks.map((block, index) =>
     block.kind === 'gap' && opts.expandedGaps.has(index)
@@ -167,20 +160,17 @@ export function buildModel(opts: BuildOptions): ReviewModel {
     }
 
     const rewritten = row.newLine === null ? undefined : opts.edits.get(row.newLine);
-    const lockId = row.newLine === null ? undefined : lockedLines.get(row.newLine);
     const doc: DocRow = {
       kind: 'doc',
       gutter: renderGutter(row, {
         numberWidth,
         signs,
-        lockId,
         edited: rewritten !== undefined,
         active: false,
       }),
       gutterActive: renderGutter(row, {
         numberWidth,
         signs,
-        lockId,
         edited: rewritten !== undefined,
         active: true,
       }),
@@ -188,7 +178,6 @@ export function buildModel(opts: BuildOptions): ReviewModel {
       raw: rewritten ?? row.text,
       newLine: row.newLine,
       gapIndex: null,
-      locked: Boolean(lockId),
       rail: row.newLine !== null && railed.has(row.newLine),
       fold: null,
       skip: false,
@@ -215,7 +204,6 @@ export function buildModel(opts: BuildOptions): ReviewModel {
   return {
     rows,
     docLines,
-    lockedLines,
     blocks,
     boxWidth,
     railColumn: gutter,
@@ -228,23 +216,18 @@ export function buildModel(opts: BuildOptions): ReviewModel {
 interface GutterOptions {
   numberWidth: number;
   signs: boolean;
-  lockId: string | undefined;
   edited: boolean;
   active: boolean;
 }
 
 /**
- * The fixed-width prefix: lock marker, change sign, number.
+ * The fixed-width prefix: change sign, number.
  *
  * Fixed width is what keeps the text column aligned, so a multi-line selection
  * reads as a block rather than a ragged stack. The cursor arrow is deliberately
  * not here — it moves on every keypress.
  */
 function renderGutter(row: DiffRow, opts: GutterOptions): Line {
-  // The glyph is boxed into one cell by CSS: not every font on the web has
-  // U+269F, and a fallback drawn at a different width would move the text
-  // column on exactly the lines a lock is meant to make obvious.
-  const lock = opts.lockId ? p(LOCK_ICON, 'sig lock') : p(' ');
   const sign = !opts.signs
     ? null
     : opts.edited
@@ -265,7 +248,7 @@ function renderGutter(row: DiffRow, opts: GutterOptions): Line {
       : row.kind === 'del'
         ? 'red'
         : 'dim';
-  return [lock, p(' '), ...(sign ? [sign] : []), p(text, paint), p(' ')];
+  return [...(sign ? [sign] : []), p(text, paint), p(' ')];
 }
 
 function rowText(row: DiffRow, state: MarkdownState): Line {
@@ -310,7 +293,6 @@ function hiddenRow(text: string, numberWidth: number, gutterWidth: number): DocR
     raw: `${GAP_MARKER} ${text}`,
     newLine: null,
     gapIndex: null,
-    locked: false,
     rail: false,
     fold: null,
     skip: false,

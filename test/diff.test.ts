@@ -128,27 +128,10 @@ describe('unified rendering', () => {
 });
 
 describe('rich rendering', () => {
-  it('marks locked lines in the gutter, and does not repeat the id after the text', () => {
-    setColorEnabled(false);
-    const rows = diffVersions('a\nb\n', 'a\nB\n');
-    const { lines } = renderRichLines(collapse(rows), {
-      mode: 'rich',
-      lockedLines: new Map([[1, 'L2']]),
-    });
-    const locked = lines.find((l) => l.newLine === 1)!;
-    expect(locked.gutter).toContain('⚿');
-    expect(locked.locked).toBe(true);
-    expect(locked.text).not.toContain('[L2]');
-    expect(lines.find((l) => l.newLine === 2)!.gutter).not.toContain('⚿');
-  });
-
   it('keeps every gutter the same width, so the text column never moves', () => {
     setColorEnabled(false);
     const rows = diffVersions('a\nb\n', 'a\nB\n');
-    const { lines, gutterWidth } = renderRichLines(collapse(rows), {
-      mode: 'rich',
-      lockedLines: new Map([[1, 'L2']]),
-    });
+    const { lines, gutterWidth } = renderRichLines(collapse(rows), { mode: 'rich' });
     for (const line of lines) expect(line.gutter).toHaveLength(gutterWidth);
   });
 

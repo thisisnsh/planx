@@ -13,7 +13,6 @@ citizen, forever.
     guard-clock-regression-a3f9/
       meta.json                   # id, title, created, source, cwd, session_id, tags, approved_at
       versions.json               # ordered version records
-      locks.json                  # active locks — plan-level, carried across versions
       v1.md  v2.md  v3.md
       feedback/  v2-01K9X4….json
   logs/
@@ -69,24 +68,21 @@ that version. Only the latest is compared: matching an older version would mean
 rewinding `latest` and losing everything in between, and a revision that happens
 to revert to v1 is still a decision worth recording.
 
-Stored `vN.md` files are always **fully expanded**. `[[planx:keep …]]` markers
-are a wire format between the agent and `capture`, never a storage format, so
-diffing, execution and rendering never learn they existed.
-
 ## Concurrency
 
 - Every write is a temp file plus `rename`, which is atomic within a filesystem.
   A reader sees the whole old file or the whole new one, never half of either.
-- `index.json` and `locks.json` take an advisory lock: an `O_EXCL` lockfile,
-  stolen if it is more than 10 seconds old. Not `flock`, because dotfiles live
-  on network filesystems where `flock` lies.
+- `index.json` takes an advisory lock: an `O_EXCL` lockfile, stolen if it is
+  more than 10 seconds old. Not `flock`, because dotfiles live on network
+  filesystems where `flock` lies.
 - Two `revise`s on the same version both read the same feedback.
 
 ## Corruption
 
 A file that exists but fails its schema raises an error naming the file. planx
-never silently falls back to defaults — quietly replacing a plan's `locks.json`
-with "no locks" is exactly the data loss this store exists to prevent.
+never silently falls back to defaults — quietly replacing a plan's
+`versions.json` with "no versions" is exactly the data loss this store exists to
+prevent.
 
 ```bash
 planx doctor    # checks every plan and rebuilds index.json

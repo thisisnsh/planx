@@ -20,7 +20,7 @@
 
 Chat gives you one move on a plan: type a paragraph and hope. planx makes the
 plan a **file with versions** — so you point at lines, comment where it belongs,
-freeze what is settled, and hand it back.
+rewrite what you can say better yourself, and hand it back.
 
 ```console
 $ planx
@@ -29,20 +29,20 @@ $ planx
 ```
 ╭─ planx v0.4.0  guard-clock-a3f9  v3 ◂ v2 ───────────────────────────────────────────╮
 │                                                                                     │
-│      1   # Guard the clock regression                                               │
-│      2                                                                              │
-│      3   ## Approach                                                                │
-│      4 │ Extend the existing snapshot-regression guard in `poller.ts`               │
-│      5 │ to also reject a cross-period backward jump.                               │
-│        ├────────────────────────────────────────────────────────╮                   │
-│        │ Wrong layer. This belongs in the R2 write path.         │                   │
-│        ╰────────────────────────────────────────────────────────╯                   │
-│          ⋯ 12 lines · 1 feedback (space to expand)                                  │
-│ ▸ ⚿ 18   ## Rollout                                                                 │
-│   ⚿ 19   Deploy behind the `ff_clock_guard` flag, 10% then 50% then 100%.           │
+│     1   # Guard the clock regression                                                │
+│     2                                                                               │
+│     3   ## Approach                                                                 │
+│     4 │ Extend the existing snapshot-regression guard in `poller.ts`                │
+│     5 │ to also reject a cross-period backward jump.                                │
+│       ├────────────────────────────────────────────────────────╮                    │
+│       │ Wrong layer. This belongs in the R2 write path.         │                   │
+│       ╰────────────────────────────────────────────────────────╯                    │
+│    ⋯ 12 lines · 1 feedback (space to expand)                                        │
+│ ▸  18   ## Rollout                                                                  │
+│    19   Deploy behind the `ff_clock_guard` flag, 10% then 50% then 100%.            │
 │                                                                                     │
-│ l unlock · f feedback · j next · d diff · s submit · x exit · ? help                │
-╰──────────────────────────────────────────────────── ★ github.com/thisisnsh/planx ───╯
+│ f feedback · e rewrite line · j next · d diff · s submit · x exit · ? help          │
+╰────────────────────────────────────────────────────── ★ github.com/thisisnsh/planx ─╯
 ```
 
 ## What you get
@@ -51,25 +51,19 @@ $ planx
 | --- | --- | --- |
 | **Anchored feedback** | `v` to select lines, `f` to comment | Reaches the agent quoted against the exact lines — no prose for it to re-interpret |
 | **Versions** | `←` `→` walk the history | Every revision is stored; you always know which one you saw |
-| **Diff by default** | `d` | A version with a predecessor opens *as* the diff — word-level, with the lock gutter |
+| **Diff by default** | `d` | A version with a predecessor opens *as* the diff — word-level, with runs of unchanged lines collapsed |
 | **Fold to skim** | `space`, `j` | Collapse a whole section into one row, jump feedback to feedback, on a plan you have read before |
 | **Edit in place** | `e` | Rewrite a line yourself as raw markdown, instead of round-tripping through the agent |
-| **Approve** | `a` | Seals the plan and locks every section — only allowed when nothing is left unanswered |
-| **Execute** | `/planx execute <id>` | Builds the approved plan in the session you are already in |
-| **Locks** | `l` | `planx capture` **rejects** a version that mutates a locked block, so the agent has to stop and ask |
-
-Locks are enforced by the CLI, not by the prompt — a prompt is advice, and an
-unattended agent will eventually ignore it. They guard against agent drift, not
-a hostile agent: see [Locking](https://planx.sh/locking) and
-[SECURITY.md](SECURITY.md).
+| **Approve** | `a` | Marks the version settled — only allowed when nothing is left unanswered |
+| **Execute** | `/planx execute <id>` | Builds the plan in the session you are already in |
 
 ## The loop
 
 ```
 /planx add rate limiting to uploads   →  agent researches, writes, captures, stops
-planx                                 →  you comment, lock, press s
+planx                                 →  you comment, press s
 /planx revise <id>                    →  agent revises  ⟳
-planx  →  press a                     →  sealed
+planx  →  press a                     →  approved
 /planx execute <id>                   →  built
 ```
 
@@ -98,7 +92,7 @@ release is out. Removal: `planx remove-skills`, then
 | `/planx` | Say it is ready, then ask what to plan |
 | `/planx <anything>` | Clarify, research, write a plan, capture it |
 | `/planx revise <id>` | Pick up the feedback and revise |
-| `/planx execute <id>` | Build the approved plan in this session |
+| `/planx execute <id>` | Build the plan in this session |
 | `/planx diff <id>` | Print a diff between two versions |
 
 </details>
@@ -112,10 +106,9 @@ run a command is a first-class citizen.
 
 ```bash
 planx capture --stdin --title "Rate limit uploads" < plan.md
-planx <plan-id>          # review: comment, lock, submit or approve
+planx <plan-id>          # review: comment, rewrite, submit or approve
 planx diff <plan-id>     # any two versions, TUI or piped
-planx locks <plan-id>    # what is frozen, and any unlock an agent issued
-planx revise <plan-id>   # hand feedback + locks back to whatever is building
+planx revise <plan-id>   # hand the feedback back to whatever is building
 ```
 
 </details>
@@ -144,7 +137,6 @@ nothing installed.
 [Claude Code](https://planx.sh/claude-code) ·
 [Codex](https://planx.sh/codex) ·
 [Review Loop](https://planx.sh/review-loop) ·
-[Locking](https://planx.sh/locking) ·
 [Diffing](https://planx.sh/diffing) ·
 [Executing](https://planx.sh/executing) ·
 [CLI reference](https://planx.sh/reference/cli) ·

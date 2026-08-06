@@ -23,10 +23,10 @@ Generated from planx 0.5.0.
 Store a version of a plan.
 
 ```
-planx capture [--plan-id ID] [--title T] [--stdin|--file F] [--parent VER] [--splice]
+planx capture [--plan-id ID] [--title T] [--stdin|--file F] [--parent VER]
 ```
 
-Reads the plan from stdin or a file and appends it as a new version. Refuses to write a version that modifies a locked block, printing the offending diff and the command to ask for an unlock. Capturing content identical to the current latest is a no-op, so skills can call it defensively.
+Reads the plan from stdin or a file and appends it as a new version. Capturing content identical to the current latest is a no-op, so skills can call it defensively.
 
 | Flag | Meaning |
 | --- | --- |
@@ -36,46 +36,27 @@ Reads the plan from stdin or a file and appends it as a new version. Refuses to 
 | `--stdin` | Read the plan from stdin. Implied when stdin is a pipe. |
 | `--file <F>` | Read the plan from a file. |
 | `--parent <VER>` | Version this revises. Defaults to the latest. |
-| `--splice` | Expand [[planx:keep …]] markers before writing. |
 | `--source <NAME>` | Which agent produced this (claude, codex, …). |
 | `--note <N>` | One line about what changed in this version. |
 | `--agent <NAME>` | Agent identifier recorded on the version. |
 
 ```bash
 planx capture --stdin --title "Guard the clock regression" < plan.md
-planx capture --plan-id guard-clock-a3f9 --parent v2 --splice --stdin
+planx capture --plan-id guard-clock-a3f9 --parent v2 --stdin
 ```
 
 ## `planx revise`
 
-Pick a plan back up: the feedback on it, and its locks.
+Pick a plan back up: the feedback left on it.
 
 ```
 planx revise <id> [version] [--json]
 ```
 
-One read with everything asked of the plan: each comment against the lines it quotes, and the locked blocks. It does not return the plan itself — the agent that wrote it already has it, and `planx show <id> --plain` is there for a session that does not. Comments left on an earlier version whose quoted text is still present word for word are reported as probably never addressed. Safe to run twice; it waits for nothing.
+One read with everything asked of the plan: each comment against the lines it quotes, and every line the reviewer rewrote by hand. It does not return the plan itself — the agent that wrote it already has it, and `planx show <id> --plain` is there for a session that does not. Comments left on an earlier version whose quoted text is still present word for word are reported as probably never addressed. Safe to run twice; it waits for nothing.
 
 ```bash
 planx revise guard-clock-a3f9
-```
-
-## `planx unlock`
-
-Open one locked block for a single capture.
-
-```
-planx unlock <id> <lock-id> --reason "..."
-```
-
-Run by the agent after it has explained the change and the user has agreed. The grant authorises exactly one capture that may modify the block, then burns, and the lock re-arms on whatever was written. The reason is recorded on the grant, which is what makes a self-issued unlock reviewable afterwards — see `planx locks`.
-
-| Flag | Meaning |
-| --- | --- |
-| `--reason <R>` | Why the block has to change. Required. |
-
-```bash
-planx unlock guard-clock-a3f9 L2 --reason "the R2 path replaced this entirely"
 ```
 
 ## `planx diff`
@@ -86,7 +67,7 @@ Review a plan, or print a diff between two versions.
 planx [diff] [id] [vA] [vB] [--print] [--plain|--rich] [--stat]
 ```
 
-In a terminal this opens the review TUI on the diff against the previous version — you opened v4 because v4 is new, and what is new about it is the diff. Press d to see the plan on its own instead. Select lines and comment, lock or unlock them, then submit or approve. The command name is optional in front of a plan — `planx <id>` is the same thing. Piped or with --print it writes the diff to stdout and exits. With no arguments it opens a picker.
+In a terminal this opens the review TUI on the diff against the previous version — you opened v4 because v4 is new, and what is new about it is the diff. Press d to see the plan on its own instead. Select lines, comment on them or rewrite them, then submit. The command name is optional in front of a plan — `planx <id>` is the same thing. Piped or with --print it writes the diff to stdout and exits. With no arguments it opens a picker.
 
 | Flag | Meaning |
 | --- | --- |
@@ -105,14 +86,13 @@ planx diff guard-clock-a3f9 v1 v3 --print --plain
 Print a stored version of a plan.
 
 ```
-planx show <id> [version] [--plain|--rich] [--skeleton]
+planx show <id> [version] [--plain|--rich]
 ```
 
 | Flag | Meaning |
 | --- | --- |
 | `--plain` | Raw markdown source. |
-| `--rich` | Syntax-highlighted with a lock gutter. |
-| `--skeleton` | Collapse locked blocks to [[planx:keep …]] markers. |
+| `--rich` | Syntax-highlighted. |
 
 ## `planx list`
 
@@ -127,16 +107,6 @@ planx list [--here] [--approved] [--json]
 | `--here` | Only plans captured in the current directory. |
 | `--approved` | Only approved plans. |
 | `--unapproved` | Only plans that never reached approve. |
-
-## `planx locks`
-
-Show a plan’s locks and any outstanding unlock grants.
-
-```
-planx locks <id> [--json]
-```
-
-The one command besides the review a person runs by hand. It is the only way to see that an agent issued itself an unlock and what reason it recorded, and the unlock handshake is worth nothing if that record cannot be read.
 
 ## `planx add-skills`
 

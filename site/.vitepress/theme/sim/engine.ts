@@ -3,20 +3,12 @@
  *
  * Every key does here what it does in the CLI: the modes are explicit (so `s`
  * is the letter s while a note is being typed), a note is deleted by emptying
- * it, `a` is refused on a version carrying feedback, and a lock is applied the
- * moment it is made. What is missing is the store — nothing is written to disk,
- * and `s` prints the hand-off it would have printed.
+ * it, and `a` is refused on a version carrying feedback. What is missing is the
+ * store — nothing is written to disk, and `s` prints the hand-off it would have
+ * printed.
  */
 
 import { hintLines, orderHints, type Hint } from './hints.js';
-import {
-  addLocks,
-  locateLock,
-  sealPlan,
-  unlockRange,
-  type LineSpan,
-  type SimLock,
-} from './locks.js';
 import { sectionOf } from './markdown.js';
 import {
   buildModel,
@@ -27,6 +19,12 @@ import {
   type ViewRow,
 } from './model.js';
 import { fit, len, p, plain, repaint, spaces, type Line } from './text.js';
+
+export interface LineSpan {
+  /** 1-based, inclusive. */
+  start: number;
+  end: number;
+}
 
 export const PLANX_VERSION = '0.3.0';
 export const REPO = 'github.com/thisisnsh/planx';
@@ -41,13 +39,11 @@ export interface SimPlan {
   title: string;
   /** v1 first. */
   versions: string[];
-  locks?: SimLock[];
   /** Feedback already on the plan, by version. */
   feedback?: Record<number, Annotation[]>;
   notes?: Record<number, string>;
   /** Headings folded when the review opens. */
   folded?: number[];
-  sealed?: boolean;
 }
 
 export type Mode =
@@ -72,12 +68,10 @@ export interface SimState {
   notes: Record<number, string>;
   touched: Set<number>;
   edits: Map<number, string>;
-  locks: SimLock[];
   expandedGaps: Set<number>;
   foldedSections: Set<number>;
   collapsedFeedback: Set<string>;
   hiddenFeedback: boolean;
-  sealed: boolean;
   mode: Mode;
   status: string | null;
   pendingJump: string | null;
@@ -117,12 +111,10 @@ export function createState(opts: SimOptions): SimState {
     notes: { ...(plan.notes ?? {}) },
     touched: new Set(),
     edits: new Map(),
-    locks: (plan.locks ?? []).map((lock) => ({ ...lock, lines: [...lock.lines] })),
     expandedGaps: new Set(),
     foldedSections: new Set(plan.folded ?? []),
     collapsedFeedback: new Set(),
     hiddenFeedback: false,
-    sealed: Boolean(plan.sealed),
     mode: { kind: 'browse' },
     status: null,
     pendingJump: null,
@@ -158,7 +150,6 @@ export function layout(state: SimState, cols: number, bodyRows: number): void {
   state.model = buildModel({
     oldText: state.versionA === null ? null : text(state, state.versionA),
     newText: text(state, state.versionB),
-    locks: state.locks,
     annotations: state.annotations[state.versionB] ?? [],
     width: contentWidth,
     expandedGaps: state.expandedGaps,
@@ -323,7 +314,6 @@ function browse(state: SimState, key: string): void {
   if (key === 'e') return startEdit(state);
   if (key === 'f') return startFeedback(state);
   if (key === 'j') return nextFeedback(state);
-  if (key === 'l') return toggleLock(state);
   if (key === 'd' && previousVersion(state) !== null) return toggleDiff(state);
   if (key === 'h') {
     state.hiddenFeedback = !state.hiddenFeedback;
@@ -337,7 +327,7 @@ function browse(state: SimState, key: string): void {
   if (key === 's') return finish(state, 'submit');
   if (key === 'a') {
     // Approving is for a version you have nothing to say about: it would
-    // otherwise seal the very lines the feedback is asking to change.
+    // otherwise call settled the very lines the feedback is asking to change.
     if (carries(state)) {
       state.status = approveBlocked(current(state).length, state.notes[state.versionB] ?? '');
       return;
@@ -426,12 +416,6 @@ function startFeedback(state: SimState): void {
     state.status = 'Nothing to annotate there — that row is a deletion or a collapsed gap.';
     return;
   }
-  // A locked passage is settled: commenting on it would ask for a change to
-  // text that cannot change.
-  if (isLocked(state, span)) {
-    state.status = 'Those lines are locked — press l to unlock them before commenting.';
-    return;
-  }
 
   const id = nextAnnotationId(current(state));
   updateAnnotations(state, (list) => [
@@ -511,17 +495,13 @@ function printable(key: string): string | null {
 
 /**
  * `e` opens the line under the cursor as its raw markdown source, so what the
- * reviewer submits is what they meant. It refuses where an edit would mean
- * something other than it says: an older version, a sealed plan, a locked line.
+ * reviewer submits is what they meant. It refuses on any version but the
+ * latest: an older version is the text a newer one was built from.
  */
 function startEdit(state: SimState): void {
   const row = state.model.rows[state.cursor];
   if (row?.kind === 'feedback') {
     state.status = 'That is feedback — press f to edit it.';
-    return;
-  }
-  if (state.sealed) {
-    state.status = 'This plan is sealed — approving locked every section.';
     return;
   }
   if (state.versionB !== latest(state)) {
@@ -534,20 +514,10 @@ function startEdit(state: SimState): void {
     return;
   }
 
-  const open: number[] = [];
-  let locked = 0;
-  for (let line = span.start; line <= span.end; line++) {
-    if (state.model.lockedLines.has(line)) locked++;
-    else open.push(line);
-  }
-  if (!open.length) {
-    state.status = 'That line is locked — press l to unlock it before editing.';
-    return;
-  }
   state.selection = { anchor: null, active: false };
-  // A selection walks: the lines open one at a time from the top, and the ones
-  // a lock covers are stepped over rather than silently included.
-  if (locked) state.status = `Skipped ${locked} locked line${locked === 1 ? '' : 's'}.`;
+  // A selection walks: the lines open one at a time, from the top.
+  const open: number[] = [];
+  for (let line = span.start; line <= span.end; line++) open.push(line);
   openLine(state, open[0]!, open.slice(1));
 }
 
@@ -613,66 +583,6 @@ function lineEdit(state: SimState, key: string): void {
       caret: mode.caret + char.length,
     };
   }
-}
-
-/* ---------------------------------------------------------------- locks */
-
-function isLocked(state: SimState, span: LineSpan): boolean {
-  for (let line = span.start; line <= span.end; line++)
-    if (state.model.lockedLines.has(line)) return true;
-  return false;
-}
-
-/**
- * `l` is a toggle, so a selection that is already locked comes back off. A
- * partly locked selection locks the rest: the intent of pressing lock on
- * something half locked is to end up with it locked.
- */
-function toggleLock(state: SimState): void {
-  const span = spanAtCursor(state);
-  if (!span) {
-    state.status = 'Nothing to lock there.';
-    return;
-  }
-  const docLines = state.model.docLines;
-
-  let allLocked = true;
-  for (let line = span.start; line <= span.end; line++) {
-    if (!state.model.lockedLines.has(line)) allLocked = false;
-  }
-
-  if (allLocked) {
-    const removed = unlockRange(state.locks, docLines, span);
-    const lines = `line${span.start === span.end ? '' : 's'} ${describeSpan(span)}`;
-    state.status = removed.length ? `Unlocked ${lines}.` : `Nothing was locking ${lines}.`;
-    state.did.add('unlock');
-  } else {
-    const result = addLocks(state.locks, docLines, span);
-    const parts = result.locked.map(
-      (l) => `locked line${l.start === l.end ? '' : 's'} ${describeSpan(l)}`,
-    );
-    if (result.skipped.length) {
-      const single =
-        result.skipped.length === 1 && result.skipped[0]!.start === result.skipped[0]!.end;
-      parts.push(
-        `${result.skipped.map(describeSpan).join(', ')} ${single ? 'was' : 'were'} already locked`,
-      );
-    }
-    state.status = sentence(parts.join(' · '));
-    state.did.add('lock');
-  }
-  state.selection = { anchor: null, active: false };
-}
-
-function describeSpan(span: LineSpan): string {
-  return span.start === span.end ? `${span.start}` : `${span.start}–${span.end}`;
-}
-
-function sentence(body: string): string {
-  const trimmed = body.trim();
-  if (!trimmed) return trimmed;
-  const capital = `${trimmed[0]!.toUpperCase()}${trimmed.slice(1)}`;
-  return /[.!?…]$/.test(capital) ? capital : `${capital}.`;
 }
 
 /* --------------------------------------------------------------- folding */
@@ -788,10 +698,6 @@ function finish(state: SimState, action: 'submit' | 'approve' | 'quit' | 'back')
     state.status = 'Nothing to submit — press f to leave feedback, or x to leave.';
     return;
   }
-  if (action === 'approve') {
-    sealPlan(state.locks, state.model.docLines);
-    state.sealed = true;
-  }
   state.handoff = action === 'submit' || action === 'approve' ? handoffText(state, action) : null;
   state.did.add(action);
   state.mode = { kind: 'done', action };
@@ -860,21 +766,8 @@ export function handoffText(state: SimState, action: 'submit' | 'approve'): stri
   if (note) asked.push('#### General', '', note, '');
   if (asked.length) out.push('### What was asked', '', ...asked);
 
-  const locked = state.locks
-    .map((lock) => {
-      const at = locateLock(docLines, lock);
-      const where = at
-        ? at.start === at.end
-          ? `(line ${at.start})`
-          : `(lines ${at.start}–${at.end})`
-        : '(not located in this version)';
-      return `- **${lock.id}** ${lock.section ? `${JSON.stringify(lock.section)} ` : ''}${where} — do not modify`;
-    })
-    .sort();
-  if (locked.length) out.push('### Locked', ...locked, '');
-
   if (verdict === 'approve') {
-    out.push('---', 'Approved and sealed — every section is locked. Implement it as written.', '');
+    out.push('---', 'Approved. Implement it as written.', '');
     return out.join('\n');
   }
 
@@ -882,18 +775,8 @@ export function handoffText(state: SimState, action: 'submit' | 'approve'): stri
   const lead = asked.length
     ? 'Revise the plan addressing every comment.'
     : 'Revise the plan, keeping every edited line exactly as it now reads.';
-  if (locked.length) {
-    out.push(
-      `${lead} Locked blocks must be reproduced`,
-      'as `[[planx:keep L1]]` markers — do not re-emit their text. Then run:',
-    );
-  } else {
-    out.push(`${lead} Then run:`);
-  }
-  out.push(
-    `  planx capture --plan-id ${state.plan.id} --parent v${state.versionB} --splice --stdin`,
-    '',
-  );
+  out.push(`${lead} Then run:`);
+  out.push(`  planx capture --plan-id ${state.plan.id} --parent v${state.versionB} --stdin`, '');
   return out.join('\n');
 }
 
@@ -909,8 +792,8 @@ function approveBlocked(count: number, note: string): string {
 
 /**
  * The hints offer what this row can actually do, in the one order. Showing keys
- * that refuse to work teaches the wrong thing, so `d` is missing on v1 and `f`
- * is missing on a locked passage.
+ * that refuse to work teaches the wrong thing, so `d` is missing on v1 and `e`
+ * is missing on any version but the latest.
  */
 export function hintsFor(state: SimState): Hint[] {
   const mode = state.mode;
@@ -965,12 +848,8 @@ export function hintsFor(state: SimState): Hint[] {
       hints.push(['space', state.foldedSections.has(heading) ? 'unfold section' : 'fold section']);
     }
     hints.push(['v', state.selection.active ? 'unselect lines' : 'select lines']);
-    const span = spanAtCursor(state);
-    if (span && isLocked(state, span)) hints.push(['l', `unlock ${lines}`]);
-    else {
-      hints.push(['f', annotationAtCursor(state) ? 'edit' : 'feedback'], ['l', `lock ${lines}`]);
-      if (!state.sealed && state.versionB === latest(state)) hints.push(['e', `rewrite ${lines}`]);
-    }
+    hints.push(['f', annotationAtCursor(state) ? 'edit' : 'feedback']);
+    if (state.versionB === latest(state)) hints.push(['e', `rewrite ${lines}`]);
   }
 
   if (current(state).length) hints.push(['j', 'next feedback']);
@@ -992,7 +871,6 @@ function widestHints(state: SimState): Hint[] {
     ['e', 'rewrite lines'],
     ['f', 'feedback'],
     ['j', 'next feedback'],
-    ['l', 'lock lines'],
   ];
   if (previousVersion(state) !== null) hints.push(['d', 'show diff']);
   if (state.versions.length > 1) hints.push(['←→', 'version']);
@@ -1076,7 +954,6 @@ function headerLine(state: SimState): Line {
     p(` v${PLANX_VERSION}`, 'dim'),
     p(`  ${state.plan.id}  `),
     p(versions, 'dim'),
-    ...(state.sealed ? [p('  sealed', 'sig bold')] : []),
     p(' '),
   ];
 }
@@ -1175,10 +1052,10 @@ function summaryLines(state: SimState, width: number): Line[] {
 }
 
 function approveMessage(state: SimState): string {
-  const seals = state.edits.size
-    ? `This saves ${state.edits.size} edited line${state.edits.size === 1 ? '' : 's'}, then seals`
-    : 'This seals';
-  return `Approve v${state.versionB}? ${seals} the plan — every section becomes locked.`;
+  const saves = state.edits.size
+    ? ` This saves ${state.edits.size} edited line${state.edits.size === 1 ? '' : 's'} on the way in.`
+    : '';
+  return `Approve v${state.versionB}?${saves}`;
 }
 
 function leaveWarning(state: SimState): string {
@@ -1204,11 +1081,7 @@ function doneLines(state: SimState): Line[] {
   const out: Line[] = [];
 
   if (mode.action === 'approve') {
-    out.push([
-      p(`Approved & sealed — `, 'green'),
-      p(id, 'green bold'),
-      p(` v${version}.`, 'green'),
-    ]);
+    out.push([p(`Approved — `, 'green'), p(id, 'green bold'), p(` v${version}.`, 'green')]);
   }
   if (mode.action === 'submit') {
     const count = current(state).length;
@@ -1242,7 +1115,7 @@ function doneLines(state: SimState): Line[] {
 const HELP: Array<[Hint, 'always' | 'versioned']> = [
   [['←→', 'the previous and next version of the plan'], 'versioned'],
   [['↑↓', 'move a row at a time — a note box is one stop, on its first line'], 'always'],
-  [['a', 'approve — seals the plan, and only when you have no feedback'], 'always'],
+  [['a', 'approve — only when you have no feedback on this version'], 'always'],
   [['d', 'show the diff against the previous version, or hide it'], 'versioned'],
   [['e', 'rewrite the line, or every line of the selection, in place'], 'always'],
   [['f', 'feedback on the selection, or edit the note under the cursor'], 'always'],
@@ -1251,7 +1124,6 @@ const HELP: Array<[Hint, 'always' | 'versioned']> = [
   [['^f ^b', 'a whole screen down or up'], 'always'],
   [['h', 'fold or unfold every note at once'], 'always'],
   [['j', 'the next feedback on this version, wrapping at the end'], 'always'],
-  [['l', 'lock or unlock the selection — applied immediately'], 'always'],
   [['n', 'a note about the whole plan'], 'always'],
   [['s', 'submit everything at once'], 'always'],
   [['space', 'fold the section or the note, or expand the run, under the cursor'], 'always'],

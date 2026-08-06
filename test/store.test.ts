@@ -1,9 +1,6 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { previousStoredVersion } from '../src/cli/commands.js';
-import { normalizedLines } from '../src/locks/anchor.js';
-import { addLock, lockedLineMap, sealPlan } from '../src/locks/manage.js';
-import { protectedFor } from '../src/store/clean.js';
 import { StoreCorruptionError } from '../src/store/atomic.js';
 import { contentHash, planId, slugify, ulid } from '../src/store/ids.js';
 import { paths } from '../src/store/paths.js';
@@ -13,7 +10,6 @@ import {
   latestVersion,
   listPlans,
   PlanNotFoundError,
-  readLocks,
   readMeta,
   readVersions,
   purgePlan,
@@ -24,7 +20,6 @@ import {
   resolvePlanRef,
   resolveVersionRef,
   rewriteVersion,
-  updateLocks,
   VersionNotFoundError,
   writeMeta,
 } from '../src/store/plans.js';
@@ -81,11 +76,10 @@ describe('ids', () => {
 });
 
 describe('plan lifecycle', () => {
-  it('creates a plan directory with meta, versions and locks', () => {
+  it('creates a plan directory with meta and versions', () => {
     const id = seed();
     expect(existsSync(paths.meta(id))).toBe(true);
     expect(existsSync(paths.versions(id))).toBe(true);
-    expect(existsSync(paths.locks(id))).toBe(true);
     expect(readFileSync(paths.versionFile(id, 1), 'utf8')).toContain('## Approach');
   });
 
@@ -206,20 +200,6 @@ describe('deleting', () => {
     expect(existsSync(paths.plan(id))).toBe(false);
   });
 
-  // What stands between `d` in the picker and a plan whose locks can no longer
-  // be resolved: a lock is re-spliced from the version its text was recorded
-  // in, so that version has to outlive any deletion.
-  it('names the versions a lock still depends on', () => {
-    const id = seed();
-    const doc = normalizedLines(readVersionText(id, 1)!);
-    updateLocks(id, (locks) =>
-      addLock(locks, { docLines: doc, range: { start: 8, end: 9 }, origin: 'user', version: 1 }),
-    );
-    addVersion(id, `${SAMPLE_PLAN}\nrev 2\n`);
-
-    expect([...protectedFor(id)]).toContain(1);
-  });
-
   it('removes named versions but never the latest', () => {
     const id = seed();
     for (let i = 2; i <= 4; i++) addVersion(id, `${SAMPLE_PLAN}\nrev ${i}\n`);
@@ -313,57 +293,13 @@ describe('editing a version in place', () => {
     expect(() => rewriteVersion(id, 1, [{ line: 1, text: '# Nope' }])).toThrow('can be edited');
     expect(readVersionText(id, 1)!.split('\n')[0]).toBe('# Guard the clock regression');
   });
-
-  it('refuses a sealed plan', () => {
-    const id = seed();
-    updateLocks(id, (locks) => sealPlan(locks, normalizedLines(SAMPLE_PLAN), 1));
-    expect(() => rewriteVersion(id, 1, [{ line: 1, text: '# Nope' }])).toThrow('sealed');
-  });
-
-  it('refuses to write anything when an edit would move a lock', () => {
-    const id = seed();
-    const doc = normalizedLines(SAMPLE_PLAN);
-    updateLocks(id, (locks) =>
-      addLock(locks, { docLines: doc, range: { start: 6, end: 8 }, origin: 'user', version: 1 }),
-    );
-
-    // Line 7 is inside the locked block, and line 1 is not — the whole edit is
-    // refused, not the part of it that would have been fine.
-    expect(() =>
-      rewriteVersion(id, 1, [
-        { line: 1, text: '# Guard it' },
-        { line: 7, text: '## Plan' },
-      ]),
-    ).toThrow('would move lock');
-    expect(readVersionText(id, 1)).toBe(SAMPLE_PLAN);
-  });
-
-  it('refreshes the context hash of a lock the edit moved the ground under', () => {
-    const id = seed();
-    const doc = normalizedLines(SAMPLE_PLAN);
-    updateLocks(id, (locks) =>
-      addLock(locks, { docLines: doc, range: { start: 6, end: 8 }, origin: 'user', version: 1 }),
-    );
-    const before = Object.values(readLocks(id).locks)[0]!;
-
-    // Line 6 is blank and sits just above the lock: the locked text is
-    // untouched, but what disambiguates it is not.
-    rewriteVersion(id, 1, [{ line: 6, text: 'A note above the approach.' }]);
-    const after = Object.values(readLocks(id).locks)[0]!;
-
-    expect(after.text).toBe(before.text);
-    expect(after.context_sha).not.toBe(before.context_sha);
-    expect(lockedLineMap(normalizedLines(readVersionText(id, 1)!), readLocks(id)).get(7)).toBe(
-      after.id,
-    );
-  });
 });
 
 describe('corruption', () => {
   it('refuses to silently reset a file that fails its schema', () => {
     const id = seed();
-    writeFileSync(paths.locks(id), '{"locks": "not an object"}');
-    expect(() => readLocks(id)).toThrow(StoreCorruptionError);
+    writeFileSync(paths.meta(id), '{"title": 42}');
+    expect(() => readMeta(id)).toThrow(StoreCorruptionError);
   });
 
   it('refuses to silently reset a file that is not JSON at all', () => {

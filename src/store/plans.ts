@@ -1,12 +1,5 @@
 import { readdirSync, rmSync } from 'node:fs';
 import {
-  contextSha,
-  locateLock,
-  normalizedLines,
-  rangeText,
-  type LineRange,
-} from '../locks/anchor.js';
-import {
   ensureDir,
   pathExists,
   readJson,
@@ -18,15 +11,14 @@ import {
 import { ensureConfig } from './config.js';
 import { contentHash, normalize, planId, slugify } from './ids.js';
 import { paths } from './paths.js';
+import { normalizedLines } from './text.js';
 import {
   IndexFileSchema,
-  LocksFileSchema,
   PlanMetaSchema,
   VersionsFileSchema,
   type EditRecord,
   type IndexEntry,
   type IndexFile,
-  type LocksFile,
   type PlanMeta,
   type VersionRecord,
   type VersionsFile,
@@ -73,7 +65,7 @@ export function updateIndex(fn: (index: IndexFile) => void): void {
   });
 }
 
-function indexEntryFor(meta: PlanMeta, versions: VersionsFile, locks: LocksFile): IndexEntry {
+function indexEntryFor(meta: PlanMeta, versions: VersionsFile): IndexEntry {
   return {
     title: meta.title,
     cwd: meta.cwd,
@@ -81,7 +73,6 @@ function indexEntryFor(meta: PlanMeta, versions: VersionsFile, locks: LocksFile)
     updated: meta.updated,
     latest: latestVersionNumber(versions),
     approved: meta.approved_at !== null,
-    sealed: locks.sealed_at !== null,
   };
 }
 
@@ -89,7 +80,7 @@ function indexEntryFor(meta: PlanMeta, versions: VersionsFile, locks: LocksFile)
 export function reindex(id: string): void {
   const meta = readMeta(id);
   if (!meta) return;
-  const entry = indexEntryFor(meta, readVersions(id), readLocks(id));
+  const entry = indexEntryFor(meta, readVersions(id));
   updateIndex((index) => {
     index.plans[id] = entry;
   });
@@ -102,7 +93,7 @@ export function rebuildIndex(): number {
   for (const id of ids) {
     const meta = readMeta(id);
     if (!meta) continue;
-    plans[id] = indexEntryFor(meta, readVersions(id), readLocks(id));
+    plans[id] = indexEntryFor(meta, readVersions(id));
   }
   ensureDir(paths.root());
   withFileLock(paths.index(), () => {
@@ -142,24 +133,6 @@ export function readVersions(id: string): VersionsFile {
 
 export function writeVersions(id: string, versions: VersionsFile): void {
   writeJson(paths.versions(id), versions);
-}
-
-export function readLocks(id: string): LocksFile {
-  return readJson(paths.locks(id), LocksFileSchema, null) ?? LocksFileSchema.parse({});
-}
-
-export function writeLocks(id: string, locks: LocksFile): void {
-  writeJson(paths.locks(id), locks);
-}
-
-/** Read-modify-write a plan's `locks.json` under an advisory lock. */
-export function updateLocks<T>(id: string, fn: (locks: LocksFile) => T): T {
-  return withFileLock(paths.locks(id), () => {
-    const locks = readLocks(id);
-    const result = fn(locks);
-    writeLocks(id, locks);
-    return result;
-  });
 }
 
 export function readVersionText(id: string, n: number): string | null {
@@ -226,7 +199,6 @@ export function createPlan(opts: CreatePlanOptions): PlanMeta {
   ensureDir(paths.inboxDir(id));
   writeMeta(meta);
   writeVersions(id, VersionsFileSchema.parse({}));
-  writeLocks(id, LocksFileSchema.parse({}));
   return meta;
 }
 
@@ -332,11 +304,11 @@ export interface RewriteResult {
  * wording a human already settled is a round trip through an agent that has
  * nothing to decide.
  *
- * It refuses everything that would make an edit mean something other than it
- * says: an older version is the text a newer one was built from, and a sealed
- * plan has already been closed. The lock check is the same rule the TUI applies
- * before it will open a line, enforced again where the writing happens — locks
- * hold in the CLI, not in the UI that happens to be driving it.
+ * It refuses the one thing that would make an edit mean something other than it
+ * says: an older version is the text a newer one was built from, so rewriting
+ * it would change what a later version was revised away from. That rule is the
+ * same one the TUI applies before it will open a line, enforced again where the
+ * writing happens rather than only in the UI that happens to be driving it.
  */
 export function rewriteVersion(id: string, n: number, lines: readonly LineEdit[]): RewriteResult {
   const versions = readVersions(id);
@@ -344,10 +316,6 @@ export function rewriteVersion(id: string, n: number, lines: readonly LineEdit[]
   const record = versions.versions.find((v) => v.n === n);
   if (!record || n !== latest) {
     throw new Error(`planx: only v${latest} of ${id} can be edited — v${n} is not the latest.`);
-  }
-  const locks = readLocks(id);
-  if (locks.sealed_at !== null) {
-    throw new Error(`planx: ${id} is sealed — approving locked every section.`);
   }
 
   const text = readVersionText(id, n);
@@ -367,29 +335,8 @@ export function rewriteVersion(id: string, n: number, lines: readonly LineEdit[]
   }
   if (!edits.length) return { edits: [], sha256: record.sha256 };
 
-  // Every lock has to still locate, with the same text, before anything is
-  // written. A lock that moved is a lock that no longer means what it was made
-  // to mean, and the answer to that is to refuse rather than to re-anchor.
-  const located = new Map<string, LineRange>();
-  for (const lock of Object.values(locks.locks)) {
-    const found = locateLock(docLines, lock);
-    if (!found.ok || contentHash(rangeText(docLines, found.range)) !== lock.sha256) {
-      throw new Error(`planx: editing v${n} of ${id} would move lock ${lock.id}. Unlock it first.`);
-    }
-    located.set(lock.id, found.range);
-  }
-
   const body = normalize(docLines.join('\n')).replace(/\n*$/, '\n');
   writeAtomic(paths.versionFile(id, n), body);
-
-  // The locked text is untouched, but a lock is disambiguated by the lines
-  // *around* it, and editing an adjacent line staled that hash.
-  updateLocks(id, (current) => {
-    for (const [lockId, range] of located) {
-      const lock = current.locks[lockId];
-      if (lock) lock.context_sha = contextSha(docLines, range);
-    }
-  });
 
   record.sha256 = contentHash(body);
   record.edits = [...record.edits, ...edits];
@@ -512,7 +459,6 @@ export function listPlans(filter: ListFilter = {}): PlanSummary[] {
       updated: meta.updated,
       latest: latestVersion(id),
       approved: meta.approved_at !== null,
-      sealed: readLocks(id).sealed_at !== null,
     });
   }
 
@@ -553,7 +499,7 @@ export function purgePlan(id: string): void {
 }
 
 /**
- * Delete the whole store — every plan, every version, every lock.
+ * Delete the whole store — every plan and every version of one.
  *
  * Only `remove-skills` calls this, and only after asking out loud with the path
  * and the plan count on screen. There is nothing behind it.

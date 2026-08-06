@@ -5,7 +5,7 @@ import { capture } from '../src/protocol/capture.js';
 import { buildAnnotation, submitFeedback } from '../src/protocol/submit.js';
 import { setColorEnabled, stripAnsi } from '../src/render/ansi.js';
 import { listFeedback } from '../src/store/feedback.js';
-import { readLocks, readVersionText } from '../src/store/plans.js';
+import { readVersionText } from '../src/store/plans.js';
 import type { Feedback } from '../src/store/types.js';
 import { Picker, type PickerItem } from '../src/tui/Picker.js';
 import { ReviewApp, type ReviewResult } from '../src/tui/ReviewApp.js';
@@ -315,7 +315,7 @@ describe('the review frame', () => {
 
     expect([...bars].some((bar) => bar.includes('space expand'))).toBe(true);
     expect([...bars].some((bar) => bar.includes('space fold'))).toBe(true);
-    expect([...bars].some((bar) => bar.includes('l lock'))).toBe(true);
+    expect([...bars].some((bar) => bar.includes('f feedback'))).toBe(true);
     expect(heights.size).toBe(1);
     app.unmount();
   });
@@ -731,20 +731,6 @@ describe('rewriting a line in place', () => {
     app.unmount();
   });
 
-  it('refuses a locked line, and stops offering the key', async () => {
-    const app = mount(seed(), null, 1);
-    await app.ready();
-    await app.frame('e rewrite line');
-
-    await app.press('l');
-    await app.frame('⚿');
-    expect(app.stdout.lastFrame).not.toContain('e rewrite line');
-
-    await app.press('e');
-    await app.frame('That line is locked — press l to unlock it before editing.');
-    app.unmount();
-  });
-
   it('refuses any version but the latest, and says which one that is', async () => {
     const app = mount(seedTwoVersions(), null, 2, [1, 2]);
     await app.ready();
@@ -756,19 +742,6 @@ describe('rewriting a line in place', () => {
 
     await app.press('e');
     await app.frame('Only v2 can be edited — press → to reach it.');
-    app.unmount();
-  });
-
-  it('refuses a sealed plan', async () => {
-    const id = seed();
-    submitFeedback({ planId: id, version: 1, verdict: 'approve', annotations: [] });
-
-    const app = mount(id, null, 1);
-    await app.ready();
-    expect(app.stdout.lastFrame).not.toContain('e rewrite line');
-
-    await app.press('e');
-    await app.frame('This plan is sealed — approving locked every section.');
     app.unmount();
   });
 
@@ -811,9 +784,9 @@ describe('rewriting a line in place', () => {
     await app.frame('1 edited line has not been submitted and will be lost.');
     await app.press(ESC);
 
-    // Approving is not blocked by them — it saves them and then seals.
+    // Approving is not blocked by them — it saves them on the way in.
     await app.press('a');
-    await app.frame('This saves 1 edited line, then seals the plan');
+    await app.frame('This saves 1 edited line on the way in.');
     await app.press(ESC);
 
     await app.press('s');
@@ -904,9 +877,8 @@ describe('folding a section', () => {
     await app.press(DOWN);
     await app.frame('space unfold section');
     expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('(space to expand)');
-    // Nothing on it to comment on or lock, so neither key is offered.
+    // Nothing on it to comment on, so the key is not offered.
     expect(app.stdout.lastFrame).not.toContain('f feedback');
-    expect(app.stdout.lastFrame).not.toContain('l lock');
 
     await app.press(SPACE);
     await app.frame('The poller reads a snapshot');
@@ -1051,47 +1023,6 @@ describe('j walks the feedback', () => {
   });
 });
 
-describe('locking', () => {
-  it('marks the line in the gutter and writes the lock immediately', async () => {
-    const id = seed();
-    const app = mount(id, null, 1);
-    await app.ready();
-
-    await app.press('l');
-    await app.frame('⚿');
-    // On disk, not queued behind a submit that may never come.
-    expect(Object.keys(readLocks(id).locks)).toHaveLength(1);
-    app.unmount();
-  });
-
-  it('l again lifts the lock it just applied', async () => {
-    const id = seed();
-    const app = mount(id, null, 1);
-    await app.ready();
-
-    await app.press('l');
-    await app.frame('⚿');
-    await app.press('l');
-    await app.frame('Unlocked line 1.');
-
-    expect(Object.keys(readLocks(id).locks)).toHaveLength(0);
-    app.unmount();
-  });
-
-  it('refuses feedback on a locked passage and stops offering it', async () => {
-    const app = mount(seed(), null, 1);
-    await app.ready();
-
-    await app.press('l');
-    await app.frame('l unlock');
-    expect(app.stdout.lastFrame).not.toContain('f feedback');
-
-    await app.press('f');
-    await app.frame('Those lines are locked');
-    app.unmount();
-  });
-});
-
 describe('submitting and approving', () => {
   it('refuses an empty submit and says how to leave instead', async () => {
     const app = mount(seed(), null, 1);
@@ -1204,7 +1135,7 @@ describe('the keys, and where they sit', () => {
     const keys = inner(bodyRows(app.stdout.lastFrame).at(-1)!)
       .split(' · ')
       .map((part) => part.split(' ')[0]!);
-    expect(keys).toEqual(['←→', 'a', 'd', 'e', 'f', 'l', 'n', 'v', 'x', 'esc', '?']);
+    expect(keys).toEqual(['←→', 'a', 'd', 'e', 'f', 'n', 'v', 'x', 'esc', '?']);
     app.unmount();
   });
 
@@ -1263,7 +1194,6 @@ describe('the keys, and where they sit', () => {
       'g G',
       'h',
       'j',
-      'l',
       'n',
       's',
       'space',
@@ -1275,15 +1205,15 @@ describe('the keys, and where they sit', () => {
     app.unmount();
   });
 
-  it('agrees with the size of what l would act on', async () => {
+  it('agrees with the size of what e would act on', async () => {
     const app = mount(seed(), null, 1);
     await app.ready();
-    await app.frame('l lock line');
-    expect(app.stdout.lastFrame).not.toContain('l lock lines');
+    await app.frame('e rewrite line');
+    expect(app.stdout.lastFrame).not.toContain('e rewrite lines');
 
     await app.press('v');
     await app.press(DOWN);
-    await app.frame('l lock lines');
+    await app.frame('e rewrite lines');
     // And `v` now says how to undo itself, since esc no longer does.
     expect(app.stdout.lastFrame).toContain('v unselect lines');
     app.unmount();
@@ -1424,7 +1354,7 @@ describe('what the version has to say about itself', () => {
       planId: id,
       version: 1,
       verdict: 'revise',
-      annotations: [buildAnnotation(doc, 'comment', 4, 4, 'left last time', 'a1')],
+      annotations: [buildAnnotation(doc, 4, 4, 'left last time', 'a1')],
       general: 'and a standing note',
     });
 
@@ -1552,8 +1482,8 @@ describe('the plan, the diff and the versions', () => {
       version: 1,
       verdict: 'revise',
       annotations: [
-        buildAnnotation(doc, 'comment', 4, 4, 'left on v1 last time', 'a1'),
-        buildAnnotation(doc, 'comment', 5, 5, 'and another', 'a2'),
+        buildAnnotation(doc, 4, 4, 'left on v1 last time', 'a1'),
+        buildAnnotation(doc, 5, 5, 'and another', 'a2'),
       ],
     });
 

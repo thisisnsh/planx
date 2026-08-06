@@ -1,10 +1,10 @@
 # Executing
 
-Approving a plan does not build it. It seals it, and then tells you how to
-build it:
+Approving a plan does not build it. It marks the version settled, and then tells
+you how to build it:
 
 ```
-✓ Approved & sealed — guard-clock-regression-a3f9 v3 (6 sections locked)
+✓ Approved — guard-clock-regression-a3f9 v3
 
   Paste to your agent:  /planx execute guard-clock-regression-a3f9 v3
 ```
@@ -25,12 +25,13 @@ s   Paste to your agent:  /planx revise guard-clock-regression-a3f9
 x   Reopen it with:  planx guard-clock-regression-a3f9 v3
 ```
 
-## What a sealed plan looks like
+## A version with nothing left on it
 
-Every section carries a lock, `e` refuses, and the only key left that changes
-anything is `l` — if you really have to open one back up.
+`a` is offered only while the version carries no feedback and no note, which is
+what makes approving mean something: it is the review saying there is nothing
+left to answer.
 
-<PlanxSim scenario="sealed" :rows="14" />
+<PlanxSim scenario="executing" :rows="14" />
 
 ## In this session, not a new process
 
@@ -64,5 +65,4 @@ thing planx exists to prevent.
 
 If the plan turns out to be wrong once you are in the code, the agent stops and
 says so rather than quietly doing something else. Changing it is your decision,
-and it goes back through review: an approved plan is sealed, so every section of
-it is locked.
+and it goes back through review.

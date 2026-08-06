@@ -37,16 +37,12 @@ rather than asking about "this".
 
 ## What cannot be deleted
 
-Two version rows refuse, and say so by not offering `d`:
+One version row refuses, and says so by not offering the key:
 
 - **The latest version.** A plan with no current text is not a plan, and every
   read path assumes one exists.
-- **A version a lock was cut from.** `--splice` re-reads a locked block's source
-  text out of the version it was recorded in, so deleting that version would
-  break the marker path. See [Locking](/locking).
 
-Deleting the plan itself is always allowed. If you want it gone, the locks go
-with it.
+Deleting the plan itself is always allowed.
 
 ## Repairing the index
 

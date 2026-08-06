@@ -2,15 +2,11 @@ import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { diffVersions, rowsForSingleVersion } from '../diff/lines.js';
 import { runInstall, runUninstall } from '../install/install.js';
-import { normalizedLines } from '../locks/anchor.js';
-import { lockedLineMap } from '../locks/manage.js';
-import { renderSkeleton } from '../locks/markers.js';
-import { capture, LockViolationError } from '../protocol/capture.js';
+import { capture } from '../protocol/capture.js';
 import { carriedOver, collapseEdits, presentResume } from '../protocol/present.js';
-import { grantUnlock, submitFeedback } from '../protocol/submit.js';
+import { submitFeedback } from '../protocol/submit.js';
 import { bold, cyan, dim, green, padEnd, red, yellow } from '../render/ansi.js';
 import { renderDocument, renderStatLine, renderUnified, type RenderMode } from '../render/diff.js';
-import { protectedFor } from '../store/clean.js';
 import { listFeedback } from '../store/feedback.js';
 import { paths } from '../store/paths.js';
 import {
@@ -19,7 +15,6 @@ import {
   listPlans,
   purgePlan,
   purgeStore,
-  readLocks,
   readMeta,
   readVersions,
   readVersionText,
@@ -92,25 +87,21 @@ function storedVersions(id: string): VersionRecord[] {
  * is simply true.
  */
 function planItems(): Array<PickerItem<PlanChoice>> {
-  return listPlans().map((plan) => {
-    // A version a lock was cut from is the source `--splice` re-reads, and the
-    // latest is the plan itself. Neither can go, so neither offers `d`.
-    const pinned = protectedFor(plan.id);
-    return {
-      value: { id: plan.id, version: plan.latest, row: 'plan' },
-      label: plan.title,
-      approved: plan.approved,
-      hint: `${padEnd(ago(plan.updated), 9)}${plan.id}`,
-      searchable: plan.id,
-      deleteAs: plan.id,
-      children: storedVersions(plan.id).map((v) => ({
-        value: { id: plan.id, version: v.n, row: 'version' },
-        label: `v${v.n}`,
-        hint: ago(v.created),
-        deleteAs: v.n === plan.latest || pinned.has(v.n) ? undefined : `${plan.id} v${v.n}`,
-      })),
-    };
-  });
+  return listPlans().map((plan) => ({
+    value: { id: plan.id, version: plan.latest, row: 'plan' },
+    label: plan.title,
+    approved: plan.approved,
+    hint: `${padEnd(ago(plan.updated), 9)}${plan.id}`,
+    searchable: plan.id,
+    deleteAs: plan.id,
+    children: storedVersions(plan.id).map((v) => ({
+      value: { id: plan.id, version: v.n, row: 'version' },
+      label: `v${v.n}`,
+      hint: ago(v.created),
+      // The latest is the plan itself, so it never offers a delete.
+      deleteAs: v.n === plan.latest ? undefined : `${plan.id} v${v.n}`,
+    })),
+  }));
 }
 
 /**
@@ -189,26 +180,16 @@ export function cmdCapture(ctx: Ctx): number {
   ensureStore();
   const text = readPlanText(ctx.args);
 
-  let result;
-  try {
-    result = capture({
-      text,
-      planId: one(ctx.args, '--plan-id') ?? null,
-      title: one(ctx.args, '--title') ?? null,
-      name: one(ctx.args, '--name') ?? null,
-      parent: one(ctx.args, '--parent') ?? null,
-      splice: has(ctx.args, '--splice'),
-      source: one(ctx.args, '--source') ?? 'unknown',
-      note: one(ctx.args, '--note') ?? null,
-      agent: one(ctx.args, '--agent') ?? null,
-    });
-  } catch (err) {
-    if (err instanceof LockViolationError) {
-      ctx.err(err.message);
-      return 3;
-    }
-    throw err;
-  }
+  const result = capture({
+    text,
+    planId: one(ctx.args, '--plan-id') ?? null,
+    title: one(ctx.args, '--title') ?? null,
+    name: one(ctx.args, '--name') ?? null,
+    parent: one(ctx.args, '--parent') ?? null,
+    source: one(ctx.args, '--source') ?? 'unknown',
+    note: one(ctx.args, '--note') ?? null,
+    agent: one(ctx.args, '--agent') ?? null,
+  });
 
   if (ctx.json) {
     ctx.out(JSON.stringify(result, null, 2));
@@ -220,21 +201,6 @@ export function cmdCapture(ctx: Ctx): number {
       ? green(`Captured ${bold(result.planId)} v${result.version}.`)
       : dim(`${result.planId} v${result.version} unchanged — nothing written.`),
   );
-  if (result.expandedLocks.length) {
-    ctx.out(dim(`Expanded ${result.expandedLocks.length} locked block(s) from markers.`));
-  }
-  if (result.literalMarkersInFence.length) {
-    ctx.err(
-      yellow(
-        `Note: marker(s) on line ${result.literalMarkersInFence.join(', ')} are inside a code fence and were left literal.`,
-      ),
-    );
-  }
-  for (const id of result.droppedLocks) {
-    ctx.err(
-      yellow(`Warning: lock ${id} could not be re-anchored in the new version and was dropped.`),
-    );
-  }
   if (result.closedFeedback) {
     ctx.out(dim(`Closed ${result.closedFeedback} feedback record(s).`));
   }
@@ -244,7 +210,7 @@ export function cmdCapture(ctx: Ctx): number {
 /* -------------------------------------------------------------- revise */
 
 /**
- * Pick a plan back up: what it says now, what was asked of it, what is locked.
+ * Pick a plan back up: what was asked of it, and what the reviewer rewrote.
  *
  * This is what replaced `await`. The reviewer hands over a command instead of
  * the agent blocking on a queue, so everything the agent needs is assembled
@@ -265,55 +231,11 @@ export function cmdRevise(ctx: Ctx): number {
   const edits = collapseEdits(readVersions(id).versions.find((v) => v.n === version)?.edits ?? []);
 
   if (ctx.json) {
-    ctx.out(
-      JSON.stringify(
-        { plan_id: id, version, feedback, carried, edits, locks: readLocks(id) },
-        null,
-        2,
-      ),
-    );
+    ctx.out(JSON.stringify({ plan_id: id, version, feedback, carried, edits }, null, 2));
     return 0;
   }
 
-  ctx.out(
-    presentResume({
-      planId: id,
-      version,
-      feedback,
-      carried,
-      edits,
-      locks: readLocks(id),
-      docLines: normalizedLines(text),
-    }),
-  );
-  return 0;
-}
-
-/**
- * Open one locked block for a single capture.
- *
- * Run by the agent once it has explained the change and the user has agreed, so
- * the reason it records is the only thing that makes the decision reviewable
- * afterwards. There is no matching deny: nothing is blocked waiting, so a
- * refusal is this command simply never being run.
- */
-export function cmdUnlock(ctx: Ctx): number {
-  const usage = 'planx unlock <id> <lock-id> --reason "..."';
-  const id = resolvePlanRef(requirePositional(ctx, 0, usage));
-  const lockId = requirePositional(ctx, 1, usage);
-  const reason = one(ctx.args, '--reason');
-  if (!reason) {
-    throw new Error('planx: --reason is required. Say why the block has to change.');
-  }
-
-  const { grantId } = grantUnlock({ planId: id, lockId, reason });
-
-  if (ctx.json) {
-    ctx.out(JSON.stringify({ plan_id: id, lock_id: lockId, grant_id: grantId, reason }, null, 2));
-    return 0;
-  }
-  ctx.out(green(`Unlocked ${lockId} for one capture.`));
-  ctx.out(dim(`Recorded: ${stop(reason)}`));
+  ctx.out(presentResume({ planId: id, version, feedback, carried, edits }));
   return 0;
 }
 
@@ -447,8 +369,8 @@ async function runInteractiveReview(
 
   const verdict = result.action === 'submit' ? 'revise' : result.action;
 
-  // The edits first, so the locks seal against the text the reviewer settled on
-  // and every comment re-anchors to it rather than to the line it replaced.
+  // The edits first, so every comment re-anchors to the text the reviewer
+  // settled on rather than to the line it replaced.
   if (result.editedVersion !== null && result.edits.length) {
     const { edits } = rewriteVersion(id, result.editedVersion, result.edits);
     if (edits.length) {
@@ -465,7 +387,7 @@ async function runInteractiveReview(
   // empty, which is what makes a deleted comment stay deleted.
   for (const batch of result.batches) {
     const current = batch.version === result.version;
-    const submitted = submitFeedback({
+    submitFeedback({
       planId: id,
       version: batch.version,
       verdict: current ? verdict : 'revise',
@@ -473,14 +395,11 @@ async function runInteractiveReview(
       general: batch.general,
     });
 
-    const comments = batch.annotations.filter((a) => a.kind === 'comment').length;
-    ctx.out(green(`Submitted ${countFeedback(comments)} on ${bold(id)} v${batch.version}.`));
-    if (submitted.locksCreated.length) {
-      ctx.out(dim(`Locked: ${submitted.locksCreated.join(', ')}.`));
-    }
-    if (submitted.locksRemoved.length) {
-      ctx.out(dim(`Unlocked: ${submitted.locksRemoved.join(', ')}.`));
-    }
+    ctx.out(
+      green(
+        `Submitted ${countFeedback(batch.annotations.length)} on ${bold(id)} v${batch.version}.`,
+      ),
+    );
   }
 
   for (const line of closingBlock(verdict, id, result.version)) ctx.out(line);
@@ -531,9 +450,7 @@ export function closingBlock(
 ): string[] {
   const lines: string[] = [];
   if (action === 'approve') {
-    // Not how many sections it locked. Approving seals the plan whole, so the
-    // count was a number that is always "all of them" dressed up as news.
-    lines.push(green(`Approved & sealed — ${bold(planId)} v${version}.`));
+    lines.push(green(`Approved — ${bold(planId)} v${version}.`));
   }
   if (action !== 'quit') {
     lines.push(
@@ -554,18 +471,12 @@ export function cmdShow(ctx: Ctx): number {
   const version = resolveVersionRef(id, ctx.args.positionals[1]);
   const text = requireVersionText(id, version);
 
-  if (has(ctx.args, '--skeleton')) {
-    ctx.out(renderSkeleton(text, readLocks(id)).trimEnd());
-    return 0;
-  }
   if (ctx.json) {
     ctx.out(JSON.stringify({ plan_id: id, version, text }, null, 2));
     return 0;
   }
 
-  const locks =
-    ctx.mode === 'rich' ? lockedLineMap(normalizedLines(text), readLocks(id)) : undefined;
-  for (const line of renderDocument(text, ctx.mode, locks)) ctx.out(line);
+  for (const line of renderDocument(text, ctx.mode)) ctx.out(line);
   return 0;
 }
 
@@ -598,37 +509,6 @@ export function cmdList(ctx: Ctx): number {
       return `  ${cyan(padEnd(plan.id, idWidth))}  ${dim(padEnd(`v${plan.latest}`, 5))} ${dim(padEnd(ago(plan.updated), 9))}${title}`;
     }),
   );
-  return 0;
-}
-
-export function cmdLocks(ctx: Ctx): number {
-  const id = resolvePlanRef(requirePositional(ctx, 0, 'planx locks <id>'));
-  const locks = readLocks(id);
-
-  if (ctx.json) {
-    ctx.out(JSON.stringify(locks, null, 2));
-    return 0;
-  }
-  // Two spaces on every row, because these are drawn inside the frame: that is
-  // the frame's interior padding, not an indent hanging off the left margin.
-  const out: string[] = [];
-  if (locks.sealed_at) {
-    out.push(green(`  Sealed at ${locks.sealed_at} (v${locks.sealed_version}).`));
-  }
-  const entries = Object.values(locks.locks);
-  if (!entries.length) {
-    out.push(dim('  No locks.'));
-  }
-  for (const lock of entries) {
-    const lines = lock.text.split('\n').length;
-    out.push(
-      `  ${cyan(lock.id.padEnd(5))} ${lock.section ?? dim('(preamble)')} ${dim(`— ${lines} lines, ${lock.origin}`)}`,
-    );
-  }
-  for (const grant of Object.values(locks.grants).filter((g) => g.used_at === null)) {
-    out.push(yellow(`  Grant open for ${grant.lock_id} — one capture may modify it.`));
-  }
-  framed(ctx, out);
   return 0;
 }
 
@@ -795,10 +675,10 @@ function runNpm(args: string[], ctx: Ctx): Promise<number> {
 /**
  * The only repair path in the tool.
  *
- * It walks every plan and reports three things: a plan with no versions
- * recorded, a version listed in `versions.json` whose `v<n>.md` is missing, and
- * a lock that can no longer be located in the latest version. Then it rebuilds
- * `index.json` from the plan directories on disk — the index is a derived cache
+ * It walks every plan and reports two things: a plan with no versions recorded,
+ * and a version listed in `versions.json` whose `v<n>.md` is missing. Then it
+ * rebuilds `index.json` from the plan directories on disk — the index is a
+ * derived cache
  * that `list` and the picker read instead of opening every plan, so an
  * interrupted capture can leave it stale and nothing else puts it right.
  */
@@ -813,16 +693,6 @@ export function cmdDoctor(ctx: Ctx): number {
     for (const v of versions) {
       if (readVersionText(plan.id, v.n) === null) {
         problems.push(`${plan.id}: v${v.n} is in versions.json but its file is missing.`);
-      }
-    }
-    const locks = readLocks(plan.id);
-    const latest = readVersionText(plan.id, latestVersion(plan.id));
-    if (latest !== null) {
-      const map = lockedLineMap(normalizedLines(latest), locks);
-      for (const lock of Object.values(locks.locks)) {
-        if (![...map.values()].includes(lock.id)) {
-          problems.push(`${plan.id}: lock ${lock.id} cannot be located in the latest version.`);
-        }
       }
     }
   }

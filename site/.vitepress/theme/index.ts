@@ -2,7 +2,6 @@ import DefaultTheme from 'vitepress/theme';
 import type { Theme } from 'vitepress';
 import './style.css';
 import './sim.css';
-import PlanxCapture from './components/PlanxCapture.vue';
 import PlanxLoop from './components/PlanxLoop.vue';
 import PlanxPicker from './components/PlanxPicker.vue';
 import PlanxSim from './components/PlanxSim.vue';
@@ -17,7 +16,6 @@ export default {
   enhanceApp({ app }) {
     app.component('PlanxSim', PlanxSim);
     app.component('PlanxPicker', PlanxPicker);
-    app.component('PlanxCapture', PlanxCapture);
     app.component('PlanxLoop', PlanxLoop);
   },
 } satisfies Theme;

@@ -65,8 +65,8 @@
   position: relative;
   min-width: 0;
   overflow-x: auto;
-  /* The symbol fonts are for `⚿` and the box drawing, which not every mono
-     face carries — see `.lock` below for what keeps the cell one column. */
+  /* The symbol fonts are for the box drawing, which not every mono face
+     carries. */
   font-family:
     var(--vp-font-family-mono), 'Apple Symbols', 'Segoe UI Symbol', 'Noto Sans Symbols 2';
   font-size: 13px;
@@ -99,13 +99,11 @@
 
 /* --- the CLI's own colours ------------------------------------------- */
 
-.pnx-screen .sig,
-.pnx-capture-out .sig {
+.pnx-screen .sig {
   color: var(--pnx-signal);
 }
 
-.pnx-screen .dim,
-.pnx-capture-out .dim {
+.pnx-screen .dim {
   color: var(--pnx-ink-3);
 }
 
@@ -123,13 +121,11 @@
 }
 
 .pnx-screen .code,
-.pnx-screen .green,
-.pnx-capture-out .green {
+.pnx-screen .green {
   color: #7fd88f;
 }
 
-.pnx-screen .red,
-.pnx-capture-out .red {
+.pnx-screen .red {
   color: #ff6b5a;
 }
 
@@ -159,15 +155,6 @@
 .pnx-screen .inv {
   background: var(--pnx-ink);
   color: #08080a;
-}
-
-/* The lock marker, held to exactly one cell whatever font draws it. */
-.pnx-screen .lock {
-  display: inline-block;
-  width: 1ch;
-  overflow: hidden;
-  text-align: center;
-  vertical-align: bottom;
 }
 
 /* The block cursor, in the one colour that means "planx is waiting on you". */
@@ -337,56 +324,6 @@
   white-space: pre;
 }
 
-/* --- the capture walkthrough ------------------------------------------- */
-
-.pnx-capture {
-  margin: 26px 0 32px;
-}
-
-.pnx-capture ol.pnx-capture-steps {
-  list-style: none;
-}
-
-.pnx-capture-steps {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 18px;
-  margin: 0 0 12px;
-  padding: 0;
-  list-style: none;
-  font-family: var(--vp-font-family-mono);
-  font-size: 12px;
-  color: var(--pnx-ink-3);
-}
-
-.pnx-capture .pnx-capture-steps li {
-  margin: 0;
-}
-
-.pnx-capture .pnx-capture-steps li.now {
-  color: var(--pnx-signal);
-}
-
-.pnx-capture-out {
-  margin: 0 0 12px;
-  padding: 14px 16px;
-  border: 1px solid var(--pnx-line);
-  border-radius: 8px;
-  background: #08080a;
-  overflow-x: auto;
-  font-family: var(--vp-font-family-mono);
-  font-size: 12.5px;
-  line-height: 1.55;
-  color: var(--pnx-ink);
-  white-space: pre;
-}
-
-.pnx-capture-keys {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
 /* --- narrow ------------------------------------------------------------ */
 
 @media (max-width: 720px) {
@@ -401,10 +338,6 @@
 
   .pnx-key {
     min-height: 38px;
-  }
-
-  .pnx-capture-out {
-    font-size: 11px;
   }
 
   /* The hand-off is prose, not a frame: wrap it rather than asking a phone to
@@ -434,8 +367,7 @@
   }
 
   /* Borrow the page's own gutter rather than shrinking the type again. */
-  .pnx-demo,
-  .pnx-capture {
+  .pnx-demo {
     margin-inline: -10px;
   }
 }

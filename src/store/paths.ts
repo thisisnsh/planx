@@ -30,7 +30,6 @@ export const paths = {
   plan: (id: string) => join(storeRoot(), 'plans', id),
   meta: (id: string) => join(storeRoot(), 'plans', id, 'meta.json'),
   versions: (id: string) => join(storeRoot(), 'plans', id, 'versions.json'),
-  locks: (id: string) => join(storeRoot(), 'plans', id, 'locks.json'),
   versionFile: (id: string, n: number) => join(storeRoot(), 'plans', id, `v${n}.md`),
   feedbackDir: (id: string) => join(storeRoot(), 'plans', id, 'feedback'),
   /** One file per version: the review holds a version's feedback, whole. */

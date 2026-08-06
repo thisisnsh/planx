@@ -2,10 +2,10 @@ import { mkdirSync, symlinkSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { normalizedLines } from '../src/locks/anchor.js';
 import { buildAnnotation, submitFeedback } from '../src/protocol/submit.js';
 import { setStoreRoot } from '../src/store/paths.js';
 import { readVersions, readVersionText, rewriteVersion } from '../src/store/plans.js';
+import { normalizedLines } from '../src/store/text.js';
 import { Cli, collect, ensureBuilt, PLAN_V1, PLAN_V2 } from './cli.js';
 
 let cli: Cli;
@@ -28,8 +28,6 @@ function inStore<T>(fn: () => T): T {
 
 interface Review {
   comments?: Array<[number, number, string]>;
-  locks?: Array<[number, number]>;
-  unlocks?: Array<[number, number]>;
   verdict?: 'revise' | 'approve' | 'reject';
   general?: string;
 }
@@ -47,17 +45,9 @@ function review(id: string, version: number, opts: Review) {
   return inStore(() => {
     const doc = normalizedLines(readVersionText(id, version)!);
     let n = 0;
-    const annotations = [
-      ...(opts.comments ?? []).map(([from, to, text]) =>
-        buildAnnotation(doc, 'comment', from, to, text, `a${++n}`),
-      ),
-      ...(opts.locks ?? []).map(([from, to]) =>
-        buildAnnotation(doc, 'lock', from, to, '', `L${++n}`),
-      ),
-      ...(opts.unlocks ?? []).map(([from, to]) =>
-        buildAnnotation(doc, 'unlock', from, to, '', `u${++n}`),
-      ),
-    ];
+    const annotations = (opts.comments ?? []).map(([from, to, text]) =>
+      buildAnnotation(doc, from, to, text, `a${++n}`),
+    );
     return submitFeedback({
       planId: id,
       version,
@@ -195,7 +185,7 @@ describe('the review hand-off across two processes', () => {
     expect(result.stdout).toContain(`## planx — ${id} v1 (verdict: revise)`);
     expect(result.stdout).toContain('Wrong layer. Guard belongs in the R2 write path.');
     expect(result.stdout).toContain('> Extend the snapshot-regression guard in poller.ts.');
-    expect(result.stdout).toContain(`planx capture --plan-id ${id} --parent v1 --splice --stdin`);
+    expect(result.stdout).toContain(`planx capture --plan-id ${id} --parent v1 --stdin`);
   });
 
   it('carries the feedback and the lines it quotes, but not the plan', async () => {
@@ -254,104 +244,6 @@ describe('the review hand-off across two processes', () => {
   });
 });
 
-describe('lock enforcement through the binary', () => {
-  it('refuses the write, exits non-zero, and leaves the store untouched', async () => {
-    const id = await seed();
-    review(id, 1, { locks: [[9, 10]] });
-
-    const tampered = PLAN_V1.replace(
-      'Deploy behind the `ff_clock_guard` flag, 10% then 50% then 100%.',
-      'Deploy directly to 100%; the flag adds no value here.',
-    );
-    const rejected = await cli.run(['capture', '--plan-id', id, '--stdin'], tampered);
-
-    expect(rejected.code).toBe(3);
-    expect(rejected.stderr).toContain('was modified — version rejected');
-    expect(rejected.stderr).toContain('- Deploy behind the `ff_clock_guard` flag');
-    expect(rejected.stderr).toContain('+ Deploy directly to 100%');
-    expect(rejected.stderr).toContain(`planx unlock ${id} L1 --reason`);
-    expect(rejected.stderr).toContain('Nothing was written.');
-
-    expect(versionsOf(id)).toEqual([1]);
-  });
-
-  it('accepts the same revision when the locked block arrives as a marker', async () => {
-    const id = await seed();
-    review(id, 1, { locks: [[9, 10]] });
-
-    const skeleton = await cli.run(['show', id, '--skeleton']);
-    expect(skeleton.stdout).toContain('[[planx:keep L1]]');
-    expect(skeleton.stdout).not.toContain('ff_clock_guard');
-
-    const revised = skeleton.stdout.replace(
-      'Extend the snapshot-regression guard in poller.ts.',
-      'Extend the guard in the R2 write path.',
-    );
-    const captured = await cli.run(
-      ['capture', '--plan-id', id, '--parent', 'v1', '--splice', '--stdin'],
-      revised,
-    );
-    expect(captured.code).toBe(0);
-    expect(captured.stdout).toContain('v2');
-
-    const shown = await cli.run(['show', id, '--plain']);
-    expect(shown.stdout).toContain('Deploy behind the `ff_clock_guard` flag');
-  });
-
-  it('grants one capture through the binary, then burns', async () => {
-    const id = await seed();
-    review(id, 1, { locks: [[9, 10]] });
-
-    const granted = await cli.run(['unlock', id, 'L1', '--reason', 'the flag adds no value here']);
-    expect(granted.code).toBe(0);
-    expect(granted.stdout).toContain('Unlocked L1 for one capture.');
-    expect(granted.stdout).toContain('the flag adds no value here');
-
-    const edited = PLAN_V1.replace(
-      'Deploy behind the `ff_clock_guard` flag, 10% then 50% then 100%.',
-      'Deploy directly to 100%.',
-    );
-    expect((await cli.run(['capture', '--plan-id', id, '--stdin'], edited)).code).toBe(0);
-
-    // Spent: the same block cannot be edited again without asking afresh.
-    const second = await cli.run(
-      ['capture', '--plan-id', id, '--stdin'],
-      edited.replace('Deploy directly to 100%.', 'Actually roll it back.'),
-    );
-    expect(second.code).toBe(3);
-  });
-
-  it('refuses without a reason, so the audit trail cannot be empty', async () => {
-    const id = await seed();
-    review(id, 1, { locks: [[9, 10]] });
-
-    const result = await cli.run(['unlock', id, 'L1']);
-    expect(result.code).not.toBe(0);
-    expect(result.stderr).toContain('--reason is required');
-  });
-});
-
-describe('approval and sealing', () => {
-  it('seals every section and blocks further edits', async () => {
-    const id = await seed();
-    expect(review(id, 1, { verdict: 'approve' }).sealedLocks.length).toBeGreaterThanOrEqual(3);
-
-    const locks = JSON.parse((await cli.run(['locks', id, '--json'])).stdout);
-    expect(locks.sealed_at).not.toBeNull();
-    expect(Object.keys(locks.locks).length).toBeGreaterThanOrEqual(3);
-
-    const blocked = await cli.run(['capture', '--plan-id', id, '--stdin'], PLAN_V2);
-    expect(blocked.code).toBe(3);
-  });
-
-  it('lets the reviewer carve a hole in a sealed plan', async () => {
-    const id = await seed();
-    review(id, 1, { verdict: 'approve' });
-    review(id, 1, { unlocks: [[6, 7]] });
-    expect((await cli.run(['capture', '--plan-id', id, '--stdin'], PLAN_V2)).code).toBe(0);
-  });
-});
-
 /**
  * A line whose content *is* a path or a plan id, which cannot be recased
  * without breaking it. Everything else planx prints is a sentence.
@@ -380,17 +272,9 @@ function expectSentences({ stdout, stderr }: { stdout: string; stderr: string })
 }
 
 describe('every line planx prints is a sentence', () => {
-  it('holds through capture, unlock, doctor, add-skills and remove-skills', async () => {
+  it('holds through capture, doctor, add-skills and remove-skills', async () => {
     const id = await seed();
     expectSentences(await cli.run(['capture', '--plan-id', id, '--stdin'], PLAN_V2));
-
-    review(id, 1, { verdict: 'approve' });
-    const lockId = Object.keys(
-      JSON.parse((await cli.run(['locks', id, '--json'])).stdout).locks,
-    )[0];
-    expectSentences(
-      await cli.run(['unlock', id, lockId!, '--reason', 'the R2 path replaced this']),
-    );
     expectSentences(await cli.run(['doctor']));
 
     // `--local`, and the harness runs planx in the temp store's directory, so
@@ -405,17 +289,7 @@ describe('the generated reference', () => {
   it('documents every non-hidden command', async () => {
     const docs = await cli.run(['__gen-cli-docs']);
     expect(docs.code).toBe(0);
-    for (const command of [
-      'capture',
-      'revise',
-      'unlock',
-      'diff',
-      'show',
-      'list',
-      'locks',
-      'update',
-      'doctor',
-    ]) {
+    for (const command of ['capture', 'revise', 'diff', 'show', 'list', 'update', 'doctor']) {
       expect(docs.stdout).toContain(`## \`planx ${command}\``);
     }
     expect(docs.stdout).toContain('Do not edit by hand');
@@ -423,9 +297,9 @@ describe('the generated reference', () => {
     expect(docs.stdout).not.toContain('## `planx __gen-cli-docs`');
     expect(docs.stdout).not.toContain('## `planx __update-check`');
 
-    // Eleven sections — thirteen commands, two of them hidden — and the ten
-    // that were cut are not among them.
-    expect(docs.stdout.match(/^## `planx /gm)).toHaveLength(11);
+    // Nine sections — eleven commands, two of them hidden — and the ones that
+    // were cut are not among them.
+    expect(docs.stdout.match(/^## `planx /gm)).toHaveLength(9);
     for (const gone of ['submit', 'versions', 'restore', 'clean', 'rename', 'import', 'config']) {
       expect(docs.stdout, gone).not.toContain(`## \`planx ${gone}\``);
     }

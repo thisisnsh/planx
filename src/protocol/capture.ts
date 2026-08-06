@@ -1,42 +1,24 @@
 import { splitLines } from '../diff/lines.js';
-import { normalizedLines } from '../locks/anchor.js';
-import { consumeGrant, rearmLocks } from '../locks/manage.js';
-import { splice } from '../locks/markers.js';
-import { formatViolations, verifyLocks, type Violation } from '../locks/verify.js';
 import {
   addVersion,
   createPlan,
   latestVersion,
   planExists,
-  readLocks,
   readMeta,
-  readVersionText,
   reindex,
   resolvePlanRef,
   resolveVersionRef,
-  updateLocks,
   writeMeta,
 } from '../store/plans.js';
 import { markFeedbackAddressed } from '../store/feedback.js';
-
-export class LockViolationError extends Error {
-  constructor(
-    readonly planId: string,
-    readonly violations: Violation[],
-  ) {
-    super(formatViolations(planId, violations));
-    this.name = 'LockViolationError';
-  }
-}
 
 export interface CaptureOptions {
   text: string;
   /** Existing plan to append to. Omitted for the first capture of a new plan. */
   planId?: string | null;
   title?: string | null;
-  /** Version the agent revised from — used to explain a lock violation. */
+  /** Version this revises. Defaults to the latest. */
   parent?: string | null;
-  splice?: boolean;
   source?: string;
   note?: string | null;
   name?: string | null;
@@ -55,10 +37,6 @@ export interface CaptureResult {
   /** False when the content matched the latest version and nothing was written. */
   created: boolean;
   isNewPlan: boolean;
-  expandedLocks: string[];
-  literalMarkersInFence: number[];
-  consumedGrants: string[];
-  droppedLocks: string[];
   closedFeedback: number;
 }
 
@@ -84,13 +62,11 @@ export function deriveTitle(text: string): string {
 }
 
 /**
- * Write a version of a plan, refusing if it would mutate a locked region.
+ * Write a version of a plan.
  *
- * Order matters and is fixed: splice, then verify, then write. Splicing first
- * makes the marker path the frictionless one, so hand-retyping a locked block
- * is what trips the guard rather than the other way round. Verifying
- * before writing is what makes the rejection safe to hit — nothing lands, so
- * the agent can fix and re-run.
+ * Capturing content byte-identical to the current latest is a no-op that
+ * returns that version, so a skill can call this defensively without forking a
+ * duplicate into the history.
  */
 export function capture(opts: CaptureOptions): CaptureResult {
   const isNewPlan = !opts.planId;
@@ -112,52 +88,12 @@ export function capture(opts: CaptureOptions): CaptureResult {
     }).id;
   }
 
-  const locks = readLocks(planId);
-
-  let text = opts.text;
-  let expandedLocks: string[] = [];
-  let literalMarkersInFence: number[] = [];
-  if (opts.splice) {
-    const result = splice(text, {
-      locks,
-      versionText: (n) => readVersionText(planId, n),
-    });
-    text = result.text;
-    expandedLocks = result.expandedLocks;
-    literalMarkersInFence = result.literalInFence;
-  }
-
-  const parentVersion = resolveParent(planId, opts.parent);
-  const previousText = parentVersion === null ? null : readVersionText(planId, parentVersion);
-
-  const verdict = verifyLocks({ locks, previousText, nextText: text });
-  if (verdict.violations.length) {
-    throw new LockViolationError(planId, verdict.violations);
-  }
-
-  const added = addVersion(planId, text, {
+  const added = addVersion(planId, opts.text, {
     author: opts.author ?? 'agent',
     agent: opts.agent ?? null,
-    parent: parentVersion,
+    parent: resolveParent(planId, opts.parent),
     note: opts.note ?? null,
   });
-
-  const consumedGrants: string[] = [];
-  let droppedLocks: string[] = [];
-  if (added.created) {
-    droppedLocks = updateLocks(planId, (current) => {
-      for (const grant of verdict.grantsToConsume) {
-        const live = current.grants[grant.id];
-        if (!live || live.used_at !== null) continue;
-        consumeGrant(current, live, added.version);
-        const lock = current.locks[live.lock_id];
-        if (lock) lock.consumed_grant = live.id;
-        consumedGrants.push(live.id);
-      }
-      return rearmLocks(current, normalizedLines(text), added.version, verdict.proposedByLock)
-        .dropped;
-    });
-  }
 
   // Feedback is answered by the existence of a newer version, so closing it
   // here is what ends the review loop rather than any acknowledgement message.
@@ -178,10 +114,6 @@ export function capture(opts: CaptureOptions): CaptureResult {
     version: added.version,
     created: added.created,
     isNewPlan,
-    expandedLocks,
-    literalMarkersInFence,
-    consumedGrants,
-    droppedLocks,
     closedFeedback,
   };
 }
