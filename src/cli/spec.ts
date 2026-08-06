@@ -151,12 +151,24 @@ export const COMMANDS: CommandSpec[] = [
     flags: [{ name: '--local', summary: 'Remove from ./.claude/skills instead of $HOME.' }],
   },
   {
+    name: 'update',
+    group: 'maintenance',
+    usage: 'planx update',
+    summary: 'Install the latest planx from npm.',
+    description:
+      'Runs `npm install -g @thisisnsh/planx@latest --foreground-scripts` and hands the terminal ' +
+      'to npm, so its output scrolls and the `add-skills` its postinstall runs is drawn live at ' +
+      'the end of it. Checks the registry first and does nothing when you are already on the ' +
+      'latest. npm’s exit code is this command’s exit code.',
+  },
+  {
     name: 'doctor',
     group: 'maintenance',
     usage: 'planx doctor',
     summary: 'Check the store for problems and rebuild the index.',
   },
   { name: '__gen-cli-docs', usage: 'planx __gen-cli-docs', summary: 'internal', hidden: true },
+  { name: '__update-check', usage: 'planx __update-check', summary: 'internal', hidden: true },
 ];
 
 export function findCommand(name: string): CommandSpec | undefined {

@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { diffVersions, rowsForSingleVersion } from '../diff/lines.js';
 import { runInstall, runUninstall } from '../install/install.js';
@@ -7,7 +8,7 @@ import { renderSkeleton } from '../locks/markers.js';
 import { capture, LockViolationError } from '../protocol/capture.js';
 import { carriedOver, collapseEdits, presentResume } from '../protocol/present.js';
 import { grantUnlock, submitFeedback } from '../protocol/submit.js';
-import { bold, cyan, dim, green, padEnd, yellow } from '../render/ansi.js';
+import { bold, cyan, dim, green, padEnd, red, yellow } from '../render/ansi.js';
 import { renderDocument, renderStatLine, renderUnified, type RenderMode } from '../render/diff.js';
 import { protectedFor } from '../store/clean.js';
 import { listFeedback } from '../store/feedback.js';
@@ -32,6 +33,13 @@ import type { VersionRecord } from '../store/types.js';
 import { brandTitle, frameBlock } from '../tui/frame.js';
 import type { PickerItem } from '../tui/Picker.js';
 import { clearScreen, isInteractive, runPicker, runReview, runSteps } from '../tui/run.js';
+import {
+  fetchLatest,
+  isNewer,
+  PACKAGE_NAME,
+  recordCheck,
+  sourceCheckout,
+} from '../update/check.js';
 import { all, has, one, type ParsedArgs } from './args.js';
 
 export interface Ctx {
@@ -718,6 +726,68 @@ export async function cmdRemoveSkills(ctx: Ctx): Promise<number> {
 
   if (ctx.json) ctx.out(JSON.stringify(report, null, 2));
   return 0;
+}
+
+/* --------------------------------------------------------------- update */
+
+/**
+ * Install the latest planx, and let npm do the talking.
+ *
+ * The terminal is handed over rather than wrapped in a screen of our own:
+ * npm's postinstall runs `add-skills`, and `--foreground-scripts` is what makes
+ * those steps appear as they happen instead of being buffered and replayed. A
+ * step screen here would swallow the one thing you ran this to watch.
+ *
+ * Always npm, never a guess at pnpm or bun. A wrong guess installs a second
+ * copy under another prefix and leaves you looking at the old version wondering
+ * why the update did nothing.
+ */
+export async function cmdUpdate(ctx: Ctx): Promise<number> {
+  const checkout = sourceCheckout();
+  if (checkout) {
+    ctx.err(
+      red(`planx: this is a checkout at ${checkout}, not an installed package.`) +
+        `\n  ${dim('`npm install -g` would install a different planx than the one you just ran.')}`,
+    );
+    return 1;
+  }
+
+  // The one command where waiting on the network is the correct thing to do.
+  const latest = await fetchLatest();
+  recordCheck(latest);
+  if (latest && !isNewer(latest, ctx.version)) {
+    ctx.out(green(`Already on v${ctx.version}, the latest.`));
+    return 0;
+  }
+
+  const args = ['install', '-g', `${PACKAGE_NAME}@latest`, '--foreground-scripts'];
+  ctx.out(`${dim('Running')}  ${yellow(`npm ${args.join(' ')}`)}`);
+  ctx.out('');
+  return runNpm(args, ctx);
+}
+
+function runNpm(args: string[], ctx: Ctx): Promise<number> {
+  return new Promise((resolve) => {
+    // npm is a `.cmd` shim on Windows, which Node will not exec directly.
+    const child = spawn('npm', args, {
+      stdio: 'inherit',
+      shell: process.platform === 'win32',
+    });
+    child.on('error', (err: NodeJS.ErrnoException) => {
+      ctx.err(
+        red(
+          err.code === 'ENOENT'
+            ? 'planx: npm is not on your PATH, so there is nothing here to install with.'
+            : `planx: could not run npm — ${err.message}`,
+        ),
+      );
+      resolve(1);
+    });
+    // npm's exit code is ours, and npm's error text is left exactly as npm
+    // wrote it. A failure here is a package-manager failure, and planx has
+    // nothing to add to what npm already said about it.
+    child.on('close', (code) => resolve(code ?? 1));
+  });
 }
 
 /* --------------------------------------------------------------- doctor */

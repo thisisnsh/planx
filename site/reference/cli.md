@@ -168,6 +168,16 @@ Removes only the skill directories planx wrote — one you edited by hand is lef
 | --- | --- |
 | `--local` | Remove from ./.claude/skills instead of $HOME. |
 
+## `planx update`
+
+Install the latest planx from npm.
+
+```
+planx update
+```
+
+Runs `npm install -g @thisisnsh/planx@latest --foreground-scripts` and hands the terminal to npm, so its output scrolls and the `add-skills` its postinstall runs is drawn live at the end of it. Checks the registry first and does nothing when you are already on the latest. npm’s exit code is this command’s exit code.
+
 ## `planx doctor`
 
 Check the store for problems and rebuild the index.

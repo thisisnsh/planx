@@ -14,6 +14,7 @@ import {
   cmdRevise,
   cmdShow,
   cmdUnlock,
+  cmdUpdate,
   type Ctx,
 } from './cli/commands.js';
 import { commandHelp, generateReference, topLevelHelp } from './cli/help.js';
@@ -24,6 +25,13 @@ import { StoreCorruptionError } from './store/atomic.js';
 import { readConfig } from './store/config.js';
 import { setStoreRoot } from './store/paths.js';
 import { PlanNotFoundError, resolvePlanRef, VersionNotFoundError } from './store/plans.js';
+import {
+  noticeFor,
+  readUpdate,
+  runUpdateCheck,
+  setUpdateNotice,
+  spawnUpdateCheck,
+} from './update/check.js';
 
 function packageVersion(): string {
   try {
@@ -64,10 +72,15 @@ async function dispatch(name: string, ctx: Ctx): Promise<number> {
       return cmdAddSkills(ctx);
     case 'remove-skills':
       return cmdRemoveSkills(ctx);
+    case 'update':
+      return cmdUpdate(ctx);
     case 'doctor':
       return cmdDoctor(ctx);
     case '__gen-cli-docs':
       ctx.out(generateReference(packageVersion()));
+      return 0;
+    case '__update-check':
+      await runUpdateCheck();
       return 0;
     default:
       throw new Error(`planx: unknown command "${name}". Run \`planx --help\`.`);
@@ -193,6 +206,16 @@ export async function main(argv: readonly string[]): Promise<number> {
     out: (text) => process.stdout.write(`${text}\n`),
     err: (text) => process.stderr.write(`${text}\n`),
   };
+
+  // What the *last* run found, drawn on the border of whatever this one draws,
+  // and a detached check for the next one. Nothing here waits on the network.
+  // `update` does its own blocking check, and the check itself is the check.
+  if (command !== 'update' && command !== '__update-check') {
+    const interactive = Boolean(process.stdout.isTTY) && !ctx.json;
+    const latest = interactive ? readUpdate(version) : null;
+    if (latest) setUpdateNotice(noticeFor(latest));
+    spawnUpdateCheck(interactive);
+  }
 
   return dispatch(command, ctx);
 }

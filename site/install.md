@@ -70,6 +70,48 @@ log keeps everything.
 
 Run it again after an upgrade to refresh the skills.
 
+## Staying current
+
+planx tells you when a newer release is out, on the border of whatever it is
+already drawing:
+
+```
+╭─ planx v0.4.0 ───────────────────────── v0.5.0 is out · run planx update ─╮
+│                                                                          │
+│  Which plan?                                                             │
+│  Pick one to review, → for its versions.                           3/3   │
+```
+
+The check that produces it never happens while you wait. Each run shows what
+the *last* run found and fires a detached check for the next one, at most once
+every six hours, so an offline machine behaves exactly like an up-to-date one
+and no command is ever a millisecond slower for it.
+
+Nothing is stored about having seen it. There is no dismissal to go stale: the
+notice is a fact about two version numbers, recomputed every run, so if 0.6.0
+lands while you are still on 0.4.0 it says 0.6.0.
+
+Then:
+
+```bash
+planx update
+```
+
+which runs `npm install -g @thisisnsh/planx@latest --foreground-scripts` and
+hands the terminal to npm — its output scrolls, and the `add-skills` its
+postinstall runs is drawn live at the end of it. Already on the latest, it says
+so and does nothing. npm's exit code is the command's exit code, and npm's
+errors are left exactly as npm wrote them.
+
+It always runs npm, never a guess at pnpm or bun: a wrong guess installs a
+second copy under another prefix and leaves you looking at the old version
+wondering why the update did nothing. If you installed planx with something
+else, upgrade it with that instead.
+
+Silence the whole thing with `PLANX_NO_UPDATE_CHECK=1`. `CI` does it too, and
+so does any run that is piped or `--json` — nothing an agent reads ever
+mentions a version of planx.
+
 ## Removing it
 
 ```bash
@@ -121,6 +163,9 @@ says so without you having to remember.
 ```bash
 npm install -g @thisisnsh/planx@1.1.3
 ```
+
+(`planx update` only ever moves you to `latest`; a specific version is npm's
+job.)
 
 Downgrading the CLI is instant and safe. The one caveat is the **on-disk format
 version** of `~/.planx`, which is versioned independently of the package: if a

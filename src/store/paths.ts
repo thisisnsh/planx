@@ -22,6 +22,7 @@ export function storeRoot(): string {
 export const paths = {
   root: () => storeRoot(),
   config: () => join(storeRoot(), 'config.json'),
+  update: () => join(storeRoot(), 'update.json'),
   index: () => join(storeRoot(), 'index.json'),
   plansDir: () => join(storeRoot(), 'plans'),
   logsDir: () => join(storeRoot(), 'logs'),

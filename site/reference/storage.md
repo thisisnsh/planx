@@ -7,6 +7,7 @@ citizen, forever.
 ```
 ~/.planx/
   config.json                     # render preference, and nothing else
+  update.json                     # cache: what npm last said `latest` is
   index.json                      # id → {title, cwd, updated, latest, approved}
   plans/
     guard-clock-regression-a3f9/

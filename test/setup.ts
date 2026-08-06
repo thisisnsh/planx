@@ -14,3 +14,12 @@
 // imported — by the time a test file's imports are hoisted it is far too late.
 delete process.env['CI'];
 delete process.env['CONTINUOUS_INTEGRATION'];
+
+// Every bordered frame in the suite draws the update notice once it is set, so
+// a leaked one would show up in assertions about screens that have nothing to
+// do with updates. Cleared before each test rather than trusted to be null:
+// module state survives between tests in the same file.
+import { beforeEach } from 'vitest';
+import { setUpdateNotice } from '../src/update/check.js';
+
+beforeEach(() => setUpdateNotice(null));

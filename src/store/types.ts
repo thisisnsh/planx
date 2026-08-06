@@ -197,3 +197,19 @@ export const ConfigSchema = z.object({
   render: z.enum(['rich', 'plain']).default('rich'),
 });
 export type Config = z.infer<typeof ConfigSchema>;
+
+/* ---------------------------------------------------------------- update */
+
+/**
+ * What the last registry check found. A cache, not configuration.
+ *
+ * `checked_at` is stamped whether or not the check succeeded, so a machine with
+ * no network spends one spawn every six hours rather than one per run, and
+ * `latest` is simply absent until a check has managed to answer.
+ */
+export const UpdateFileSchema = z.object({
+  format_version: formatVersion,
+  latest: z.string().nullable().default(null),
+  checked_at: z.string(),
+});
+export type UpdateFile = z.infer<typeof UpdateFileSchema>;

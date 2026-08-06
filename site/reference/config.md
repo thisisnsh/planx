@@ -16,6 +16,22 @@
 There is no `planx config` command. One key in a two-line file is a text editor's
 job, and a command to set it would be a bigger surface than the thing it sets.
 
+## What is not configuration
+
+`~/.planx/update.json` sits beside it and is a **cache**, not a setting:
+
+```jsonc
+{
+  "format_version": 1,
+  "latest": "0.5.0",
+  "checked_at": "2026-08-05T21:11:04.000Z"
+}
+```
+
+It is what the last background check found on npm, and the only reason the
+update notice can appear without any command waiting on the network. Deleting
+it costs one check. Editing it is pointless — the next check overwrites it.
+
 ## What used to be here
 
 - **`mouse`**, which turned on wheel scrolling in the review at the cost of the
@@ -30,7 +46,8 @@ job, and a command to set it would be a bigger surface than the thing it sets.
 | Variable | Effect |
 | --- | --- |
 | `PLANX_DIR` | Use a different store. `--dir` takes precedence. |
-| `PLANX_NO_POSTINSTALL` | Silence the line npm prints after installing. |
+| `PLANX_NO_POSTINSTALL` | Stop npm running `add-skills` after an install. |
+| `PLANX_NO_UPDATE_CHECK` | Never check npm for a newer planx. `CI` does this too. |
 | `PLANX_DEBUG` | Print stack traces on error. |
 | `NO_COLOR` | Disable ANSI colour, per [no-color.org](https://no-color.org). |
 | `FORCE_COLOR` | Force colour on when not a TTY. |

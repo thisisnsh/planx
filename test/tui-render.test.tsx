@@ -9,7 +9,9 @@ import { readLocks, readVersionText } from '../src/store/plans.js';
 import type { Feedback } from '../src/store/types.js';
 import { Picker, type PickerItem } from '../src/tui/Picker.js';
 import { ReviewApp, type ReviewResult } from '../src/tui/ReviewApp.js';
+import { brandTitle, MIN_FRAME_WIDTH, topRule } from '../src/tui/frame.js';
 import { stepLines } from '../src/tui/Steps.js';
+import { noticeFor, setUpdateNotice } from '../src/update/check.js';
 import { SAMPLE_PLAN, tempStore } from './helpers.js';
 
 /**
@@ -1636,6 +1638,82 @@ describe('the step-by-step screen', () => {
       expect(line).toContain('…');
       expect(line.trimEnd().endsWith('written')).toBe(true);
     }
+  });
+});
+
+/* ------------------------------------------------------------ update notice */
+
+describe('the update notice on the border', () => {
+  const notice = noticeFor('0.5.0');
+  const title = brandTitle('0.4.0');
+
+  it('is absent until there is something to say', () => {
+    const rule = stripAnsi(topRule(80, title, null));
+    expect(rule).not.toContain('is out');
+    expect(rule).toHaveLength(80);
+    expect(rule.endsWith('╮')).toBe(true);
+  });
+
+  it('rides right-aligned on the rule, and the rule keeps its width', () => {
+    const rule = stripAnsi(topRule(90, title, notice));
+    expect(rule).toContain('v0.5.0 is out · run planx update');
+    expect(rule).toContain('planx v0.4.0');
+    expect(rule).toHaveLength(90);
+    expect(rule.endsWith('─╮')).toBe(true);
+  });
+
+  /**
+   * The wordmark keeps the corner. A rule choosing between saying which planx
+   * this is and saying a newer one exists says the former.
+   */
+  it('falls back to the short form, then drops out entirely', () => {
+    const short = stripAnsi(topRule(50, title, notice));
+    expect(short).toContain('v0.5.0 is out');
+    expect(short).not.toContain('run planx update');
+    expect(short).toHaveLength(50);
+
+    // The review's rule already carries a plan id and two version numbers, so
+    // it is the one that runs out of room first. Two dashes past it is a rule
+    // with nowhere left to put anything.
+    const busy = brandTitle('0.4.0', 'guard-the-clock-regression-0e67  v3 ◂ v2');
+    const tight = stripAnsi(busy).length + 6;
+    const none = stripAnsi(topRule(tight, busy, notice));
+    expect(none).not.toContain('is out');
+    expect(none).toContain('planx v0.4.0');
+    expect(none).toHaveLength(tight);
+  });
+
+  it('holds its width at every size, whatever it decided to draw', () => {
+    const busy = brandTitle('0.4.0', 'guard-the-clock-regression-0e67  v3 ◂ v2');
+    const floor = stripAnsi(busy).length + 4;
+    for (let width = MIN_FRAME_WIDTH; width <= 160; width++) {
+      expect(stripAnsi(topRule(width, title, notice)), `width ${width}`).toHaveLength(width);
+      if (width < floor) continue;
+      expect(stripAnsi(topRule(width, busy, notice)), `busy ${width}`).toHaveLength(width);
+    }
+  });
+
+  it('reaches every bordered layout through the process-wide notice', async () => {
+    setUpdateNotice(notice);
+    const app = mountPicker(planRows());
+    await app.ready();
+    await app.frame('v0.5.0 is out');
+    app.unmount();
+
+    setUpdateNotice(null);
+    const quiet = mountPicker(planRows());
+    await quiet.ready();
+    await quiet.frame('Which plan?');
+    expect(quiet.stdout.lastFrame).not.toContain('is out');
+    quiet.unmount();
+  });
+
+  it('reaches the review the same way', async () => {
+    setUpdateNotice(notice);
+    const app = mount(seed(), null, 1);
+    await app.ready();
+    await app.frame('v0.5.0 is out');
+    app.unmount();
   });
 });
 

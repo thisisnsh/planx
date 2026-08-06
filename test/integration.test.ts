@@ -413,6 +413,7 @@ describe('the generated reference', () => {
       'show',
       'list',
       'locks',
+      'update',
       'doctor',
     ]) {
       expect(docs.stdout).toContain(`## \`planx ${command}\``);
@@ -420,10 +421,11 @@ describe('the generated reference', () => {
     expect(docs.stdout).toContain('Do not edit by hand');
     // The generator names itself in the header, but hidden commands get no section.
     expect(docs.stdout).not.toContain('## `planx __gen-cli-docs`');
+    expect(docs.stdout).not.toContain('## `planx __update-check`');
 
-    // Ten sections — eleven commands, one of them hidden — and the ten that
-    // were cut are not among them.
-    expect(docs.stdout.match(/^## `planx /gm)).toHaveLength(10);
+    // Eleven sections — thirteen commands, two of them hidden — and the ten
+    // that were cut are not among them.
+    expect(docs.stdout.match(/^## `planx /gm)).toHaveLength(11);
     for (const gone of ['submit', 'versions', 'restore', 'clean', 'rename', 'import', 'config']) {
       expect(docs.stdout, gone).not.toContain(`## \`planx ${gone}\``);
     }
