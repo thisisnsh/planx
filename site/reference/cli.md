@@ -146,7 +146,7 @@ Add the planx skills to your agents, and seed the store.
 planx add-skills [--no-store] [--local]
 ```
 
-Detects which agents are on this machine, writes a skill into each, and seeds ~/.planx, showing each step as it happens. Touches no agent settings files. Idempotent, and it marks what it wrote so `remove-skills` removes only that. npm does not run this for you: an install that refreshed your skills behind your back would be doing the one thing this command exists to be asked for.
+Detects which agents are on this machine, writes a skill into each, and seeds ~/.planx, showing each step as it happens. Touches no agent settings files. Idempotent, and it marks what it wrote so `remove-skills` removes only that. npm runs this after every install, so an upgrade refreshes your skills without being asked twice; run it by hand to pick up an agent you installed since.
 
 | Flag | Meaning |
 | --- | --- |

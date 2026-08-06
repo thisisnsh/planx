@@ -99,8 +99,9 @@ export interface InstallReport {
  * rather than layers, so running it again genuinely upgrades a skill instead of
  * merging the new one over the old.
  *
- * npm no longer runs it. An install that refreshed skills behind your back was
- * doing the one thing this command exists to be asked for.
+ * npm runs it after every install, which is why the idempotence and the marker
+ * matter: an upgrade has to leave the skills matching the CLI now on the PATH
+ * without touching a `planx` skill somebody wrote by hand.
  */
 export async function runInstall(opts: InstallOptions = {}): Promise<InstallReport> {
   const report: InstallReport = { wrote: [], seeded: [], skipped: [], removed: [], agents: [] };

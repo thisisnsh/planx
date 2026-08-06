@@ -1,16 +1,19 @@
 import { Box, Text, useInput } from 'ink';
 import { homedir } from 'node:os';
 import { dim, green, inverse, padEnd, red, signal, truncate } from '../render/ansi.js';
-import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO, topRule } from './frame.js';
+import { brandTitle } from './frame.js';
 
 /**
  * A command that does several things, drawn while it does them.
  *
  * `add-skills` writes into directories the user cannot see from here, on a
  * machine that may or may not have each agent on it. A wall of ticks printed
- * afterwards says what happened; this says it as it happens, in the same frame
- * the review and the picker use, so the one thing planx draws looks like one
- * thing.
+ * afterwards says what happened; this says it as it happens.
+ *
+ * No border. These two commands are the ones npm runs during an install, where
+ * the output is already sitting inside npm's, and a frame around it would be a
+ * box drawn around part of somebody else's log. Without one the drawn form and
+ * the piped form are the same rows, which is what they always were.
  *
  * It owns no state — including what has been typed into the prompt. The rows
  * are handed in and redrawn, because the work is a plain async function and the
@@ -44,7 +47,7 @@ export interface StepsPrompt {
 }
 
 export interface StepsProps {
-  /** The subcommand, shown on the top rule beside the wordmark. */
+  /** The subcommand, shown beside the wordmark on the one header line. */
   command: string;
   version: string;
   rows: readonly StepRow[];
@@ -72,8 +75,11 @@ export function Steps(props: StepsProps) {
     { isActive: props.prompt !== null },
   );
 
-  const inner = props.width - FRAME_PADDING;
-  const lines: string[] = [...stepLines(props.rows, inner)];
+  const lines: string[] = [
+    ` ${brandTitle(props.version, props.command)}`,
+    '',
+    ...stepLines(props.rows, props.width),
+  ];
   if (props.closing !== null) lines.push(`  ${props.closing}`);
   if (props.prompt !== null) {
     lines.push(
@@ -83,16 +89,13 @@ export function Steps(props: StepsProps) {
       dim(matches(props.prompt) ? '  enter delete · esc keep' : '  esc keep'),
     );
   }
+  lines.push('');
 
   return (
     <Box flexDirection="column">
-      <Text>{topRule(props.width, brandTitle(props.version, props.command))}</Text>
-      <Text>{frameLine('', inner)}</Text>
       {lines.map((line, i) => (
-        <Text key={i}>{frameLine(line, inner)}</Text>
+        <Text key={i}>{line}</Text>
       ))}
-      <Text>{frameLine('', inner)}</Text>
-      <Text>{bottomRule(props.width, ` ★ ${REPO} `)}</Text>
     </Box>
   );
 }

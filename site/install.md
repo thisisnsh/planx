@@ -1,11 +1,10 @@
 # Install
 
-Two steps. npm gives you the CLI; `add-skills` gives your agents the `/planx`
-command.
+One step. npm gives you the CLI, and its postinstall gives your agents the
+`/planx` command.
 
 ```bash
 npm install -g @thisisnsh/planx
-planx add-skills
 ```
 
 Node 20.19 or newer. That is the whole installation — there is no server to
@@ -13,41 +12,42 @@ run, no daemon to start, and nothing to add to a config file.
 
 ## What npm does
 
-Nothing but install the binary. The `postinstall` step writes no files at all;
-it prints one line:
+It installs the binary, then runs `planx add-skills` for you. Every install and
+every upgrade therefore leaves the skills in `~/.claude` and `~/.codex` matching
+the CLI that is now on your PATH, which is the state they are supposed to be in
+and the one an install is for.
 
-```
-planx installed — run `planx add-skills` to set up your agents.
-```
+This is deliberately not free rein. `add-skills` only writes into agent
+directories that already exist, only replaces skill directories carrying its own
+marker — a `planx` skill you wrote by hand is left alone — and never touches an
+agent's settings files.
 
-It used to run the installer for you, which meant every `npm install -g`
-rewrote the skills in `~/.claude` and `~/.codex` without being asked —
-including on an upgrade, where the thing being silently replaced might be a
-skill you had open in another window. Setting up your agents is now something
-you ask for.
-
-Silence the line with `PLANX_NO_POSTINSTALL=1`.
+Skip it entirely with `PLANX_NO_POSTINSTALL=1`, and run `planx add-skills`
+yourself whenever you want.
 
 ## What `add-skills` does
 
 It draws each step as it happens:
 
 ```
-╭─ planx v0.3.0  add-skills ──────────────────────────────────╮
-│                                                             │
-│  Detecting agents                                           │
-│    claude   ~/.claude          found                        │
-│    codex    ~/.codex           not installed                │
-│                                                             │
-│  Writing skills                                             │
-│    planx    ~/.claude/skills   written                      │
-│                                                             │
-│  Seeding the store                                          │
-│    ~/.planx                    ready                        │
-│                                                             │
-│  Done. /planx is available in claude.                       │
-╰──────────────────────── ★ github.com/thisisnsh/planx ───────╯
+ planx v0.5.0  add-skills
+
+  Detecting agents
+    claude   ~/.claude          found
+    codex    ~/.codex           not installed
+
+  Writing skills
+    planx    ~/.claude/skills   written
+
+  Seeding the store
+    ~/.planx                    ready
+
+  Done. /planx is available in claude.
 ```
+
+No border on this one. It is the screen npm runs during an install, where the
+output is already sitting inside npm's own — and a box drawn around part of
+somebody else's log is worse than no box.
 
 - It writes the `planx` skill into `~/.claude/skills/planx/` and
   `~/.codex/skills/planx/`, for whichever of those directories exists,
@@ -68,7 +68,7 @@ your settings that planx can break.
 Piped, or with `--json`, the same steps print as plain lines instead, so a CI
 log keeps everything.
 
-Run it again after an upgrade to refresh the skills.
+Run it by hand whenever you install an agent planx did not find last time.
 
 ## Staying current
 

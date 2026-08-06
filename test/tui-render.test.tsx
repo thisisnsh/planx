@@ -1640,6 +1640,37 @@ describe('the step-by-step screen', () => {
     }
   });
 
+  /**
+   * These two commands are the ones npm runs during an install, where the
+   * output is already inside npm's. A box drawn around part of somebody else's
+   * log is worse than no box.
+   */
+  it('draws no border at any width, and says which planx is talking', async () => {
+    for (const width of [40, 80, 200]) {
+      const stdout = new FakeStdout();
+      const instance = render(
+        <Steps
+          command="add-skills"
+          version="0.4.0"
+          rows={rows}
+          closing="Done. /planx is available in claude."
+          prompt={null}
+          width={width}
+        />,
+        { stdout: stdout as never, stdin: new FakeStdin() as never, patchConsole: false },
+      );
+      await waitFor(() => stdout.lastFrame.includes('Detecting agents'));
+      const frame = stdout.lastFrame;
+      instance.unmount();
+
+      for (const edge of ['╭', '╮', '╰', '╯', '│']) {
+        expect(frame, `${edge} at ${width}`).not.toContain(edge);
+      }
+      expect(frame).toContain('planx v0.4.0  add-skills');
+      expect(frame).toContain('Done. /planx is available in claude.');
+    }
+  });
+
   it('takes the word before enter deletes the store', async () => {
     const stdout = new FakeStdout();
     const stdin = new FakeStdin();

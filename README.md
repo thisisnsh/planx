@@ -80,14 +80,15 @@ again when you paste the command back.
 
 ```bash
 npm install -g @thisisnsh/planx
-planx add-skills
 ```
 
-Node 20.19+. `add-skills` writes one skill into `~/.claude/skills/` and
-`~/.codex/skills/` and touches no agent config — there is no hook to register.
-Then type `/planx` in Claude Code or Codex.
+Node 20.19+. The postinstall runs `planx add-skills`, which writes one skill
+into `~/.claude/skills/` and `~/.codex/skills/` and touches no agent config —
+there is no hook to register. Then type `/planx` in Claude Code or Codex.
 
-Removal: `planx remove-skills`, then `npm uninstall -g @thisisnsh/planx`.
+Upgrading: `planx update`, which planx offers on its own border when a newer
+release is out. Removal: `planx remove-skills`, then
+`npm uninstall -g @thisisnsh/planx`.
 
 <details>
 <summary><b>One skill, five branches</b></summary>

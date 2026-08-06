@@ -1,9 +1,21 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runInstall, runUninstall, skillNames } from '../src/install/install.js';
 import { tempStore } from './helpers.js';
+
+const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
 const MARKER = '.planx-installed';
 
@@ -172,5 +184,95 @@ describe('the step-by-step report', () => {
     expect(groups).toContain('Seeding the store');
     expect(existsSync(store.dir)).toBe(true);
     store.cleanup();
+  });
+});
+
+/**
+ * The postinstall script, driven as npm drives it: a real process, with a real
+ * `dist/` behind it. It is the one part of the package that runs on someone
+ * else's machine without being asked, so what it does when things are wrong
+ * matters more than what it does when they are right.
+ */
+describe('the postinstall script', () => {
+  const SCRIPT = join(ROOT, 'scripts', 'postinstall.js');
+
+  /**
+   * A copy of the package with `dist/` in it and no `src/`, which is what npm
+   * unpacks — the `src/cli.ts` guard would otherwise skip every run.
+   */
+  function packed(cli: string): string {
+    const dir = mkdtempSync(join(tmpdir(), 'planx-pack-'));
+    mkdirSync(join(dir, 'scripts'), { recursive: true });
+    mkdirSync(join(dir, 'dist'), { recursive: true });
+    cpSync(SCRIPT, join(dir, 'scripts', 'postinstall.js'));
+    writeFileSync(join(dir, 'dist', 'cli.js'), cli, 'utf8');
+    return dir;
+  }
+
+  function run(dir: string, env: NodeJS.ProcessEnv = {}): SpawnSyncReturns<string> {
+    return spawnSync(process.execPath, [join(dir, 'scripts', 'postinstall.js')], {
+      encoding: 'utf8',
+      env: { ...process.env, PLANX_NO_POSTINSTALL: '', ...env },
+    });
+  }
+
+  it('runs add-skills', () => {
+    const dir = packed(`console.log('ran ' + process.argv.slice(2).join(' '));`);
+    const result = run(dir);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('ran add-skills');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  /**
+   * A skill that could not be written is worth saying out loud, and worth
+   * nothing at all as a reason to fail `npm install -g`.
+   */
+  it('exits 0 even when add-skills fails', () => {
+    const dir = packed(`console.error('no agent directory'); process.exit(1);`);
+    const result = run(dir);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain('no agent directory');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('says what to run when dist is missing, and still exits 0', () => {
+    const dir = packed('unused');
+    rmSync(join(dir, 'dist'), { recursive: true, force: true });
+    const result = run(dir);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('planx add-skills');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('is silenced by PLANX_NO_POSTINSTALL', () => {
+    const dir = packed(`console.log('ran');`);
+    const result = run(dir, { PLANX_NO_POSTINSTALL: '1' });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe('');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  /**
+   * `npm install` in a checkout of planx itself is a dev install. Rewriting a
+   * developer's real ~/.claude skills from their working tree, mid-branch, is
+   * not something they asked for.
+   */
+  it('does nothing in a source checkout', () => {
+    const dir = packed(`console.log('ran');`);
+    mkdirSync(join(dir, 'src'), { recursive: true });
+    writeFileSync(join(dir, 'src', 'cli.ts'), '// a checkout\n', 'utf8');
+    const result = run(dir);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe('');
+
+    // Unless it is asked, which is how the script itself gets tested.
+    expect(run(dir, { PLANX_FORCE_POSTINSTALL: '1' }).stdout).toContain('ran');
+    rmSync(dir, { recursive: true, force: true });
   });
 });
