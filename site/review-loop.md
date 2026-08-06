@@ -124,16 +124,23 @@ asked, as settled text rather than a request:
   - now: `Extend the guard on the R2 write path`
 ```
 
-## Submitting nothing is how you approve
+## `s` submits, `x` executes
 
-`s` is the only way out of a review that carries anything, and an **empty submit
-is not refused**. Leaving a version with no comments and no note and pressing
-`s` is how you say the plan is fine — the review prints the command that builds
-it rather than the command that revises it, and `planx revise` reports the
-version as *reviewed with nothing to change*.
+`s` is offered whenever the version carries something to submit — a comment, the
+note, or a line you rewrote — and asks whether to hand the work back to the
+agent itself or print the command for you. On a version carrying nothing there
+is no `s` at all: there would be nothing for it to write.
 
-There is no `a`. It used to be a second exit, gated on the version carrying
-nothing, which is exactly the condition an empty submit already expresses.
+`x` executes the plan on screen, from any row of any version. A review that
+asked for nothing ends there, and `planx revise` reports the version as
+*reviewed with nothing to change*. Pressing `x` with feedback still on screen
+submits it first and builds anyway — see [Executing](/executing).
+
+Leaving planx is **ctrl+c, twice**. The first press says so in red on the row
+under the plan; any other key disarms it, and there is no timer, because a guard
+that expires on a clock behaves differently depending on how fast you type.
+`esc` is unchanged: back to the list, with a red warning when something on
+screen has not been submitted.
 
 ## Getting around a plan you have read before
 

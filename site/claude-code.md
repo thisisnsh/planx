@@ -34,12 +34,14 @@ Press `v` to start a selection, extend it with the arrows, and then:
 | `n` | A note about the whole plan |
 | `d` `←` `→` | The diff against the previous version, and the history |
 | `s` | Submit everything at once |
+| `x` | Execute the plan on screen |
 | `?` | Every key |
 
 <PlanxSim scenario="agents" :rows="14" />
 
-`s` prints one line to paste back into the Claude Code session. Claude picks the
-feedback up wherever it is in the loop and revises.
+`s` and `x` both ask which way the work goes: `1` starts the agent — a fork of
+the session that wrote the plan for a revise, a fresh one for an execute — and
+`2` prints the line to paste yourself. See [Executing](/executing).
 
 ## Nothing blocks, so nothing has to be resumed
 

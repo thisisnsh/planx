@@ -17,6 +17,8 @@ export interface PickerItem {
   hint: string;
   /** How the row is named in a delete confirmation. */
   deleteAs: string;
+  /** `executed` paints the row green: this is the version that was built. */
+  tone?: 'executed';
   children?: PickerItem[];
 }
 
@@ -180,12 +182,24 @@ export function pickerHints(state: PickerState): Hint[] {
   return hints;
 }
 
+/**
+ * The row under the one being deleted, inset past the label column.
+ *
+ * The only thing between you and a permanent delete, so it names the target in
+ * full rather than asking about "this".
+ */
+function confirmRow(target: string): Line {
+  return [p('      '), p(`delete ${target}? this cannot be undone`, 'red')];
+}
+
 export function pickerFrame(state: PickerState, height: number): Line[] {
   const width = state.cols;
   const inner = width - 4;
   const rows = rowsOf(state);
   const labelWidth = Math.max(12, Math.floor((inner - 6) * 0.55));
-  const shown = Math.max(3, Math.min(rows.length, height));
+  // The confirmation is a row spliced into the list under its own target, so
+  // the list gives one up while it is open and the frame is the same either way.
+  const shown = Math.max(3, Math.min(rows.length, height)) - (state.confirming === null ? 0 : 1);
   const start = Math.max(0, Math.min(state.cursor - Math.floor(shown / 2), rows.length - shown));
   const visible = rows.slice(start, start + shown);
 
@@ -199,7 +213,7 @@ export function pickerFrame(state: PickerState, height: number): Line[] {
     [p('  '), p('planx', 'bold')],
     subtitle,
     [],
-    ...visible.map((row) => {
+    ...visible.flatMap((row): Line[] => {
       const active = rows.indexOf(row) === state.cursor;
       const indent = row.child ? '   ' : '';
       const mark = active ? '❯ ' : '  ';
@@ -207,29 +221,32 @@ export function pickerFrame(state: PickerState, height: number): Line[] {
         .padEnd(labelWidth - indent.length, ' ')
         .slice(0, labelWidth - indent.length);
       const line = `${mark}${indent}${label}  ${row.item.hint}`;
+      // Built, and still the plan: green says so, and the version rows say it
+      // in words as well, because colour alone is a legend nobody was given.
+      const tone = row.item.tone === 'executed' ? 'green' : undefined;
       // Inverse video has to own the whole row: a highlight that stops half way
-      // is what happens when a dim run closes its own style inside one.
-      if (active) return [p('  '), ...fit([p(line, 'inv')], inner - 2)];
-      return [
-        p('  '),
-        p(`${mark}${indent}`),
-        p(label),
-        ...fit(
-          [p(`  ${row.item.hint}`, 'dim')],
-          inner - 2 - mark.length - indent.length - label.length,
-        ),
-      ];
+      // is what happens when a dim run closes its own style inside one. Under
+      // the cursor an executed row keeps its colour.
+      const drawn: Line = active
+        ? [p('  '), ...fit([p(line, tone ? `inv ${tone}` : 'inv')], inner - 2)]
+        : [
+            p('  '),
+            p(`${mark}${indent}`),
+            p(label, tone),
+            ...fit(
+              [p(`  ${row.item.hint}`, 'dim')],
+              inner - 2 - mark.length - indent.length - label.length,
+            ),
+          ];
+      // The confirmation sits directly under what it is about. Drawn after the
+      // whole list, the red line was nowhere near the plan it named.
+      return active && state.confirming !== null ? [drawn, confirmRow(state.confirming)] : [drawn];
     }),
     ...(rows.length ? [] : [[p('  no matches', 'dim')] as Line]),
   ];
   while (body.length < height + 3) body.push([]);
 
-  const message: Line =
-    state.confirming !== null
-      ? [p('  '), p(`delete ${state.confirming}? this cannot be undone`, 'red')]
-      : state.status
-        ? [p('  '), p(state.status, 'sig')]
-        : [];
+  const message: Line = state.status ? [p('  '), p(state.status, 'sig')] : [];
 
   const hints = hintLines(pickerHints(state), inner - 2).map(
     (line) => [p('  '), p(line, 'dim')] as Line,
@@ -284,8 +301,15 @@ export function demoPlans(): PickerItem[] {
       label: 'rate-limit-uploads-77c2',
       hint: 'Rate limit the upload endpoint · 2 versions · 1d ago',
       deleteAs: 'rate-limit-uploads-77c2',
+      // Green: its latest version is the one that was built.
+      tone: 'executed',
       children: [
-        { label: 'v2', hint: 'captured 1d ago · reviewed', deleteAs: 'rate-limit-uploads-77c2 v2' },
+        {
+          label: 'v2',
+          hint: 'captured 1d ago · executed',
+          deleteAs: 'rate-limit-uploads-77c2 v2',
+          tone: 'executed',
+        },
         { label: 'v1', hint: 'captured 3d ago', deleteAs: 'rate-limit-uploads-77c2 v1' },
       ],
     },

@@ -39,6 +39,7 @@ Reads the plan from stdin or a file and appends it as a new version. Capturing c
 | `--source <NAME>` | Which agent produced this (claude, codex, …). |
 | `--note <N>` | One line about what changed in this version. |
 | `--agent <NAME>` | Agent identifier recorded on the version. |
+| `--session-id <ID>` | The agent session that wrote this, so planx can fork it. |
 
 ```bash
 planx capture --stdin --title "Guard the clock regression" < plan.md
@@ -57,6 +58,20 @@ One read with everything asked of the plan: each comment against the lines it qu
 
 ```bash
 planx revise guard-clock-a3f9
+```
+
+## `planx executed`
+
+Record that this version was built.
+
+```
+planx executed <id> [version]
+```
+
+Marks the version as the one that was executed, which is what turns its row green in the picker. The execute skill runs it before its first edit, so the mark is true whichever route reached the build — the agent planx launched, a command you pasted yourself, or `/planx execute` typed from scratch. planx does not mark on launch, because a launch you immediately ctrl+c out of built nothing. Running it twice restamps the time rather than failing.
+
+```bash
+planx executed guard-clock-a3f9 v3
 ```
 
 ## `planx diff`

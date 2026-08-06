@@ -17,6 +17,13 @@ import {
   type SimState,
 } from '../site/.vitepress/theme/sim/engine.js';
 import { scenario } from '../site/.vitepress/theme/sim/scenarios.js';
+import {
+  createPicker,
+  demoPlans,
+  pickerFrame,
+  pickerPress,
+} from '../site/.vitepress/theme/sim/picker.js';
+import { plain } from '../site/.vitepress/theme/sim/text.js';
 
 function open(name: string, cols = 92, rows = 24): SimState {
   const state = createState(scenario(name));
@@ -61,7 +68,10 @@ describe('the website demo', () => {
 
     expect(frameText(state)).toContain('Name the function.');
 
+    // `s` asks which way the command goes; `2` is the one you paste yourself.
     send(state, 's');
+    expect(frameText(state)).toContain('Submit and revise guard-clock-a3f9 v3.');
+    send(state, '2');
     expect(state.handoff).toContain('## planx — guard-clock-a3f9 v3');
     expect(state.handoff).toContain('**Feedback:** Name the function.');
     expect(state.handoff).toContain('planx capture --plan-id guard-clock-a3f9 --parent v3');
@@ -70,10 +80,34 @@ describe('the website demo', () => {
 
   it('tells the agent to build it when the review asked for nothing', () => {
     const state = open('executing');
-    send(state, 's');
+    // Nothing to submit, so there is no `s` — `x` is how a review that asked
+    // for nothing ends.
+    expect(frameText(state)).not.toContain('s submit');
+    send(state, 'x', '2');
     expect(state.handoff).toContain('Reviewed with nothing to change. Implement it as written.');
     expect(frameText(state)).toContain('/planx execute guard-clock-a3f9 v3');
     expect(frameText(state)).not.toContain('/planx revise');
+  });
+
+  it('starts the agent itself when 1 is pressed, and says what it ran', () => {
+    const state = open('executing');
+    send(state, 'x');
+    expect(frameText(state)).toContain('Execute guard-clock-a3f9 v3.');
+    expect(frameText(state)).toContain('1 execute in a new agent');
+    expect(frameText(state)).toContain('2 give me the command');
+
+    send(state, '1');
+    expect(frameText(state)).toContain('Running');
+    expect(frameText(state)).toContain('claude "/planx execute guard-clock-a3f9 v3"');
+  });
+
+  it('takes esc back to the plan rather than out of planx', () => {
+    const state = open('executing');
+    send(state, 'x');
+    expect(frameText(state)).toContain('give me the command');
+    send(state, 'escape');
+    expect(frameText(state)).toContain('x execute');
+    expect(frameText(state)).not.toContain('give me the command');
   });
 
   it('opens a diff, and puts it away again', () => {
@@ -90,8 +124,34 @@ describe('the website demo', () => {
     send(state, 'down', 'down', 'e');
     send(state, 'ctrl+e');
     type(state, ' (v2)');
-    send(state, 'enter', 's');
+    send(state, 'enter', 's', '2');
     expect(state.handoff).toContain('### Edited by the reviewer');
     expect(state.handoff).toContain('(v2)');
+  });
+});
+
+describe('the website picker', () => {
+  function screen(state: ReturnType<typeof createPicker>, height = 10): string[] {
+    return pickerFrame(state, height).map((line) => plain(line));
+  }
+
+  it('says which version was built, in words as well as in green', () => {
+    const state = createPicker(demoPlans());
+    pickerPress(state, 'down');
+    pickerPress(state, 'right');
+    const rows = screen(state);
+    expect(rows.find((r) => r.includes('v2'))).toContain('executed');
+  });
+
+  it('opens the delete confirmation under its own row, at the same height', () => {
+    const state = createPicker(demoPlans());
+    const before = screen(state).length;
+
+    pickerPress(state, 'ctrl+d');
+    const rows = screen(state);
+    expect(rows).toHaveLength(before);
+
+    const target = rows.findIndex((r) => r.includes('❯'));
+    expect(rows[target + 1]).toContain('delete guard-clock-a3f9? this cannot be undone');
   });
 });

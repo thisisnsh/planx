@@ -157,6 +157,13 @@
   color: #08080a;
 }
 
+/* An executed row under the cursor keeps its green: the highlight would
+   otherwise repaint it the same colour as every other row. */
+.pnx-screen .inv.green {
+  background: #7fd88f;
+  color: #08080a;
+}
+
 /* The block cursor, in the one colour that means "planx is waiting on you". */
 .pnx-screen .caret {
   background: var(--pnx-signal);

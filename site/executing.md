@@ -1,7 +1,54 @@
 # Executing
 
-Approving a plan does not build it. Submitting a review that asks for nothing is
-how you approve, and what it prints is how you build it:
+`x` executes the plan on screen. It is offered on every row of every version,
+and it asks which way the command goes:
+
+```
+│ Execute guard-clock-regression-a3f9 v3.                          │
+│ 1 execute in a new agent · 2 give me the command · esc back      │
+```
+
+`1` starts the agent itself. `2` prints the command for you to paste. `esc` goes
+back to the plan — `x` is easy to hit, and the way back from it has to be free.
+
+Pressing `x` with feedback still on screen submits it first. Nothing is lost and
+nothing is warned about: a plan being built with comments on it is a supported
+thing, and the execute branch works them into the build rather than bouncing
+them back for another round.
+
+`s` asks the same question for the other direction — *submit and revise* — and
+is offered whenever the version carries something to submit: a comment, a note,
+or a line you rewrote.
+
+## What `1` runs
+
+The version records which agent captured it, which session wrote it, and how
+that session's terminal was started. So planx can be exact:
+
+```
+claude --resume 01J8XR… --fork-session "/planx revise guard-clock-regression-a3f9"
+claude "/planx execute guard-clock-regression-a3f9 v3"
+```
+
+Revising **forks** the session rather than continuing it. A fork carries every
+message up to now under a new id, so the agent picks up exactly where it left
+off while the tab it came from is left alone — and there is never one transcript
+with two processes writing to it.
+
+The recorded launch line is replayed in front of all of that, because a fork
+restores the conversation and not the terminal it was typed into: a tab started
+with `--model opus --add-dir ../shared` would otherwise fork into a different
+agent with the same memory. Replay is verbatim, which means planx re-grants
+whatever the tab was granted — so the whole command is printed, flags included,
+before anything runs.
+
+planx runs in the plan's own directory, falling back to the current one with a
+line saying so when that path is gone. It then exits with the agent's exit code:
+the review tab becomes the agent tab.
+
+## What `2` prints
+
+The commands, exactly as before:
 
 ```
 Reopen it in your terminal:  planx guard-clock-regression-a3f9 v3
@@ -29,12 +76,18 @@ Revise this plan in your agent:  /planx revise guard-clock-regression-a3f9
 Execute it in your agent, once the feedback is addressed:  /planx execute guard-clock-regression-a3f9 v3
 ```
 
-And quitting gets the reopen line alone, which is what every block opens on —
-it is the one entry that is true of every ending:
+Going back to the list gets the reopen line alone, which is what every block
+opens on — it is the one entry that is true of every ending:
 
 ```
 Reopen it in your terminal:  planx guard-clock-regression-a3f9 v3
 ```
+
+`2` is not a fallback for a broken `1`. It is what planx does whenever it cannot
+be exact: a version captured before the session id was recorded, an agent it
+cannot name, or a machine without that agent on its `PATH`. In each case the
+prompt is skipped and the commands are printed, because a choice between one
+thing and nothing is not a choice.
 
 The commands are not padded into a shared column. Alignment was there to tie
 three adjacent lines together; with a blank line between each of them there is
@@ -43,22 +96,41 @@ left edge of commands.
 
 ## A version with nothing left on it
 
-An empty submit is what approving became. It means the same thing `a` meant —
-there is nothing left to answer — without a second key gated on the condition
-the empty submit already expresses.
+A review that asked for nothing ends in `x`. There is nothing to submit, so `s`
+is not offered at all — the plan is fine, and what is left to do with it is
+build it.
 
 <PlanxSim scenario="executing" :rows="14" />
 
-## In this session, not a new process
+## Which plan was built
 
-planx used to be able to spawn a fresh agent for you. It no longer does, and the
-CLI command that did it is gone.
+`planx executed <id> v<n>` marks it, and the picker draws that plan's row green
+while its latest version is the one that was built. The version row says the
+word as well, because colour alone is a legend nobody was given:
 
-Spawning a subprocess agent from inside an agent loses the context it already
-has, the permissions it was granted, and your ability to intervene — which is
-why even the old command's own help told agents not to call it. Outside an
-agent, it was a wrapper around typing `claude` yourself. Printing the command
-and letting you run it where you already are is the same thing with fewer parts.
+```
+    v3   2h ago
+    v2   1d ago · executed
+```
+
+Capture a newer version and the plan row goes back to normal — what was executed
+is no longer the plan — while the child row for the version that was built stays
+green, which is where the history is.
+
+The execute branch runs the mark itself, before its first edit, whichever route
+reached it. planx does not mark on launch: a launch you immediately ctrl+c out
+of built nothing.
+
+## A new session, not a subprocess
+
+Executing starts a **fresh** agent, and revising forks the one that wrote the
+plan. Neither is a subprocess of the review — planx hands over the terminal and
+exits with the agent's exit code, so you are talking to it directly, with the
+permissions its launch line carries and nothing wrapped around it.
+
+That is the difference from the spawner planx used to have, which ran an agent
+underneath another agent and took the context, the permissions and your ability
+to intervene with it.
 
 ## Why there is no model picker
 
@@ -75,8 +147,8 @@ would and then paste the command.
 
 The skill checks, by running `planx revise`. If nobody has opened the version it
 says so in one line and asks whether to go ahead anyway — an unreviewed plan
-running by accident is the exact thing planx exists to prevent. If there is
-feedback on it, this is a revise round rather than an execute one.
+running by accident is the exact thing planx exists to prevent. Feedback on it is
+not a stop: those comments are worked into the build.
 
 ## Executing does not revise
 
