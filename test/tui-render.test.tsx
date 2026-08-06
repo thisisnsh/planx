@@ -8,7 +8,7 @@ import { listFeedback } from '../src/store/feedback.js';
 import { readVersionText } from '../src/store/plans.js';
 import type { Feedback } from '../src/store/types.js';
 import { Picker, type PickerItem } from '../src/tui/Picker.js';
-import { ReviewApp, type ReviewResult } from '../src/tui/ReviewApp.js';
+import { ReviewApp, type Launchable, type ReviewResult } from '../src/tui/ReviewApp.js';
 import { brandTitle, MIN_FRAME_WIDTH, topRule } from '../src/tui/frame.js';
 import { Steps, stepLines } from '../src/tui/Steps.js';
 import { noticeFor, setUpdateNotice } from '../src/update/check.js';
@@ -131,6 +131,7 @@ function mount(
   columns = 100,
   rows = 30,
   previous: Feedback[] = [],
+  launchable?: Launchable,
 ): Harness {
   const stdout = new FakeStdout();
   stdout.columns = columns;
@@ -149,6 +150,7 @@ function mount(
       mode="rich"
       version="9.9.9"
       previous={previous}
+      launchable={launchable}
       onDone={resolve}
     />,
     {
@@ -352,27 +354,44 @@ describe('the review frame', () => {
     app.unmount();
   });
 
-  it('offers lowercase shortcuts, with x for exit and no c to collide with ctrl-c', async () => {
+  it('offers lowercase shortcuts, with x for execute and no c to collide with ctrl-c', async () => {
     const app = mount(seed(), null, 1);
     await app.ready();
 
     const frame = app.stdout.lastFrame;
     expect(frame).toContain('f feedback');
     expect(frame).toContain('n note');
-    expect(frame).toContain('x exit');
+    expect(frame).toContain('x execute');
+    expect(frame).not.toContain('x exit');
     expect(frame).not.toContain('c comment');
     app.unmount();
   });
 
-  it('offers submit whether or not the version carries anything', async () => {
+  /**
+   * An empty submit used to be how you said the plan was fine, and `s` was on
+   * the bar whether or not there was anything to send. `x` is that now, so `s`
+   * appears when the version carries something it would write.
+   */
+  it('offers submit only once the version carries something', async () => {
     const app = mount(seed(), null, 1);
     await app.ready();
 
-    expect(app.stdout.lastFrame).toContain('s submit');
+    expect(app.stdout.lastFrame).not.toContain('s submit');
     expect(app.stdout.lastFrame).not.toContain('a approve');
 
     await app.press('f');
     await app.press('needs work');
+    await app.press(ENTER);
+    await app.frame('s submit');
+    app.unmount();
+  });
+
+  it('offers submit for a rewritten line, which nothing else would save', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('e');
+    await app.press(' now');
     await app.press(ENTER);
     await app.frame('s submit');
     app.unmount();
@@ -1117,16 +1136,27 @@ describe('j walks the feedback', () => {
 });
 
 describe('submitting', () => {
-  // An empty submit is the ordinary way to say the plan is fine — it is what
-  // replaced `a`, so it must not be refused.
-  it('accepts a submit that carries nothing', async () => {
+  // A review that asked for nothing ends in `x`: the plan is fine, so build it.
+  it('executes a version nobody had anything to say about', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('x');
+    const result = await app.result;
+    expect(result.action).toBe('execute');
+    expect(result.batches).toEqual([{ version: 1, annotations: [], general: '' }]);
+    app.unmount();
+  });
+
+  it('ignores s when there is nothing to submit', async () => {
     const app = mount(seed(), null, 1);
     await app.ready();
 
     await app.press('s');
-    const result = await app.result;
-    expect(result.action).toBe('submit');
-    expect(result.batches).toEqual([{ version: 1, annotations: [], general: '' }]);
+    await new Promise((r) => setTimeout(r, 120));
+    // Still on the plan: no prompt, no hand-off, nothing resolved.
+    expect(app.stdout.lastFrame).toContain('# Guard the clock regression');
+    expect(app.stdout.lastFrame).not.toContain('Submit and revise');
     app.unmount();
   });
 
@@ -1147,12 +1177,23 @@ describe('submitting', () => {
     app.unmount();
   });
 
-  it('x leaves without submitting', async () => {
+  /**
+   * A plan being built with comments still on it is a supported thing now, so
+   * `x` writes them on the way out rather than warning about them.
+   */
+  it('x submits what is on screen and then executes', async () => {
     const app = mount(seed(), null, 1);
     await app.ready();
 
+    await app.press('f');
+    await app.press('one thing');
+    await app.press(ENTER);
+    await app.frame('one thing');
+
     await app.press('x');
-    expect((await app.result).action).toBe('quit');
+    const result = await app.result;
+    expect(result.action).toBe('execute');
+    expect(result.batches[0]?.annotations[0]?.comment).toBe('one thing');
     app.unmount();
   });
 
@@ -1183,6 +1224,106 @@ describe('submitting', () => {
 
     await app.press(ESC);
     await app.frame('will be lost');
+    app.unmount();
+  });
+});
+
+/**
+ * planx knows which plan, which version and which session wrote it, so it can
+ * run the command it would otherwise have printed. The question is two rows the
+ * frame already has, not a screen of its own.
+ */
+describe('the hand-off prompt', () => {
+  const CAN: Launchable = { 1: { revise: true, execute: true } };
+
+  it('asks on x, and again on s, naming what it is about to do', async () => {
+    const id = seed();
+    const app = mount(id, null, 1, [1], 100, 30, [], CAN);
+    await app.ready();
+
+    await app.press('x');
+    await app.frame(`Execute ${id} v1.`);
+    expect(app.stdout.lastFrame).toContain('1 execute in a new agent');
+    expect(app.stdout.lastFrame).toContain('2 give me the command');
+    expect(app.stdout.lastFrame).toContain('esc back');
+    // The plan is still behind the question.
+    expect(app.stdout.lastFrame).toContain('# Guard the clock regression');
+
+    await app.press(ESC);
+    await app.frame('x execute');
+
+    await app.press('f');
+    await app.press('one more thing');
+    await app.press(ENTER);
+    await app.press('s');
+    await app.frame(`Submit and revise ${id} v1.`);
+    expect(app.stdout.lastFrame).toContain('1 revise in the agent');
+    app.unmount();
+  });
+
+  it('does not change the height of the frame while it is up', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], CAN);
+    await app.ready();
+    const before = bodyRows(app.stdout.lastFrame).length;
+
+    await app.press('x');
+    await app.frame('give me the command');
+    expect(bodyRows(app.stdout.lastFrame)).toHaveLength(before);
+    app.unmount();
+  });
+
+  it('takes 1 as the agent and 2 as the command, and ignores everything else', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], CAN);
+    await app.ready();
+
+    await app.press('x');
+    await app.frame('give me the command');
+    // A key the prompt does not answer to falls through to nothing, rather than
+    // reaching the document underneath.
+    await app.press('g');
+    await new Promise((r) => setTimeout(r, 120));
+    expect(app.stdout.lastFrame).toContain('give me the command');
+
+    await app.press('2');
+    const result = await app.result;
+    expect(result).toMatchObject({ action: 'execute', handoff: 'command' });
+    app.unmount();
+  });
+
+  it('hands the agent the work when 1 is pressed', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], CAN);
+    await app.ready();
+
+    await app.press('f');
+    await app.press('needs work');
+    await app.press(ENTER);
+    await app.press('s');
+    await app.frame('1 revise in the agent');
+    await app.press('1');
+
+    expect(await app.result).toMatchObject({ action: 'submit', handoff: 'agent' });
+    app.unmount();
+  });
+
+  /** A choice between one thing and nothing is not a choice. */
+  it('skips the prompt when planx has no agent to start', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], { 1: { revise: false, execute: false } });
+    await app.ready();
+
+    await app.press('x');
+    expect(await app.result).toMatchObject({ action: 'execute', handoff: 'command' });
+    app.unmount();
+  });
+
+  it('skips it for a version with no session to fork, and still offers execute', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], { 1: { revise: false, execute: true } });
+    await app.ready();
+
+    await app.press('f');
+    await app.press('needs work');
+    await app.press(ENTER);
+    await app.press('s');
+    expect(await app.result).toMatchObject({ action: 'submit', handoff: 'command' });
     app.unmount();
   });
 });
@@ -1219,11 +1360,16 @@ describe('the keys, and where they sit', () => {
     // Off the collapsed run the diff opens on, onto a line of the plan.
     await app.press(DOWN);
     await app.frame('f feedback');
+    // Something to submit, so `s` is on the bar to be ordered.
+    await app.press('f');
+    await app.press('a note');
+    await app.press(ENTER);
+    await app.frame('s submit');
 
     const keys = inner(bodyRows(app.stdout.lastFrame).at(-1)!)
       .split(' · ')
       .map((part) => part.split(' ')[0]!);
-    expect(keys).toEqual(['←→', 'd', 'e', 'f', 'n', 's', 'v', 'x', 'esc', '?']);
+    expect(keys).toEqual(['←→', 'd', 'e', 'f', 'j', 'n', 's', 'v', 'x', 'esc', '?']);
     app.unmount();
   });
 
@@ -1245,10 +1391,14 @@ describe('the keys, and where they sit', () => {
     await app.ready();
     await app.press(DOWN);
     await app.frame('f feedback');
+    await app.press('f');
+    await app.press('a note');
+    await app.press(ENTER);
+    await app.frame('s submit');
 
     // The five the fixed order always put last, and so always lost.
     const bar = bodyRows(app.stdout.lastFrame).slice(-3).map(inner).join(' · ');
-    for (const pair of ['s submit', 'v select lines', 'x exit', 'esc back', '? help']) {
+    for (const pair of ['s submit', 'v select lines', 'x execute', 'esc back', '? help']) {
       expect(bar).toContain(pair);
     }
     app.unmount();

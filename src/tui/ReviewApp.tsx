@@ -37,9 +37,18 @@ export interface FeedbackBatch {
   general: string;
 }
 
+/** Per version: whether planx could start an agent for each intent. */
+export type Launchable = Record<number, { revise: boolean; execute: boolean }>;
+
 export interface ReviewResult {
-  /** `back` means the reviewer wants the list again, with nothing submitted. */
-  action: 'submit' | 'quit' | 'back';
+  /**
+   * What the reviewer asked for. `back` means the list again, with nothing
+   * submitted; the other two both write everything first and differ only in
+   * which command they hand on.
+   */
+  action: 'submit' | 'execute' | 'back';
+  /** Whether planx runs that command itself or prints it for you to paste. */
+  handoff: 'agent' | 'command';
   /**
    * Every version the reviewer edited, plus the one they finished on — and the
    * empty ones belong here: a batch with no annotations and no note is how
@@ -74,6 +83,13 @@ export interface ReviewAppProps {
    * you left it. There is no such thing as submitted-versus-pending feedback.
    */
   previous: Feedback[];
+  /**
+   * Which intents planx could actually start an agent for, per version. Where
+   * it could not — no session recorded to fork, no agent named on the version —
+   * the prompt is skipped and the command is printed: a choice between one
+   * thing and nothing is not a choice.
+   */
+  launchable?: Launchable;
   onDone: (result: ReviewResult) => void;
 }
 
@@ -96,6 +112,13 @@ type Mode =
    */
   | { kind: 'line'; line: number; draft: string; caret: number; queue: number[] }
   | { kind: 'leave' }
+  /**
+   * `s` and `x` asking which way the command goes: into an agent planx starts,
+   * or onto the terminal for you to paste. It is two rows the frame already
+   * has — the status line and the hint bar — rather than a screen of its own,
+   * so the plan stays visible behind the question.
+   */
+  | { kind: 'handoff'; intent: 'revise' | 'execute' }
   | { kind: 'help' };
 
 /**
@@ -160,6 +183,16 @@ export function ReviewApp(props: ReviewAppProps) {
   /** The one version an edit can land on — rewriting v2 rewrites what v3 was built from. */
   const latest = props.versions[props.versions.length - 1] ?? versionB;
   const shownEdits = versionB === latest ? edits : NO_EDITS;
+  /**
+   * Is there anything for `s` to write?
+   *
+   * A comment, the note, or a line rewritten in place — and any version touched
+   * this session, because emptying the last comment on one leaves nothing to
+   * count and still has to be written for the deletion to stick.
+   */
+  const canSubmit =
+    annotations.length > 0 || general.trim().length > 0 || edits.size > 0 || touched.size > 0;
+  const launchable = props.launchable?.[versionB] ?? { revise: false, execute: false };
   const draftId = mode.kind === 'editing' ? mode.annotationId : null;
   const draftText = mode.kind === 'editing' ? mode.draft : '';
   const draftCaret = mode.kind === 'editing' ? mode.caret : 0;
@@ -568,7 +601,7 @@ export function ReviewApp(props: ReviewAppProps) {
    * finished: submitting edits alone still writes that version's record, so
    * `planx revise` has something to report the edits against.
    */
-  function finish(action: ReviewResult['action']) {
+  function finish(action: ReviewResult['action'], handoff: ReviewResult['handoff'] = 'command') {
     const versions = new Set<number>([versionB, ...touched]);
     if (edits.size) versions.add(latest);
 
@@ -581,11 +614,24 @@ export function ReviewApp(props: ReviewAppProps) {
       }));
     props.onDone({
       action,
+      handoff,
       batches,
       version: versionB,
       edits: [...edits].sort(([a], [b]) => a - b).map(([line, text]) => ({ line, text })),
       editedVersion: edits.size ? latest : null,
     });
+  }
+
+  /**
+   * Ask which way the command goes, or take the only way there is.
+   *
+   * With nothing to start — a version captured before planx recorded sessions,
+   * or by an agent it cannot name — there is one option, and asking about it
+   * would be a question with one answer.
+   */
+  function handOff(intent: 'revise' | 'execute') {
+    if (!launchable[intent]) return finish(intent === 'revise' ? 'submit' : 'execute', 'command');
+    setMode({ kind: 'handoff', intent });
   }
 
   /* ---------------------------------------------------------- keyboard */
@@ -633,9 +679,13 @@ export function ReviewApp(props: ReviewAppProps) {
       if (input === 'd' && previousVersion !== null) return toggleDiff();
       if (input === 'h') return setHiddenFeedback((on) => !on);
       if (input === 'n') return setMode({ kind: 'note', draft: general, caret: general.length });
-      if (input === 's') return finish('submit');
+      if (input === 's') return canSubmit ? handOff('revise') : undefined;
       if (input === '?') return setMode({ kind: 'help' });
-      if (input === 'x' || input === 'q') return finish('quit');
+      // Executing with feedback still on screen submits it first. Nothing is
+      // lost and nothing is warned about: a plan being built with comments on
+      // it is a supported thing now, and the execute skill works them into the
+      // build rather than bouncing them back.
+      if (input === 'x') return handOff('execute');
     },
     { isActive: mode.kind === 'browse' },
   );
@@ -758,8 +808,17 @@ export function ReviewApp(props: ReviewAppProps) {
         if (key.return) return finish('back');
         if (key.escape || input === 'n') setMode({ kind: 'browse' });
       }
+      if (mode.kind === 'handoff') {
+        const action = mode.intent === 'revise' ? 'submit' : 'execute';
+        if (input === '1') return finish(action, 'agent');
+        if (input === '2') return finish(action, 'command');
+        // Back to the plan, not out of planx: `x` is easy to hit, and the way
+        // back from it has to be free. Every other key is ignored rather than
+        // falling through to the document underneath.
+        if (key.escape) return setMode({ kind: 'browse' });
+      }
     },
-    { isActive: mode.kind === 'help' || mode.kind === 'leave' },
+    { isActive: mode.kind === 'help' || mode.kind === 'leave' || mode.kind === 'handoff' },
   );
 
   // Folding notes takes rows out from under the cursor — `h` can take dozens —
@@ -834,13 +893,21 @@ export function ReviewApp(props: ReviewAppProps) {
       ? touched.size || edits.size
         ? red(leaveWarning(touched.size > 0, edits.size))
         : yellow('Back to the list?')
-      : statusLine({
-          status,
-          note: mode.kind === 'note' ? mode.draft : '',
-          caret: mode.kind === 'note' ? mode.caret : 0,
-          typing: mode.kind === 'note',
-          width: inner,
-        });
+      : // Yellow, the colour the review already uses for a question. Not red:
+        // nothing here destroys anything, and red is the leave warning's.
+        mode.kind === 'handoff'
+        ? yellow(
+            mode.intent === 'revise'
+              ? `Submit and revise ${props.planId} v${versionB}.`
+              : `Execute ${props.planId} v${versionB}.`,
+          )
+        : statusLine({
+            status,
+            note: mode.kind === 'note' ? mode.draft : '',
+            caret: mode.kind === 'note' ? mode.caret : 0,
+            typing: mode.kind === 'note',
+            width: inner,
+          });
 
   return (
     <Box flexDirection="column">
@@ -869,6 +936,7 @@ export function ReviewApp(props: ReviewAppProps) {
             diffing: versionA !== null,
             canDiff: previousVersion !== null,
             manyVersions: props.versions.length > 1,
+            canSubmit,
           }),
           inner,
         ),
@@ -1122,6 +1190,8 @@ interface HintContext {
   diffing: boolean;
   canDiff: boolean;
   manyVersions: boolean;
+  /** This version carries something `s` would write. */
+  canSubmit: boolean;
 }
 
 /**
@@ -1161,11 +1231,17 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
       ['enter', 'back'],
       ['esc', 'stay'],
     ];
+  if (mode.kind === 'handoff')
+    return [
+      ['1', mode.intent === 'revise' ? 'revise in the agent' : 'execute in a new agent'],
+      ['2', 'give me the command'],
+      ['esc', 'back'],
+    ];
   if (mode.kind === 'help') return [['any key', 'to close']];
 
   const hints: Hint[] = [
     ['n', 'note'],
-    ['x', 'exit'],
+    ['x', 'execute'],
     ['esc', 'back'],
   ];
 
@@ -1193,7 +1269,10 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
   if (ctx.anyFeedback) hints.push(['j', 'next feedback']);
   if (ctx.canDiff) hints.push(['d', ctx.diffing ? 'hide diff' : 'show diff']);
   if (ctx.manyVersions) hints.push(['←→', 'version']);
-  hints.push(['s', 'submit'], ['?', 'help']);
+  // Submitting is offered where there is something to submit. An empty submit
+  // used to be how you said the plan was fine; `x` is that now.
+  if (ctx.canSubmit) hints.push(['s', 'submit']);
+  hints.push(['?', 'help']);
   return hints;
 }
 
@@ -1214,7 +1293,7 @@ function standsInForHiddenLines(row: ViewRow | undefined): boolean {
 function widestHints(ctx: Pick<HintContext, 'canDiff' | 'manyVersions'>): Hint[] {
   const hints: Hint[] = [
     ['n', 'note'],
-    ['x', 'exit'],
+    ['x', 'execute'],
     ['esc', 'back'],
     ['space', 'unfold section'],
     ['v', 'unselect lines'],
@@ -1303,7 +1382,7 @@ const HELP: Array<[Hint, 'always' | 'versioned']> = [
   [['s', 'submit everything at once'], 'always'],
   [['space', 'fold the section or the note, or expand the run, under the cursor'], 'always'],
   [['v', 'start or end a selection, then ↑ ↓ to extend'], 'always'],
-  [['x', 'leave without submitting'], 'always'],
+  [['x', 'execute this plan, in a new agent or as a command'], 'always'],
   [['esc', 'back to the list'], 'always'],
   [['?', 'this list'], 'always'],
 ];

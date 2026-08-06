@@ -1,7 +1,14 @@
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { diffVersions, rowsForSingleVersion } from '../diff/lines.js';
-import { agentProcess } from '../exec/launch.js';
+import {
+  agentProcess,
+  isAgent,
+  launchFor,
+  launchLine,
+  runAgent,
+  type Intent,
+} from '../exec/launch.js';
 import { runInstall, runUninstall } from '../install/install.js';
 import { capture } from '../protocol/capture.js';
 import { carriedOver, collapseEdits, presentResume } from '../protocol/present.js';
@@ -28,6 +35,7 @@ import {
 } from '../store/plans.js';
 import type { VersionRecord } from '../store/types.js';
 import type { PickerItem } from '../tui/Picker.js';
+import type { Launchable, ReviewResult } from '../tui/ReviewApp.js';
 import { clearScreen, isInteractive, runPicker, runReview, runSteps } from '../tui/run.js';
 import {
   fetchLatest,
@@ -358,28 +366,24 @@ async function runInteractiveReview(
   versionB: number,
 ): Promise<number> {
   const meta = readMeta(id);
+  const records = readVersions(id).versions;
   const result = await runReview({
     planId: id,
     title: meta?.title ?? id,
     versionA,
     versionB,
     // Only versions whose text survived `planx clean` can be opened.
-    versions: readVersions(id)
-      .versions.map((v) => v.n)
+    versions: records
+      .map((v) => v.n)
       .filter((n) => readVersionText(id, n) !== null)
       .sort((a, b) => a - b),
     mode: ctx.mode,
     version: ctx.version,
     previous: listFeedback(id),
+    launchable: launchableVersions(records),
   });
 
   if (result.action === 'back') return BACK;
-  if (result.action === 'quit') {
-    // No `nothing submitted` above it: you just quit, so you know. What follows
-    // is the part that carries something you did not already have.
-    for (const line of closingBlock(id, result.version)) ctx.out(line);
-    return 0;
-  }
 
   // The edits first, so every comment re-anchors to the text the reviewer
   // settled on rather than to the line it replaced.
@@ -414,8 +418,77 @@ async function runInteractiveReview(
     );
   }
 
+  if (result.handoff === 'agent') {
+    return handOffToAgent(ctx, id, result.action === 'submit' ? 'revise' : 'execute', result);
+  }
+
   for (const line of closingBlock(id, result.version, carried)) ctx.out(line);
   return 0;
+}
+
+/**
+ * Which intents planx could start an agent for, version by version.
+ *
+ * Reviving a session planx was never told about is not something to attempt
+ * with a guess, and neither is running an agent the version does not name — so
+ * a version missing either is one the prompt does not offer.
+ */
+function launchableVersions(records: readonly VersionRecord[]): Launchable {
+  const out: Launchable = {};
+  for (const record of records) {
+    const agent = record.agent && isAgent(record.agent) ? record.agent : null;
+    out[record.n] = {
+      revise: agent !== null && Boolean(record.session_id),
+      execute: agent !== null,
+    };
+  }
+  return out;
+}
+
+/**
+ * Start the agent, and become it.
+ *
+ * The command is printed in full first — flags included — so what happened, and
+ * what it was granted, is on the scrollback above the agent's first frame. A
+ * machine without that agent on its `PATH` still ends up with the command it
+ * was going to run.
+ */
+async function handOffToAgent(
+  ctx: Ctx,
+  id: string,
+  intent: Intent,
+  result: ReviewResult,
+): Promise<number> {
+  const record = readVersions(id).versions.find((v) => v.n === result.version);
+  const agent = record?.agent;
+  const prompt =
+    intent === 'revise' ? `/planx revise ${id}` : `/planx execute ${id} v${result.version}`;
+  const launch =
+    agent && isAgent(agent)
+      ? launchFor({
+          agent,
+          intent,
+          argv: record?.agent_argv ?? [],
+          sessionId: record?.session_id ?? null,
+          prompt,
+        })
+      : null;
+
+  if (!launch) {
+    for (const line of closingBlock(id, result.version, intent === 'revise')) ctx.out(line);
+    return 0;
+  }
+
+  ctx.out(`${dim('Running')}  ${yellow(launchLine(launch))}`);
+  ctx.out('');
+  return runAgent(launch, {
+    cwd: readMeta(id)?.cwd || null,
+    onFallback: (cwd) => ctx.out(dim(`Its directory is gone — running in ${cwd} instead.`)),
+    onMissing: (bin) => {
+      ctx.err(red(`planx: ${bin} is not on your PATH, so there is nothing here to start.`));
+      for (const line of closingBlock(id, result.version, intent === 'revise')) ctx.out(line);
+    },
+  });
 }
 
 /** `no feedback`, `1 feedback`, `2 feedbacks` — the review's own word for it. */

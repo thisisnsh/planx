@@ -4,7 +4,7 @@ import type { RenderMode } from '../render/diff.js';
 import type { Feedback } from '../store/types.js';
 import { terminalWidth } from './frame.js';
 import { Picker, type PickerItem } from './Picker.js';
-import { ReviewApp, type ReviewResult } from './ReviewApp.js';
+import { ReviewApp, type Launchable, type ReviewResult } from './ReviewApp.js';
 import { Steps, stepLine, type StepRow } from './Steps.js';
 
 /**
@@ -49,6 +49,8 @@ export interface RunReviewOptions {
   /** Every note left on this plan; the review loads the ones for the version
    *  you are on, editable, and rewrites them on submit. */
   previous: Feedback[];
+  /** Which intents planx could start an agent for, per version. */
+  launchable?: Launchable;
 }
 
 export async function runReview(opts: RunReviewOptions): Promise<ReviewResult> {
@@ -77,15 +79,19 @@ export async function runReview(opts: RunReviewOptions): Promise<ReviewResult> {
         mode={opts.mode}
         version={opts.version}
         previous={opts.previous}
+        launchable={opts.launchable}
         onDone={finish}
       />,
       // ctrl-c should leave, the same as x.
       { exitOnCtrlC: true },
     );
 
+    // An unmount nobody asked for lands back on the list, which is the one
+    // ending that writes nothing and loses nothing.
     instance.waitUntilExit().then(() =>
       finish({
-        action: 'quit',
+        action: 'back',
+        handoff: 'command',
         batches: [],
         version: opts.versionB,
         edits: [],
