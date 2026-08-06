@@ -2,7 +2,7 @@
  * One order for every list of keys planx prints.
  *
  * Arrow keys first, then everything else alphabetically by the key itself, then
- * `esc`, then `?`. A rule rather than a judgement per line, so a key is always
+ * `esc`, `^c`, `?`. A rule rather than a judgement per line, so a key is always
  * in the same place and you stop re-reading the hints to find it.
  *
  * It is a function rather than a convention because the hint line and `?` are
@@ -16,13 +16,18 @@ export type Hint = [key: string, what: string];
  *
  * `^d` sits beside `d` — a reader looking for the paging keys looks under the
  * letter, not under the caret — and case is not a distinction anybody is
- * scanning for. `esc` and `?` are pinned to the end because they are the two
- * keys that mean the same thing everywhere and never need finding.
+ * scanning for. `esc`, `^c` and `?` are pinned to the end because they are the
+ * three keys that mean the same thing on every screen and never need finding.
+ *
+ * `^c` does not sort under `c` beside `^d` for that reason: `^d` is a paging
+ * key you look for under its letter, and `^c` is one of the three that end the
+ * line together.
  */
 function rank(key: string): string {
   if (key.startsWith('←') || key.startsWith('↑') || key.startsWith('→')) return `0${key}`;
   if (key === 'esc') return '2';
-  if (key === '?') return '3';
+  if (key === '^c') return '3';
+  if (key === '?') return '4';
   return `1${key.toLowerCase().replace(/\^/g, '')}`;
 }
 

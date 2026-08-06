@@ -331,8 +331,8 @@ describe('the review frame', () => {
     }
 
     expect([...bars].some((bar) => bar.includes('space expand'))).toBe(true);
-    expect([...bars].some((bar) => bar.includes('space fold'))).toBe(true);
-    expect([...bars].some((bar) => bar.includes('f feedback'))).toBe(true);
+    expect([...bars].some((bar) => bar.includes('space collapse'))).toBe(true);
+    expect([...bars].some((bar) => bar.includes('f add feedback'))).toBe(true);
     expect(heights.size).toBe(1);
     app.unmount();
   });
@@ -369,8 +369,8 @@ describe('the review frame', () => {
     await app.ready();
 
     const frame = app.stdout.lastFrame;
-    expect(frame).toContain('f feedback');
-    expect(frame).toContain('n note');
+    expect(frame).toContain('f add feedback');
+    expect(frame).toContain('n add note');
     expect(frame).toContain('x execute');
     expect(frame).not.toContain('x exit');
     expect(frame).not.toContain('c comment');
@@ -743,7 +743,7 @@ describe('feedback lives in the document', () => {
     await app.frame('fold from within');
 
     await app.press(DOWN);
-    await app.frame('space fold');
+    await app.frame('space collapse');
 
     await app.press(SPACE);
     await new Promise((r) => setTimeout(r, 120));
@@ -861,11 +861,11 @@ describe('rewriting a line in place', () => {
   it('refuses any version but the latest, and says which one that is', async () => {
     const app = mount(seedTwoVersions(), null, 2, [1, 2]);
     await app.ready();
-    await app.frame('e rewrite line');
+    await app.frame('e edit line');
 
     await app.press(LEFT);
     await app.frame('10% then 50% then 100%');
-    expect(app.stdout.lastFrame).not.toContain('e rewrite line');
+    expect(app.stdout.lastFrame).not.toContain('e edit line');
 
     await app.press('e');
     await app.frame('Only v2 can be edited — press → to reach it.');
@@ -955,7 +955,7 @@ describe('folding a section', () => {
     // Onto `## Context`, which runs to the line before `## Approach`.
     await app.press(DOWN);
     await app.press(DOWN);
-    await app.frame('space fold section');
+    await app.frame('space collapse');
 
     await app.press(SPACE);
     await app.frame('⋯ 3 lines');
@@ -975,7 +975,7 @@ describe('folding a section', () => {
 
     await app.press(DOWN);
     await app.press(DOWN);
-    await app.frame('space fold section');
+    await app.frame('space collapse');
     await app.press(SPACE);
     await app.frame('(space to expand)');
 
@@ -1001,10 +1001,10 @@ describe('folding a section', () => {
 
     // Down onto the summary row itself, which offers the key it names.
     await app.press(DOWN);
-    await app.frame('space unfold section');
+    await app.frame('space expand');
     expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('(space to expand)');
     // Nothing on it to comment on, so the key is not offered.
-    expect(app.stdout.lastFrame).not.toContain('f feedback');
+    expect(app.stdout.lastFrame).not.toContain('f add feedback');
 
     await app.press(SPACE);
     await app.frame('The poller reads a snapshot');
@@ -1037,7 +1037,7 @@ describe('folding a section', () => {
 
     await app.press(DOWN);
     await app.press(DOWN);
-    await app.frame('space fold section');
+    await app.frame('space collapse');
     await app.press(SPACE);
     await app.frame('⋯');
 
@@ -1574,7 +1574,7 @@ describe('the keys, and where they sit', () => {
     await app.ready();
     // Off the collapsed run the diff opens on, onto a line of the plan.
     await app.press(DOWN);
-    await app.frame('f feedback');
+    await app.frame('f add feedback');
     // Something to submit, so `s` is on the bar to be ordered.
     await app.press('f');
     await app.press('a note');
@@ -1584,7 +1584,7 @@ describe('the keys, and where they sit', () => {
     const keys = inner(bodyRows(app.stdout.lastFrame).at(-1)!)
       .split(' · ')
       .map((part) => part.split(' ')[0]!);
-    expect(keys).toEqual(['←→', 'd', 'e', 'f', 'j', 'n', 's', 'space', 'v', 'x', 'esc', '?']);
+    expect(keys).toEqual(['←→', 'd', 'e', 'f', 'j', 'n', 's', 'space', 'v', 'x', 'esc', '^c', '?']);
     app.unmount();
   });
 
@@ -1592,7 +1592,7 @@ describe('the keys, and where they sit', () => {
     const app = mount(seedTwoVersions(), 1, 2, [1, 2], 200);
     await app.ready();
     await app.press(DOWN);
-    await app.frame('f feedback');
+    await app.frame('f add feedback');
     expect(app.stdout.lastFrame).not.toContain('h fold notes');
 
     await app.press('?');
@@ -1605,7 +1605,7 @@ describe('the keys, and where they sit', () => {
     const app = mount(seedTwoVersions(), 1, 2, [1, 2], 80);
     await app.ready();
     await app.press(DOWN);
-    await app.frame('f feedback');
+    await app.frame('f add feedback');
     await app.press('f');
     await app.press('a note');
     await app.press(ENTER);
@@ -1613,7 +1613,14 @@ describe('the keys, and where they sit', () => {
 
     // The five the fixed order always put last, and so always lost.
     const bar = bodyRows(app.stdout.lastFrame).slice(-3).map(inner).join(' · ');
-    for (const pair of ['s submit', 'v select lines', 'x execute', 'esc back', '? help']) {
+    for (const pair of [
+      's submit',
+      'v select lines',
+      'x execute',
+      'esc back',
+      '^c exit',
+      '? help',
+    ]) {
       expect(bar).toContain(pair);
     }
     app.unmount();
@@ -1653,6 +1660,9 @@ describe('the keys, and where they sit', () => {
       'x',
       'esc',
       '?',
+      // The way out is the last word of the list, under `?` rather than above
+      // it: nothing is dropped from this list, so nothing has to end it.
+      '^c',
     ]);
     app.unmount();
   });
@@ -1660,14 +1670,39 @@ describe('the keys, and where they sit', () => {
   it('agrees with the size of what e would act on', async () => {
     const app = mount(seed(), null, 1);
     await app.ready();
-    await app.frame('e rewrite line');
-    expect(app.stdout.lastFrame).not.toContain('e rewrite lines');
+    await app.frame('e edit line');
+    expect(app.stdout.lastFrame).not.toContain('e edit lines');
 
     await app.press('v');
     await app.press(DOWN);
-    await app.frame('e rewrite lines');
+    await app.frame('e edit lines');
     // And `v` now says how to undo itself, since esc no longer does.
     expect(app.stdout.lastFrame).toContain('v unselect lines');
+    app.unmount();
+  });
+
+  /**
+   * A deletion is a line of the version before this one. There is nothing in
+   * this version for a comment to hang off or for `e` to rewrite, so neither
+   * key is offered — it used to advertise `f` and then decline it.
+   */
+  it('drops f and e on a row that is no line of this version', async () => {
+    const app = mount(seedTwoVersions(), 1, 2, [1, 2], 200);
+    await app.ready();
+
+    // Down to the deletion: the old rollout line, which v2 replaced.
+    for (let i = 0; i < 12; i++) {
+      if (cursorRow(bodyRows(app.stdout.lastFrame))?.includes('10% then 50%')) break;
+      await app.press(DOWN);
+    }
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('10% then 50%');
+
+    const bar = bodyRows(app.stdout.lastFrame).slice(-2).map(inner).join(' · ');
+    expect(bar).not.toContain('f add feedback');
+    expect(bar).not.toContain('e edit line');
+    // The keys that work anywhere are still there.
+    expect(bar).toContain('v select lines');
+    expect(bar).toContain('^c exit');
     app.unmount();
   });
 

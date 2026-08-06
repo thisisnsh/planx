@@ -230,7 +230,7 @@ describe('wrapping a note', () => {
 });
 
 describe('the order every list of keys is printed in', () => {
-  it('puts the arrows first, then a to z, then esc, then ?', () => {
+  it('puts the arrows first, then a to z, then esc, ^c, ?', () => {
     const shuffled: Hint[] = [
       ['?', 'help'],
       ['x', 'exit'],
@@ -238,8 +238,11 @@ describe('the order every list of keys is printed in', () => {
       ['a', 'approve'],
       ['space', 'fold'],
       ['←→', 'version'],
+      ['^c', 'exit'],
       ['s', 'submit'],
     ];
+    // `^c` ends the line with the two keys that mean the same thing on every
+    // screen, rather than sorting under `c` beside the paging keys.
     expect(orderHints(shuffled).map(([key]) => key)).toEqual([
       '←→',
       'a',
@@ -247,6 +250,7 @@ describe('the order every list of keys is printed in', () => {
       'space',
       'x',
       'esc',
+      '^c',
       '?',
     ]);
   });
@@ -281,6 +285,7 @@ const BROWSE: Hint[] = [
   ['v', 'unselect lines'],
   ['x', 'exit'],
   ['esc', 'back'],
+  ['^c', 'exit'],
   ['?', 'help'],
 ];
 
@@ -297,7 +302,14 @@ describe('folding the hint bar', () => {
 
   it('keeps the keys an 80-column terminal used to cut', () => {
     const shown = hintLines(BROWSE, 75).join(' · ');
-    for (const pair of ['s submit', 'v unselect lines', 'x exit', 'esc back', '? help']) {
+    for (const pair of [
+      's submit',
+      'v unselect lines',
+      'x exit',
+      'esc back',
+      '^c exit',
+      '? help',
+    ]) {
       expect(shown).toContain(pair);
     }
   });

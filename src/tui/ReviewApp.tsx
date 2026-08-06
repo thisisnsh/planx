@@ -1031,7 +1031,9 @@ export function ReviewApp(props: ReviewAppProps) {
             // Where `e` cannot work it is not offered: a key that declines one
             // press after being advertised teaches the wrong thing.
             canEdit: versionB === latest,
+            canAnnotate: spanAtCursor(rows, selection) !== null,
             annotated: Boolean(annotationAtCursor()),
+            hasNote: general.trim().length > 0,
             selecting: selection.active,
             plural: spanSize(rows, selection) > 1,
             diffing: versionA !== null,
@@ -1282,7 +1284,11 @@ interface HintContext {
   space: SpaceAction | null;
   /** `e` can work here: the latest version of the plan. */
   canEdit: boolean;
+  /** The cursor covers at least one line of this version, so `f` and `e` have a target. */
+  canAnnotate: boolean;
   annotated: boolean;
+  /** This version already carries a note, so `n` edits rather than adds. */
+  hasNote: boolean;
   /** A selection is live, so `v` ends it rather than starting one. */
   selecting: boolean;
   /** What `l` would act on covers more than one line. */
@@ -1351,25 +1357,31 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
   if (mode.kind === 'help') return [['any key', 'to close']];
 
   const hints: Hint[] = [
-    ['n', 'note'],
+    // The wording follows what the key would do, because that is the half of it
+    // you cannot see: `n` writes the version's one note either way.
+    ['n', ctx.hasNote ? 'edit note' : 'add note'],
+    ['v', ctx.selecting ? 'unselect lines' : 'select lines'],
     ['x', 'execute'],
     ['esc', 'back'],
+    // The one key that ends the session, and the only one that used to be
+    // nowhere on screen.
+    ['^c', 'exit'],
   ];
 
   // Space is offered wherever it does something, which the same function the
-  // key itself reads has already worked out.
+  // key itself reads has already worked out. What it acts on is under the
+  // cursor and needs no naming; which way it goes is the only thing you cannot
+  // see from the row.
   if (ctx.space) hints.push(['space', spaceHint(ctx.space)]);
 
   if (row?.kind === 'feedback') {
-    hints.push(['f', 'edit']);
-  } else if (standsInForHiddenLines(row)) {
-    // Nothing on a stand-in row can be commented on, so `f` is not offered.
-    hints.push(['v', ctx.selecting ? 'unselect lines' : 'select lines']);
-  } else {
-    const lines = ctx.plural ? 'lines' : 'line';
-    hints.push(['v', ctx.selecting ? 'unselect lines' : 'select lines']);
-    hints.push(['f', ctx.annotated ? 'edit' : 'feedback']);
-    if (ctx.canEdit) hints.push(['e', `rewrite ${lines}`]);
+    hints.push(['f', 'edit feedback']);
+  } else if (ctx.canAnnotate) {
+    // Dropped where the cursor covers no line of this version at all — a pure
+    // deletion in a diff, or a row standing in for hidden lines. Neither has a
+    // line for a comment to hang off or for `e` to rewrite.
+    hints.push(['f', ctx.annotated ? 'edit feedback' : 'add feedback']);
+    if (ctx.canEdit) hints.push(['e', ctx.plural ? 'edit lines' : 'edit line']);
   }
 
   if (ctx.anyFeedback) hints.push(['j', 'next feedback']);
@@ -1382,16 +1394,9 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
   return hints;
 }
 
-/** Which way `space` goes here. */
+/** Which way `space` goes here. A gap only ever opens. */
 function spaceHint(action: SpaceAction): string {
-  if (action.kind === 'gap') return 'expand';
-  if (action.kind === 'note') return action.folded ? 'unfold feedback' : 'fold feedback';
-  return action.folded ? 'unfold section' : 'fold section';
-}
-
-/** A collapsed run or a folded section: a row that stands in for hidden lines. */
-function standsInForHiddenLines(row: ViewRow | undefined): boolean {
-  return row?.kind === 'doc' && (row.gapIndex !== null || row.fold !== null);
+  return action.kind === 'gap' || action.folded ? 'expand' : 'collapse';
 }
 
 /**
@@ -1405,13 +1410,14 @@ function standsInForHiddenLines(row: ViewRow | undefined): boolean {
  */
 function widestHints(ctx: Pick<HintContext, 'canDiff' | 'manyVersions'>): Hint[] {
   const hints: Hint[] = [
-    ['n', 'note'],
+    ['n', 'edit note'],
     ['x', 'execute'],
     ['esc', 'back'],
-    ['space', 'unfold section'],
+    ['^c', 'exit'],
+    ['space', 'collapse'],
     ['v', 'unselect lines'],
-    ['e', 'rewrite lines'],
-    ['f', 'feedback'],
+    ['e', 'edit lines'],
+    ['f', 'edit feedback'],
     ['j', 'next feedback'],
   ];
   if (ctx.canDiff) hints.push(['d', 'show diff']);
@@ -1484,28 +1490,38 @@ const HELP: Array<[Hint, 'always' | 'versioned']> = [
   [['←→', 'the previous and next version of the plan'], 'versioned'],
   [['↑↓', 'a row at a time — held, 2 rows after 1.5s and 5 after 4s'], 'always'],
   [['d', 'show the diff against the previous version, or hide it'], 'versioned'],
-  [['e', 'rewrite the line, or every line of the selection, in place'], 'always'],
-  [['f', 'feedback on the selection, or edit the note under the cursor'], 'always'],
+  [['e', 'edit the line, or every line of the selection, in place'], 'always'],
+  [['f', 'add feedback on the selection, or edit the note under the cursor'], 'always'],
   [['g G', 'the top and the bottom of the plan'], 'always'],
   [['^d ^u', 'half a screen down or up'], 'always'],
   [['^f ^b', 'a whole screen down or up'], 'always'],
   [['h', 'fold or unfold every note at once'], 'always'],
   [['j', 'the next feedback on this version, wrapping at the end'], 'always'],
-  [['n', 'a note about the whole plan'], 'always'],
+  [['n', 'add or edit the note about the whole plan'], 'always'],
   [['s', 'submit everything at once'], 'always'],
-  [['space', 'fold the section or the note, or expand the run, under the cursor'], 'always'],
+  [['space', 'collapse the section you are in, or the note — or expand what is hidden'], 'always'],
   [['v', 'start or end a selection, then ↑ ↓ to extend'], 'always'],
   [['x', 'execute this plan, in a new agent or as a command'], 'always'],
   [['esc', 'back to the list'], 'always'],
   [['?', 'this list'], 'always'],
 ];
 
+/**
+ * The way out, last.
+ *
+ * On the bar `?` is pinned last because it is the key that recovers whatever
+ * the width dropped, so it cannot be the entry that goes. Nothing is dropped
+ * from this list — you are reading it — so it ends on the key that ends the
+ * session, which is the last thing you would look for here.
+ */
+const HELP_EXIT: Hint = ['^c', 'leave planx — twice'];
+
 function helpLines(width: number, canDiff: boolean): string[] {
   const shown = HELP.filter(([, when]) => when === 'always' || canDiff).map(([hint]) => hint);
   return [
     bold(signal('planx review')),
     '',
-    ...orderHints(shown).map(
+    ...[...orderHints(shown), HELP_EXIT].map(
       ([keys, what]) => `${signal(padEnd(keys, 8))}${dim(truncate(what, width - 8))}`,
     ),
     '',
