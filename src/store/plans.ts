@@ -286,6 +286,23 @@ export function addVersion(
   return { version: n, record, created: true };
 }
 
+/**
+ * Record that a version was built.
+ *
+ * Running it twice restamps `at` rather than failing: an execute picked up
+ * again after a break should not have to care whether it already said so.
+ */
+export function markExecuted(id: string, version: number): PlanMeta {
+  const meta = readMeta(id);
+  if (!meta) throw new PlanNotFoundError(id);
+
+  const agent = readVersions(id).versions.find((v) => v.n === version)?.agent ?? null;
+  meta.executed = { version, at: new Date().toISOString(), agent };
+  writeMeta(meta);
+  reindex(id);
+  return meta;
+}
+
 /* ------------------------------------------------------ editing in place */
 
 export interface LineEdit {

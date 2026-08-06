@@ -9,6 +9,7 @@ import {
   createPlan,
   latestVersion,
   listPlans,
+  markExecuted,
   PlanNotFoundError,
   readMeta,
   readVersions,
@@ -230,6 +231,30 @@ describe('listing and index', () => {
     expect(listPlans().map((p) => p.id)).toEqual([id]);
     expect(rebuildIndex()).toBe(1);
     expect(listPlans()).toHaveLength(1);
+  });
+});
+
+describe('marking a plan executed', () => {
+  it('records the version and reaches the index row the picker reads', () => {
+    const id = seed();
+    addVersion(id, `${SAMPLE_PLAN}\nrev 2\n`, { agent: 'claude' });
+
+    markExecuted(id, 2);
+    expect(readMeta(id)?.executed).toMatchObject({ version: 2, agent: 'claude' });
+    expect(listPlans()[0]?.executed).toBe(2);
+
+    // Twice is not a failure: an execute picked up after a break should not
+    // have to care whether it already said so.
+    const first = readMeta(id)!.executed!.at;
+    markExecuted(id, 2);
+    expect(readMeta(id)?.executed?.at).not.toBe(first);
+  });
+
+  it('survives a rebuild from the plan directories', () => {
+    const id = seed();
+    markExecuted(id, 1);
+    rebuildIndex();
+    expect(listPlans()[0]?.executed).toBe(1);
   });
 });
 

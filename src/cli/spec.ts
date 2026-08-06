@@ -61,6 +61,20 @@ export const COMMANDS: CommandSpec[] = [
     examples: ['planx revise guard-clock-a3f9'],
   },
   {
+    name: 'executed',
+    group: 'agent',
+    usage: 'planx executed <id> [version]',
+    summary: 'Record that this version was built.',
+    description:
+      'Marks the version as the one that was executed, which is what turns its row green in the ' +
+      'picker. The execute skill runs it before its first edit, so the mark is true whichever ' +
+      'route reached the build — the agent planx launched, a command you pasted yourself, or ' +
+      '`/planx execute` typed from scratch. planx does not mark on launch, because a launch you ' +
+      'immediately ctrl+c out of built nothing. Running it twice restamps the time rather than ' +
+      'failing.',
+    examples: ['planx executed guard-clock-a3f9 v3'],
+  },
+  {
     name: 'diff',
     group: 'everyday',
     usage: 'planx [diff] [id] [vA] [vB] [--print] [--plain|--rich] [--stat]',

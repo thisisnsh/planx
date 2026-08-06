@@ -14,6 +14,7 @@ import {
   ensureStore,
   latestVersion,
   listPlans,
+  markExecuted,
   purgePlan,
   purgeStore,
   readMeta,
@@ -227,6 +228,28 @@ export function cmdRevise(ctx: Ctx): number {
   }
 
   ctx.out(presentResume({ planId: id, version, feedback, carried, edits }));
+  return 0;
+}
+
+/* ------------------------------------------------------------- executed */
+
+/**
+ * Mark the version that was built.
+ *
+ * The skill runs this before it starts building rather than planx marking on
+ * launch: a launch you immediately ctrl+c out of built nothing, and a plan
+ * drawn as executed when it was not is worse than one drawn as not yet.
+ */
+export function cmdExecuted(ctx: Ctx): number {
+  const id = resolvePlanRef(requirePositional(ctx, 0, 'planx executed <id> [version]'));
+  const version = resolveVersionRef(id, ctx.args.positionals[1]);
+  markExecuted(id, version);
+
+  if (ctx.json) {
+    ctx.out(JSON.stringify({ plan_id: id, version }, null, 2));
+    return 0;
+  }
+  ctx.out(green(`Marked ${bold(id)} v${version} as executed.`));
   return 0;
 }
 

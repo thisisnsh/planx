@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildAnnotation, submitFeedback } from '../src/protocol/submit.js';
 import { setStoreRoot } from '../src/store/paths.js';
-import { readVersions, readVersionText, rewriteVersion } from '../src/store/plans.js';
+import { readMeta, readVersions, readVersionText, rewriteVersion } from '../src/store/plans.js';
 import { normalizedLines } from '../src/store/text.js';
 import { Cli, collect, ensureBuilt, PLAN_V1, PLAN_V2 } from './cli.js';
 
@@ -175,6 +175,14 @@ describe('the CLI as a real process', () => {
     });
   });
 
+  it('marks a version executed, and says which one', async () => {
+    const id = await seed();
+    const marked = await cli.run(['executed', id, 'v1']);
+    expect(marked.code).toBe(0);
+    expect(marked.stdout).toContain(`Marked ${id} v1 as executed.`);
+    expect(inStore(() => readMeta(id))?.executed).toMatchObject({ version: 1 });
+  });
+
   it('is a no-op when the same content is captured twice', async () => {
     const id = await seed();
     const again = await cli.run(['capture', '--plan-id', id, '--stdin'], PLAN_V1);
@@ -311,7 +319,16 @@ describe('the generated reference', () => {
   it('documents every non-hidden command', async () => {
     const docs = await cli.run(['__gen-cli-docs']);
     expect(docs.code).toBe(0);
-    for (const command of ['capture', 'revise', 'diff', 'show', 'list', 'update', 'doctor']) {
+    for (const command of [
+      'capture',
+      'revise',
+      'executed',
+      'diff',
+      'show',
+      'list',
+      'update',
+      'doctor',
+    ]) {
       expect(docs.stdout).toContain(`## \`planx ${command}\``);
     }
     expect(docs.stdout).toContain('Do not edit by hand');
@@ -319,9 +336,9 @@ describe('the generated reference', () => {
     expect(docs.stdout).not.toContain('## `planx __gen-cli-docs`');
     expect(docs.stdout).not.toContain('## `planx __update-check`');
 
-    // Nine sections — eleven commands, two of them hidden — and the ones that
+    // Ten sections — twelve commands, two of them hidden — and the ones that
     // were cut are not among them.
-    expect(docs.stdout.match(/^## `planx /gm)).toHaveLength(9);
+    expect(docs.stdout.match(/^## `planx /gm)).toHaveLength(10);
     for (const gone of ['submit', 'versions', 'restore', 'clean', 'rename', 'import', 'config']) {
       expect(docs.stdout, gone).not.toContain(`## \`planx ${gone}\``);
     }
