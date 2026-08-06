@@ -82,8 +82,10 @@ export async function runReview(opts: RunReviewOptions): Promise<ReviewResult> {
         launchable={opts.launchable}
         onDone={finish}
       />,
-      // ctrl-c should leave, the same as x.
-      { exitOnCtrlC: true },
+      // ctrl+c is the review's own, twice — see `useDoubleCtrlC`. Ink killing
+      // the process on the first press would take a plan's worth of unsubmitted
+      // notes with it.
+      { exitOnCtrlC: false },
     );
 
     // An unmount nobody asked for lands back on the list, which is the one
@@ -167,7 +169,7 @@ export async function runSteps<T>(
     instance.rerender(<Steps rows={[...rows]} closing={closing} prompt={prompt} width={width} />);
 
   const instance = render(<Steps rows={[]} closing={null} prompt={null} width={width} />, {
-    exitOnCtrlC: true,
+    exitOnCtrlC: false,
   });
 
   try {

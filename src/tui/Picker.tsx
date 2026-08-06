@@ -1,6 +1,7 @@
 import { Box, Text, useApp, useInput, useStdout } from 'ink';
 import { useMemo, useState } from 'react';
 import { bold, dim, inverse, padEnd, red, signal, stripAnsi, truncate } from '../render/ansi.js';
+import { EXIT_PROMPT, useDoubleCtrlC } from './exit.js';
 import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO, topRule } from './frame.js';
 import { fuzzyFilter } from './fuzzy.js';
 import { hintLines, type Hint } from './hints.js';
@@ -31,6 +32,8 @@ export interface PickerProps<T> {
   version?: string;
   /** Delete the row, and return the list as it stands afterwards. */
   onDelete?: (item: PickerItem<T>) => Array<PickerItem<T>>;
+  /** What a second ctrl+c does. Defaults to ending the process with 130. */
+  onQuit?: () => void;
   onDone: (chosen: T[]) => void;
   onCancel: () => void;
 }
@@ -107,11 +110,15 @@ export function Picker<T>({
   items: initial,
   version,
   onDelete,
+  onQuit,
   onDone,
   onCancel,
 }: PickerProps<T>) {
   const { exit } = useApp();
   const { stdout } = useStdout();
+  // Above the handler below, so it fires while the confirmation is waiting for
+  // the word as well as on the list itself.
+  const leaving = useDoubleCtrlC({ onExit: onQuit });
   const [items, setItems] = useState(initial);
   const [query, setQuery] = useState('');
   const [cursor, setCursor] = useState(0);
@@ -128,9 +135,29 @@ export function Picker<T>({
 
   const here = rows[cursor];
 
-  // The frame costs four rows of chrome above the list and three below it, and
-  // the confirmation takes one more for the line you type into.
-  const chrome = confirming === null ? 9 : 10;
+  /**
+   * The confirmation, and the red row an armed ctrl+c draws — the rows between
+   * the list and the hint bar.
+   *
+   * There is always at least one, so the frame is the same height whether or
+   * not anything is being asked.
+   */
+  const messageRows = [
+    // The only thing between you and a permanent delete, so it names the target
+    // in full rather than asking about "this". Red, not bold: the colour is
+    // what says destructive, and every confirmation planx draws reads the same.
+    ...(confirming === null
+      ? []
+      : [
+          `  ${red(`delete ${confirming.target}? this cannot be undone`)}`,
+          `  ${dim(`type ${CONFIRM_WORD} to confirm:`)} ${confirming.typed}${inverse(' ')}`,
+        ]),
+    ...(leaving ? [`  ${red(EXIT_PROMPT)}`] : confirming === null ? [''] : []),
+  ];
+
+  // The frame costs four rows of chrome above the list and three below it, on
+  // top of whatever is being asked.
+  const chrome = 8 + messageRows.length;
   const height = Math.max(3, Math.min(rows.length, (stdout?.rows ?? 24) - chrome));
   const start = Math.max(0, Math.min(cursor - Math.floor(height / 2), rows.length - height));
   const visible = rows.slice(start, start + height);
@@ -171,7 +198,9 @@ export function Picker<T>({
       return;
     }
 
-    if (key.escape || (key.ctrl && input === 'c')) {
+    // ctrl+c is not cancel any more — leaving planx is two of them, wherever
+    // you are, and `useDoubleCtrlC` above owns the key.
+    if (key.escape) {
       onCancel();
       exit();
       return;
@@ -253,15 +282,7 @@ export function Picker<T>({
       return `  ${active ? inverse(signal(padEnd(stripAnsi(line), inner - 2))) : line}`;
     }),
     ...(rows.length ? [] : [dim('  no matches')]),
-    // The only thing between you and a permanent delete, so it names the target
-    // in full rather than asking about "this". Red, not bold: the colour is
-    // what says destructive, and every confirmation planx draws reads the same.
-    ...(confirming === null
-      ? ['']
-      : [
-          `  ${red(`delete ${confirming.target}? this cannot be undone`)}`,
-          `  ${dim(`type ${CONFIRM_WORD} to confirm:`)} ${confirming.typed}${inverse(' ')}`,
-        ]),
+    ...messageRows,
     ...hintLines(
       confirming === null
         ? hints

@@ -1,6 +1,7 @@
 import { Box, Text, useInput } from 'ink';
 import { homedir } from 'node:os';
 import { dim, green, inverse, padEnd, red, signal, truncate } from '../render/ansi.js';
+import { EXIT_PROMPT, useDoubleCtrlC } from './exit.js';
 
 /**
  * A command that does several things, drawn while it does them.
@@ -56,6 +57,8 @@ export interface StepsProps {
   closing: string | null;
   prompt: StepsPrompt | null;
   width: number;
+  /** What a second ctrl+c does. Defaults to ending the process with 130. */
+  onQuit?: () => void;
 }
 
 function matches(prompt: StepsPrompt): boolean {
@@ -63,6 +66,9 @@ function matches(prompt: StepsPrompt): boolean {
 }
 
 export function Steps(props: StepsProps) {
+  // Above the prompt's handler, so it fires while the word is being typed.
+  const leaving = useDoubleCtrlC({ onExit: props.onQuit });
+
   useInput(
     (input, key) => {
       const prompt = props.prompt;
@@ -86,6 +92,7 @@ export function Steps(props: StepsProps) {
       dim(matches(props.prompt) ? '  enter delete · esc keep' : '  esc keep'),
     );
   }
+  if (leaving) lines.push(`  ${red(EXIT_PROMPT)}`);
   lines.push('');
 
   return (

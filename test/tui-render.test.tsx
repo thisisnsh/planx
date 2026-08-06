@@ -114,6 +114,8 @@ async function waitFor(predicate: () => boolean, timeoutMs = 5_000): Promise<boo
 interface Harness {
   stdout: FakeStdout;
   stdin: FakeStdin;
+  /** How many times a second ctrl+c asked to end the process. */
+  quits: number[];
   unmount: () => void;
   result: Promise<ReviewResult>;
   press: (keys: string) => Promise<void>;
@@ -137,6 +139,7 @@ function mount(
   stdout.columns = columns;
   stdout.rows = rows;
   const stdin = new FakeStdin();
+  const quits: number[] = [];
   let resolve!: (value: ReviewResult) => void;
   const result = new Promise<ReviewResult>((r) => (resolve = r));
 
@@ -151,6 +154,7 @@ function mount(
       version="9.9.9"
       previous={previous}
       launchable={launchable}
+      onQuit={() => quits.push(Date.now())}
       onDone={resolve}
     />,
     {
@@ -164,6 +168,7 @@ function mount(
   return {
     stdout,
     stdin,
+    quits,
     unmount: () => instance.unmount(),
     result,
     press: async (keys: string) => {
@@ -219,6 +224,7 @@ const LEFT = '\x1b[D';
 const RIGHT = '\x1b[C';
 const BACKSPACE = '\x7f';
 const CTRL_D = '\x04';
+const CTRL_C = '\x03';
 /** Option+arrow, as Terminal.app and iTerm each send it. */
 const ALT_LEFT = '\x1b[1;3D';
 const ALT_RIGHT = '\x1b[1;3C';
@@ -1328,6 +1334,75 @@ describe('the hand-off prompt', () => {
   });
 });
 
+/**
+ * `x` is execute now, so the way out is a key that means the same thing in
+ * every mode — including the ones that swallow every printable character.
+ */
+describe('ctrl+c, twice', () => {
+  it('arms on the first press and leaves on the second', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press(CTRL_C);
+    await app.frame('Press ctrl+c again to exit.');
+    expect(app.quits).toEqual([]);
+
+    await app.press(CTRL_C);
+    await waitFor(() => app.quits.length > 0);
+    expect(app.quits).toHaveLength(1);
+    app.unmount();
+  });
+
+  /** No timer: a guard that expires on a clock behaves differently by typist. */
+  it('disarms on any other key', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press(CTRL_C);
+    await app.frame('Press ctrl+c again to exit.');
+    await app.press(DOWN);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(app.stdout.lastFrame).not.toContain('Press ctrl+c again');
+
+    await app.press(CTRL_C);
+    await app.frame('Press ctrl+c again to exit.');
+    expect(app.quits).toEqual([]);
+    app.unmount();
+  });
+
+  it('fires while a note is being typed, where every letter is a letter', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('f');
+    await app.press('half a thought');
+    await app.press(CTRL_C);
+    await app.frame('Press ctrl+c again to exit.');
+
+    await app.press(CTRL_C);
+    await waitFor(() => app.quits.length > 0);
+    expect(app.quits).toHaveLength(1);
+    app.unmount();
+  });
+
+  it('does the same in the picker, over the delete confirmation', async () => {
+    const app = mountPicker(planRows(), () => []);
+    await app.ready();
+
+    await app.press(CTRL_D);
+    await app.frame('cannot be undone');
+    await app.press(CTRL_C);
+    await app.frame('Press ctrl+c again to exit.');
+    // The confirmation is still there, and still unanswered.
+    expect(app.stdout.lastFrame).toContain('cannot be undone');
+
+    await app.press(CTRL_C);
+    await waitFor(() => app.quits.length > 0);
+    expect(app.quits).toHaveLength(1);
+    app.unmount();
+  });
+});
+
 /** The text between the frame's two edges. */
 /** The note box, top edge to bottom, as it is drawn inside the frame. */
 function noteBox(frame: string): string[] {
@@ -1993,6 +2068,7 @@ describe('the update notice on the border', () => {
 
 interface PickerHarness<T> {
   stdout: FakeStdout;
+  quits: number[];
   chosen: Promise<T[]>;
   press: (keys: string) => Promise<void>;
   ready: () => Promise<void>;
@@ -2006,6 +2082,7 @@ function mountPicker<T>(
 ): PickerHarness<T> {
   const stdout = new FakeStdout();
   const stdin = new FakeStdin();
+  const quits: number[] = [];
   let resolve!: (value: T[]) => void;
   const chosen = new Promise<T[]>((r) => (resolve = r));
 
@@ -2016,6 +2093,7 @@ function mountPicker<T>(
       items={items}
       version="9.9.9"
       onDelete={onDelete}
+      onQuit={() => quits.push(Date.now())}
       onDone={resolve}
       onCancel={() => resolve([])}
     />,
@@ -2029,6 +2107,7 @@ function mountPicker<T>(
 
   return {
     stdout,
+    quits,
     chosen,
     unmount: () => instance.unmount(),
     press: async (keys: string) => {

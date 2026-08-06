@@ -16,6 +16,7 @@ import type { RenderMode } from '../render/diff.js';
 import type { LineEdit } from '../store/plans.js';
 import { contextSha } from '../store/text.js';
 import type { Annotation, Feedback } from '../store/types.js';
+import { EXIT_PROMPT, useDoubleCtrlC } from './exit.js';
 import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO, topRule } from './frame.js';
 import { hintLines, orderHints, type Hint } from './hints.js';
 import { BOX_PADDING, buildModel, foldEnd, wrapComment, type ViewRow } from './model.js';
@@ -90,6 +91,8 @@ export interface ReviewAppProps {
    * thing and nothing is not a choice.
    */
   launchable?: Launchable;
+  /** What a second ctrl+c does. Defaults to ending the process with 130. */
+  onQuit?: () => void;
   onDone: (result: ReviewResult) => void;
 }
 
@@ -142,6 +145,8 @@ const NO_EDITS: ReadonlyMap<number, string> = new Map();
 export function ReviewApp(props: ReviewAppProps) {
   const { exit } = useApp();
   const { stdout } = useStdout();
+  // Above every mode-scoped handler below, so it fires whatever is being typed.
+  const leaving = useDoubleCtrlC({ onExit: props.onQuit });
 
   const [versionB, setVersionB] = useState(props.versionB);
   const [versionA, setVersionA] = useState<number | null>(props.versionA);
@@ -888,8 +893,9 @@ export function ReviewApp(props: ReviewAppProps) {
   // Never bold. Colour carries the weight — red for what destroys something,
   // yellow for everything else — and a bold row inside a frame reads as a
   // heading, which a question is not.
-  const message =
-    mode.kind === 'leave'
+  const message = leaving
+    ? red(EXIT_PROMPT)
+    : mode.kind === 'leave'
       ? touched.size || edits.size
         ? red(leaveWarning(touched.size > 0, edits.size))
         : yellow('Back to the list?')
