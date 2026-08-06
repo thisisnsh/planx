@@ -50,7 +50,7 @@ describe('add-skills', () => {
   it('copies the reference files the router branches into', async () => {
     await runInstall({ home, noStore: true });
     const references = join(skillDir('planx'), 'references');
-    for (const name of ['revise.md', 'execute.md', 'diff.md']) {
+    for (const name of ['revise.md', 'execute.md']) {
       expect(existsSync(join(references, name))).toBe(true);
     }
   });

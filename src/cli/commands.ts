@@ -5,7 +5,7 @@ import { runInstall, runUninstall } from '../install/install.js';
 import { capture } from '../protocol/capture.js';
 import { carriedOver, collapseEdits, presentResume } from '../protocol/present.js';
 import { submitFeedback } from '../protocol/submit.js';
-import { bold, cyan, dim, green, padEnd, red, yellow } from '../render/ansi.js';
+import { bold, dim, green, padEnd, red, signal, yellow } from '../render/ansi.js';
 import { renderDocument, renderStatLine, renderUnified, type RenderMode } from '../render/diff.js';
 import { listFeedback } from '../store/feedback.js';
 import { paths } from '../store/paths.js';
@@ -481,10 +481,14 @@ export function cmdList(ctx: Ctx): number {
   // No frame. The border is the review's, and `list` is a table you read one
   // row out of — most often piped, or read by an agent that wants the rows and
   // nothing around them.
+  //
+  // The id carries the accent, because the id is the one thing you came for and
+  // the one thing you type next. planx's own yellow rather than a palette
+  // colour, for the reason `signal` exists: the same yellow as everywhere else.
   const idWidth = Math.min(38, Math.max(...plans.map((p) => p.id.length)));
   for (const plan of plans) {
     ctx.out(
-      `  ${cyan(padEnd(plan.id, idWidth))}  ${dim(padEnd(`v${plan.latest}`, 5))} ${dim(padEnd(ago(plan.updated), 9))}${plan.title}`,
+      `  ${signal(padEnd(plan.id, idWidth))}  ${dim(padEnd(`v${plan.latest}`, 5))} ${dim(padEnd(ago(plan.updated), 9))}${plan.title}`,
     );
   }
   return 0;

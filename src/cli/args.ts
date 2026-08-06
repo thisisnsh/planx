@@ -19,7 +19,7 @@ export interface CommandSpec {
    * person types is bare `planx`, which is not a subcommand at all and is spelt
    * out above the sections rather than listed inside one.
    */
-  group?: 'agent' | 'maintenance';
+  group?: 'everyday' | 'agent' | 'maintenance';
   /** Kept out of `--help` and the generated reference. */
   hidden?: boolean;
 }

@@ -17,11 +17,14 @@ function lay(lines: string[]): string {
 /**
  * Sections, in the order someone reading this needs them.
  *
- * Every command here is either something an agent calls or something you run
- * once. The everyday thing — reviewing — is bare `planx`, spelt out above these
- * sections, so there is no third group of things a person types day to day.
+ * Yours first. `diff` is the review, and the review is the thing a person is
+ * here to do — it sat under the agent heading only because an agent skill used
+ * to call it, and it is the one command in the list you would type by hand
+ * every day. Bare `planx` is still spelt out above these sections; this is the
+ * long form of the same thing, with the version pair and the flags.
  */
-const GROUPS: Array<{ key: 'agent' | 'maintenance'; title: string }> = [
+const GROUPS: Array<{ key: 'everyday' | 'agent' | 'maintenance'; title: string }> = [
+  { key: 'everyday', title: 'Run by you' },
   { key: 'agent', title: 'Run by your agent' },
   { key: 'maintenance', title: 'Housekeeping' },
 ];

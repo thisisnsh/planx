@@ -85,7 +85,7 @@ release is available. Removal: `planx remove-skills`, then
 `npm uninstall -g @thisisnsh/planx`.
 
 <details>
-<summary><b>One skill, five branches</b></summary>
+<summary><b>One skill, four branches</b></summary>
 
 | Say | What happens |
 | --- | --- |
@@ -93,7 +93,6 @@ release is available. Removal: `planx remove-skills`, then
 | `/planx <anything>` | Clarify, research, write a plan, capture it |
 | `/planx revise <id>` | Pick up the feedback and revise |
 | `/planx execute <id>` | Build the plan in this session |
-| `/planx diff <id>` | Print a diff between two versions |
 
 </details>
 

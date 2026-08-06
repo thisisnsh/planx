@@ -1,7 +1,7 @@
 ---
 name: planx
-description: Plan something as a reviewable artifact the user annotates, or revise, execute or diff a plan they already have. Use for /planx and anything mentioning planx.
-argument-hint: <task> | revise <id> | execute <id> | diff <id>
+description: Plan something as a reviewable artifact the user annotates, or revise or execute a plan they already have. Use for /planx and anything mentioning planx.
+argument-hint: <task> | revise <id> | execute <id>
 ---
 
 # planx
@@ -18,7 +18,6 @@ Match on what followed `/planx`:
 | `/planx` alone | say you are ready, and ask what to plan |
 | `/planx revise <id>` | read `references/revise.md` |
 | `/planx execute <id>` | read `references/execute.md` |
-| `/planx diff <id>` | read `references/diff.md` |
 | `/planx <anything else>` | clarify, check, research, plan, capture |
 
 Read only the file for the branch you took.

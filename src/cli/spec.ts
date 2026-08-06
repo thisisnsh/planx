@@ -57,7 +57,7 @@ export const COMMANDS: CommandSpec[] = [
   },
   {
     name: 'diff',
-    group: 'agent',
+    group: 'everyday',
     usage: 'planx [diff] [id] [vA] [vB] [--print] [--plain|--rich] [--stat]',
     summary: 'Review a plan, or print a diff between two versions.',
     description:
