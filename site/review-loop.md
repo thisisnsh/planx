@@ -72,7 +72,7 @@ committed.
 
 The edit lands **on the version on screen** — no new version is minted, because
 you already settled the wording and there is nothing left for an agent to
-decide. Like feedback, nothing reaches disk until `s` submits or `a` approves:
+decide. Like feedback, nothing reaches disk until `s` submits:
 until then an edited line carries a yellow `~` in the sign column, the words you
 changed are lit against the ones you kept, and the summary counts them.
 
@@ -95,19 +95,16 @@ asked, as settled text rather than a request:
   - now: `Extend the guard on the R2 write path`
 ```
 
-## Submit, or approve — never both
+## Submitting nothing is how you approve
 
-A version carrying feedback or a note offers `s submit`. A version carrying
-neither offers `a approve`. **A plan can be approved only when it carries no
-feedback and no note**, which is why the two are never on the bar at once:
-calling a version settled while a comment on it asks for a change would be a
-contradiction the tool should not let you write.
+`s` is the only way out of a review that carries anything, and an **empty submit
+is not refused**. Leaving a version with no comments and no note and pressing
+`s` is how you say the plan is fine — the review prints the command that builds
+it rather than the command that revises it, and `planx revise` reports the
+version as *reviewed with nothing to change*.
 
-Press `a` anyway and it says what is in the way:
-
-```
-This version has 3 feedbacks. Delete them or press s to submit.
-```
+There is no `a`. It used to be a second exit, gated on the version carrying
+nothing, which is exactly the condition an empty submit already expresses.
 
 ## Getting around a plan you have read before
 
@@ -157,7 +154,6 @@ what is on disk is what you last saw on screen.
 {
   "plan_id": "guard-clock-regression-a3f9",
   "version": 2,
-  "verdict": "revise",              // "revise" | "approve" | "reject"
   "annotations": [
     {
       "id": "a1",
@@ -197,7 +193,7 @@ affects what you can select.
 plan, and nothing else:
 
 ````markdown
-## planx — guard-clock-regression-a3f9 v2 (verdict: revise)
+## planx — guard-clock-regression-a3f9 v2
 
 ### What was asked
 

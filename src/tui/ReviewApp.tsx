@@ -39,7 +39,7 @@ export interface FeedbackBatch {
 
 export interface ReviewResult {
   /** `back` means the reviewer wants the list again, with nothing submitted. */
-  action: 'submit' | 'approve' | 'reject' | 'quit' | 'back';
+  action: 'submit' | 'quit' | 'back';
   /**
    * Every version the reviewer edited, plus the one they finished on — and the
    * empty ones belong here: a batch with no annotations and no note is how
@@ -95,7 +95,6 @@ type Mode =
    * selection being walked — the lines that open, one at a time, behind this one.
    */
   | { kind: 'line'; line: number; draft: string; caret: number; queue: number[] }
-  | { kind: 'confirm' }
   | { kind: 'leave' }
   | { kind: 'help' };
 
@@ -202,13 +201,6 @@ export function ReviewApp(props: ReviewAppProps) {
 
   const rows = model.rows;
   const textWidth = contentWidth - model.gutterWidth;
-  /** What this version carries — which is what `a` is gated on, and what `s` sends. */
-  const carries = annotations.length > 0 || general.trim().length > 0;
-  // What this version carries, or anything edited this session — the same set
-  // `s` sends. A version emptied this session counts, because an empty version
-  // is how a deletion lands, and so does a rewritten line: an edit is on disk
-  // no sooner than a note is.
-  const anythingToSubmit = carries || touched.size > 0 || edits.size > 0;
 
   const previousVersion = useMemo(() => {
     const earlier = props.versions.filter((v) => v < versionB);
@@ -551,22 +543,28 @@ export function ReviewApp(props: ReviewAppProps) {
     setVersionA(previousVersion);
   }
 
+  /**
+   * Hand everything back at once.
+   *
+   * An empty submit is not refused. Submitting with nothing to say is the
+   * ordinary way to say the plan is fine — it is what replaced `a`, and it is
+   * what makes the review print the execute command rather than the revise one.
+   *
+   * The batches are what you edited this session, plus the one you are on. An
+   * empty batch is not noise: it is the record that has to be rewritten for a
+   * deleted comment to stay deleted, which is why `touched` and not "carries
+   * something".
+   *
+   * A version you only read past is not in here. Every version's feedback is
+   * loaded into `byVersion` so you can step to it and see it, and submitting all
+   * of that back would rewrite records you never opened — announcing versions
+   * you did not touch, and re-dating them.
+   *
+   * The edited version joins them wherever the reviewer happens to have
+   * finished: submitting edits alone still writes that version's record, so
+   * `planx revise` has something to report the edits against.
+   */
   function finish(action: ReviewResult['action']) {
-    if (action === 'submit' && !anythingToSubmit) {
-      return setStatus('Nothing to submit — press f to leave feedback, or x to leave.');
-    }
-    // What you edited this session, plus the one you are on. An empty batch is
-    // not noise: it is the record that has to be rewritten for a deleted comment
-    // to stay deleted, which is why `touched` and not "carries something".
-    //
-    // A version you only read past is not in here. Every version's feedback is
-    // loaded into `byVersion` so you can step to it and see it, and submitting
-    // all of that back would rewrite records you never opened — announcing
-    // versions you did not touch, and re-dating them.
-    //
-    // The edited version joins them wherever the reviewer happens to have
-    // finished: submitting edits alone still writes that version's record, so
-    // `planx revise` has something to report the edits against.
     const versions = new Set<number>([versionB, ...touched]);
     if (edits.size) versions.add(latest);
 
@@ -632,14 +630,6 @@ export function ReviewApp(props: ReviewAppProps) {
       if (input === 'h') return setHiddenFeedback((on) => !on);
       if (input === 'n') return setMode({ kind: 'note', draft: general });
       if (input === 's') return finish('submit');
-      if (input === 'a') {
-        // Approving is for a version you have nothing to say about: it would
-        // otherwise seal the very lines the feedback is asking to change. The
-        // bar has already said so by offering `s` instead, so what is left here
-        // is naming what is in the way.
-        if (carries) return setStatus(approveBlocked(annotations.length, general));
-        return setMode({ kind: 'confirm' });
-      }
       if (input === '?') return setMode({ kind: 'help' });
       if (input === 'x' || input === 'q') return finish('quit');
     },
@@ -737,16 +727,12 @@ export function ReviewApp(props: ReviewAppProps) {
   useInput(
     (input, key) => {
       if (mode.kind === 'help') return setMode({ kind: 'browse' });
-      if (mode.kind === 'confirm') {
-        if (key.return) return finish('approve');
-        if (key.escape || input === 'n') setMode({ kind: 'browse' });
-      }
       if (mode.kind === 'leave') {
         if (key.return) return finish('back');
         if (key.escape || input === 'n') setMode({ kind: 'browse' });
       }
     },
-    { isActive: mode.kind === 'help' || mode.kind === 'confirm' || mode.kind === 'leave' },
+    { isActive: mode.kind === 'help' || mode.kind === 'leave' },
   );
 
   // Folding notes takes rows out from under the cursor — `h` can take dozens —
@@ -817,18 +803,16 @@ export function ReviewApp(props: ReviewAppProps) {
   // yellow for everything else — and a bold row inside a frame reads as a
   // heading, which a question is not.
   const message =
-    mode.kind === 'confirm'
-      ? signal(approveMessage(versionB, edits.size))
-      : mode.kind === 'leave'
-        ? touched.size || edits.size
-          ? red(leaveWarning(touched.size > 0, edits.size))
-          : yellow('Back to the list?')
-        : statusLine({
-            status,
-            note: mode.kind === 'note' ? mode.draft : '',
-            typing: mode.kind === 'note',
-            width: inner,
-          });
+    mode.kind === 'leave'
+      ? touched.size || edits.size
+        ? red(leaveWarning(touched.size > 0, edits.size))
+        : yellow('Back to the list?')
+      : statusLine({
+          status,
+          note: mode.kind === 'note' ? mode.draft : '',
+          typing: mode.kind === 'note',
+          width: inner,
+        });
 
   return (
     <Box flexDirection="column">
@@ -845,7 +829,6 @@ export function ReviewApp(props: ReviewAppProps) {
       {fit(
         hintLines(
           hintsFor(mode, rows[selection.cursor], {
-            carries,
             anyFeedback: annotations.length > 0,
             heading: headingHint,
             noteFolded,
@@ -910,28 +893,6 @@ function nextAnnotationId(annotations: readonly Annotation[]): string {
     if (match) highest = Math.max(highest, Number(match[1]));
   }
   return `a${highest + 1}`;
-}
-
-/**
- * Why `a` did not open the confirmation, naming what is in the way.
- *
- * The rule is that a plan is approved only when it carries nothing — so the
- * answer to pressing `a` anyway is the count, not a restatement of the rule.
- */
-function approveBlocked(count: number, note: string): string {
-  const has: string[] = [];
-  if (count) has.push(`${count} feedback${count === 1 ? '' : 's'}`);
-  if (note.trim()) has.push('a note');
-  const single = count + (note.trim() ? 1 : 0) === 1;
-  return `This version has ${has.join(' and ')}. Delete ${single ? 'it' : 'them'} or press s to submit.`;
-}
-
-/** What `a` is about to do — including the edits it saves on the way in. */
-function approveMessage(version: number, edits: number): string {
-  const saves = edits
-    ? ` This saves ${edits} edited line${edits === 1 ? '' : 's'} on the way in.`
-    : '';
-  return `Approve v${version}?${saves}`;
 }
 
 /**
@@ -1096,8 +1057,6 @@ function summaryLines(opts: SummaryOptions): string[] {
 }
 
 interface HintContext {
-  /** This version carries feedback or a note, so `s` replaces `a`. */
-  carries: boolean;
   /** There is feedback to walk, so `j` has somewhere to go. */
   anyFeedback: boolean;
   /** What `space` would do to the section under the cursor, if it is a heading. */
@@ -1148,11 +1107,6 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
       ['enter', 'save line'],
       ['esc', 'discard'],
     ];
-  if (mode.kind === 'confirm')
-    return [
-      ['enter', 'approve'],
-      ['esc', 'cancel'],
-    ];
   if (mode.kind === 'leave')
     return [
       ['enter', 'back'],
@@ -1190,7 +1144,7 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
   if (ctx.anyFeedback) hints.push(['j', 'next feedback']);
   if (ctx.canDiff) hints.push(['d', ctx.diffing ? 'hide diff' : 'show diff']);
   if (ctx.manyVersions) hints.push(['←→', 'version']);
-  hints.push(ctx.carries ? ['s', 'submit'] : ['a', 'approve'], ['?', 'help']);
+  hints.push(['s', 'submit'], ['?', 'help']);
   return hints;
 }
 
@@ -1221,7 +1175,7 @@ function widestHints(ctx: Pick<HintContext, 'canDiff' | 'manyVersions'>): Hint[]
   ];
   if (ctx.canDiff) hints.push(['d', 'show diff']);
   if (ctx.manyVersions) hints.push(['←→', 'version']);
-  hints.push(['a', 'approve'], ['?', 'help']);
+  hints.push(['s', 'submit'], ['?', 'help']);
   return hints;
 }
 
@@ -1248,7 +1202,6 @@ function spanSize(rows: readonly ViewRow[], selection: SelectionState): number {
 const HELP: Array<[Hint, 'always' | 'versioned']> = [
   [['←→', 'the previous and next version of the plan'], 'versioned'],
   [['↑↓', 'move a row at a time — a note box is one stop, on its first line'], 'always'],
-  [['a', 'approve — only when you have no feedback on this version'], 'always'],
   [['d', 'show the diff against the previous version, or hide it'], 'versioned'],
   [['e', 'rewrite the line, or every line of the selection, in place'], 'always'],
   [['f', 'feedback on the selection, or edit the note under the cursor'], 'always'],

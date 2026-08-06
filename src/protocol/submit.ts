@@ -1,6 +1,6 @@
 import { sectionOf } from '../render/markdown.js';
 import { ulid } from '../store/ids.js';
-import { readMeta, readVersionText, reindex, writeMeta } from '../store/plans.js';
+import { readVersionText, reindex } from '../store/plans.js';
 import { contextSha, normalizedLines } from '../store/text.js';
 import { feedbackFor, writeFeedback } from '../store/feedback.js';
 import { FeedbackSchema, type Annotation, type Feedback } from '../store/types.js';
@@ -8,7 +8,6 @@ import { FeedbackSchema, type Annotation, type Feedback } from '../store/types.j
 export interface SubmitInput {
   planId: string;
   version: number;
-  verdict: Feedback['verdict'];
   annotations: Annotation[];
   general?: string;
 }
@@ -34,15 +33,6 @@ export function submitFeedback(input: SubmitInput): SubmitResult {
     throw new Error(`planx: ${input.planId} has no stored v${input.version} to review.`);
   }
   const docLines = normalizedLines(text);
-
-  if (input.verdict === 'approve') {
-    const meta = readMeta(input.planId);
-    if (meta) {
-      meta.approved_at = new Date().toISOString();
-      meta.approved_version = input.version;
-      writeMeta(meta);
-    }
-  }
   reindex(input.planId);
 
   // One record per version, rewritten in place — so the id is the one already
@@ -57,7 +47,6 @@ export function submitFeedback(input: SubmitInput): SubmitResult {
     id: stored?.id ?? ulid(),
     plan_id: input.planId,
     version: input.version,
-    verdict: input.verdict,
     annotations: input.annotations.map((a) => reanchor(a, docLines)),
     general: input.general ?? '',
     created: new Date().toISOString(),

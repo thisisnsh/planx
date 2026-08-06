@@ -60,10 +60,9 @@ export function feedbackFor(id: string, version: number): Feedback | null {
  *
  * A version left with several legacy records merges into one: annotations are
  * keyed by id so a later submit's edit replaces the earlier text rather than
- * doubling it, and the last verdict is the reviewer's current position. The
- * note survives from whichever submit last carried one — an old record's note
- * is not evidence that a later empty one deleted it, because deleting a note
- * was not something the old shape could express.
+ * doubling it. The note survives from whichever submit last carried one — an
+ * old record's note is not evidence that a later empty one deleted it, because
+ * deleting a note was not something the old shape could express.
  */
 export function listFeedback(id: string): Feedback[] {
   const dir = paths.feedbackDir(id);
@@ -89,7 +88,6 @@ export function listFeedback(id: string): Feedback[] {
     merged.set(record.version, {
       ...earlier,
       annotations: [...byId.values()],
-      verdict: record.verdict,
       general: record.general.trim() ? record.general : earlier.general,
       created: record.created,
       addressed_by: record.addressed_by ?? earlier.addressed_by,

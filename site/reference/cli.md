@@ -67,7 +67,7 @@ Review a plan, or print a diff between two versions.
 planx [diff] [id] [vA] [vB] [--print] [--plain|--rich] [--stat]
 ```
 
-In a terminal this opens the review TUI on the diff against the previous version — you opened v4 because v4 is new, and what is new about it is the diff. Press d to see the plan on its own instead. Select lines, comment on them or rewrite them, then submit. The command name is optional in front of a plan — `planx <id>` is the same thing. Piped or with --print it writes the diff to stdout and exits. With no arguments it opens a picker.
+In a terminal this opens the review TUI on the diff against the previous version — you opened v4 because v4 is new, and what is new about it is the diff. Press d to see the plan on its own instead. Select lines, comment on them or rewrite them, then submit — an empty submit is how you say the plan is fine. The command name is optional in front of a plan — `planx <id>` is the same thing. Piped or with --print it writes the diff to stdout and exits. With no arguments it opens a picker.
 
 | Flag | Meaning |
 | --- | --- |
@@ -99,14 +99,12 @@ planx show <id> [version] [--plain|--rich]
 List stored plans, newest first.
 
 ```
-planx list [--here] [--approved] [--json]
+planx list [--here] [--json]
 ```
 
 | Flag | Meaning |
 | --- | --- |
 | `--here` | Only plans captured in the current directory. |
-| `--approved` | Only approved plans. |
-| `--unapproved` | Only plans that never reached approve. |
 
 ## `planx add-skills`
 

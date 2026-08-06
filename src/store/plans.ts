@@ -72,7 +72,6 @@ function indexEntryFor(meta: PlanMeta, versions: VersionsFile): IndexEntry {
     created: meta.created,
     updated: meta.updated,
     latest: latestVersionNumber(versions),
-    approved: meta.approved_at !== null,
   };
 }
 
@@ -435,8 +434,6 @@ export interface PlanSummary extends IndexEntry {
 export interface ListFilter {
   /** Only plans captured in the current working directory. */
   here?: boolean;
-  approved?: boolean;
-  unapproved?: boolean;
   olderThanMs?: number;
   ids?: string[];
 }
@@ -458,7 +455,6 @@ export function listPlans(filter: ListFilter = {}): PlanSummary[] {
       created: meta.created,
       updated: meta.updated,
       latest: latestVersion(id),
-      approved: meta.approved_at !== null,
     });
   }
 
@@ -466,8 +462,6 @@ export function listPlans(filter: ListFilter = {}): PlanSummary[] {
     const cwd = process.cwd();
     rows = rows.filter((r) => r.cwd === cwd);
   }
-  if (filter.approved) rows = rows.filter((r) => r.approved);
-  if (filter.unapproved) rows = rows.filter((r) => !r.approved);
   if (filter.olderThanMs !== undefined) {
     const cutoff = Date.now() - filter.olderThanMs;
     rows = rows.filter((r) => Date.parse(r.updated) < cutoff);

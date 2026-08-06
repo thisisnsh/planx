@@ -54,7 +54,7 @@ $ planx
 | **Diff by default** | `d` | A version with a predecessor opens *as* the diff — word-level, with runs of unchanged lines collapsed |
 | **Fold to skim** | `space`, `j` | Collapse a whole section into one row, jump feedback to feedback, on a plan you have read before |
 | **Edit in place** | `e` | Rewrite a line yourself as raw markdown, instead of round-tripping through the agent |
-| **Approve** | `a` | Marks the version settled — only allowed when nothing is left unanswered |
+| **Approve** | `s` with nothing on the version | An empty submit is how you say the plan is fine |
 | **Execute** | `/planx execute <id>` | Builds the plan in the session you are already in |
 
 ## The loop
@@ -63,7 +63,7 @@ $ planx
 /planx add rate limiting to uploads   →  agent researches, writes, captures, stops
 planx                                 →  you comment, press s
 /planx revise <id>                    →  agent revises  ⟳
-planx  →  press a                     →  approved
+planx  →  press s with nothing on it  →  settled
 /planx execute <id>                   →  built
 ```
 
@@ -106,7 +106,7 @@ run a command is a first-class citizen.
 
 ```bash
 planx capture --stdin --title "Rate limit uploads" < plan.md
-planx <plan-id>          # review: comment, rewrite, submit or approve
+planx <plan-id>          # review: comment, rewrite, submit
 planx diff <plan-id>     # any two versions, TUI or piped
 planx revise <plan-id>   # hand the feedback back to whatever is building
 ```

@@ -1,16 +1,6 @@
 import { Box, Text, useApp, useInput, useStdout } from 'ink';
 import { useMemo, useState } from 'react';
-import {
-  bold,
-  dim,
-  green,
-  inverse,
-  padEnd,
-  red,
-  signal,
-  stripAnsi,
-  truncate,
-} from '../render/ansi.js';
+import { bold, dim, inverse, padEnd, red, signal, stripAnsi, truncate } from '../render/ansi.js';
 import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO, topRule } from './frame.js';
 import { fuzzyFilter } from './fuzzy.js';
 import { hintLines, type Hint } from './hints.js';
@@ -27,8 +17,6 @@ export interface PickerItem<T> {
   searchable?: string;
   /** Rows revealed by `→`. A row with none is a leaf. */
   children?: Array<PickerItem<T>>;
-  /** Paint the label green. Approval is colour rather than a glyph. */
-  approved?: boolean;
   /**
    * How this row is named in a delete confirmation — `guard-clock-a3f9 v3`.
    * Absent means the row cannot be deleted, and `d` is not offered on it.
@@ -251,8 +239,7 @@ export function Picker<T>({
       const indent = row.child ? '   ' : '';
       const mark = active ? '❯ ' : '  ';
       const width = labelWidth - indent.length;
-      const name = padEnd(truncate(row.item.label, width), width);
-      const label = row.item.approved ? green(name) : name;
+      const label = padEnd(truncate(row.item.label, width), width);
       const hint = row.item.hint ? dim(`  ${truncate(row.item.hint, inner - labelWidth - 6)}`) : '';
       const line = `${mark}${indent}${label}${hint}`;
       // Inverse video has to own the whole row: a dim hint inside an inverse

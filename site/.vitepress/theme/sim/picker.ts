@@ -15,7 +15,6 @@ import { PLANX_VERSION, REPO } from './engine.js';
 export interface PickerItem {
   label: string;
   hint: string;
-  approved?: boolean;
   /** How the row is named in a delete confirmation. */
   deleteAs: string;
   children?: PickerItem[];
@@ -212,7 +211,7 @@ export function pickerFrame(state: PickerState, height: number): Line[] {
       return [
         p('  '),
         p(`${mark}${indent}`),
-        p(label, row.item.approved ? 'green' : undefined),
+        p(label),
         ...fit(
           [p(`  ${row.item.hint}`, 'dim')],
           inner - 2 - mark.length - indent.length - label.length,
@@ -281,11 +280,10 @@ export function demoPlans(): PickerItem[] {
     },
     {
       label: 'rate-limit-uploads-77c2',
-      hint: 'Rate limit the upload endpoint · 2 versions · approved',
-      approved: true,
+      hint: 'Rate limit the upload endpoint · 2 versions · 1d ago',
       deleteAs: 'rate-limit-uploads-77c2',
       children: [
-        { label: 'v2', hint: 'approved & sealed', deleteAs: 'rate-limit-uploads-77c2 v2' },
+        { label: 'v2', hint: 'captured 1d ago · reviewed', deleteAs: 'rate-limit-uploads-77c2 v2' },
         { label: 'v1', hint: 'captured 3d ago', deleteAs: 'rate-limit-uploads-77c2 v1' },
       ],
     },

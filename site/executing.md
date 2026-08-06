@@ -1,11 +1,9 @@
 # Executing
 
-Approving a plan does not build it. It marks the version settled, and then tells
-you how to build it:
+Approving a plan does not build it. Submitting a review that asks for nothing is
+how you approve, and what it prints is how you build it:
 
 ```
-✓ Approved — guard-clock-regression-a3f9 v3
-
   Paste to your agent:  /planx execute guard-clock-regression-a3f9 v3
 ```
 
@@ -27,9 +25,9 @@ x   Reopen it with:  planx guard-clock-regression-a3f9 v3
 
 ## A version with nothing left on it
 
-`a` is offered only while the version carries no feedback and no note, which is
-what makes approving mean something: it is the review saying there is nothing
-left to answer.
+An empty submit is what approving became. It means the same thing `a` meant —
+there is nothing left to answer — without a second key gated on the condition
+the empty submit already expresses.
 
 <PlanxSim scenario="executing" :rows="14" />
 
@@ -55,11 +53,12 @@ printed a slash command for you to paste — two prompts to arrive at a string i
 could not act on. If you want a different model, switch it the way you always
 would and then paste the command.
 
-## Executing an unapproved plan
+## Executing a plan nobody reviewed
 
-The skill checks. If the plan was never approved it says so in one line and asks
-whether to go ahead anyway — an unreviewed plan running by accident is the exact
-thing planx exists to prevent.
+The skill checks, by running `planx revise`. If nobody has opened the version it
+says so in one line and asks whether to go ahead anyway — an unreviewed plan
+running by accident is the exact thing planx exists to prevent. If there is
+feedback on it, this is a revise round rather than an execute one.
 
 ## Executing does not revise
 

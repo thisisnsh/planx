@@ -80,17 +80,15 @@ function storedVersions(id: string): VersionRecord[] {
  * Time first in the grey column. The old order put the id first and the version
  * in the middle, so a narrow terminal truncated the version away — the one
  * thing on the row you could not get at any other way. The version numbers live
- * on the child rows now, where there is room for them, and approval is the
- * title's colour rather than a tick fighting for the last column.
+ * on the child rows now, where there is room for them.
  *
- * Rebuilt from the store rather than patched, so `d` can hand back a list that
- * is simply true.
+ * Rebuilt from the store rather than patched, so a delete can hand back a list
+ * that is simply true.
  */
 function planItems(): Array<PickerItem<PlanChoice>> {
   return listPlans().map((plan) => ({
     value: { id: plan.id, version: plan.latest, row: 'plan' },
     label: plan.title,
-    approved: plan.approved,
     hint: `${padEnd(ago(plan.updated), 9)}${plan.id}`,
     searchable: plan.id,
     deleteAs: plan.id,
@@ -367,8 +365,6 @@ async function runInteractiveReview(
     return 0;
   }
 
-  const verdict = result.action === 'submit' ? 'revise' : result.action;
-
   // The edits first, so every comment re-anchors to the text the reviewer
   // settled on rather than to the line it replaced.
   if (result.editedVersion !== null && result.edits.length) {
@@ -386,11 +382,9 @@ async function runInteractiveReview(
   // so there is no batch to invent here — and a version they emptied comes back
   // empty, which is what makes a deleted comment stay deleted.
   for (const batch of result.batches) {
-    const current = batch.version === result.version;
     submitFeedback({
       planId: id,
       version: batch.version,
-      verdict: current ? verdict : 'revise',
       annotations: batch.annotations,
       general: batch.general,
     });
@@ -402,7 +396,7 @@ async function runInteractiveReview(
     );
   }
 
-  for (const line of closingBlock(verdict, id, result.version)) ctx.out(line);
+  for (const line of closingBlock('revise', id, result.version)) ctx.out(line);
   return 0;
 }
 
@@ -443,22 +437,10 @@ export function handOffLine(to: 'agent' | 'terminal', command: string): string {
  * looking at. It goes last: the agent command is the next step, and this is the
  * fallback.
  */
-export function closingBlock(
-  action: 'quit' | 'revise' | 'reject' | 'approve',
-  planId: string,
-  version: number,
-): string[] {
+export function closingBlock(action: 'quit' | 'revise', planId: string, version: number): string[] {
   const lines: string[] = [];
-  if (action === 'approve') {
-    lines.push(green(`Approved — ${bold(planId)} v${version}.`));
-  }
   if (action !== 'quit') {
-    lines.push(
-      handOffLine(
-        'agent',
-        action === 'approve' ? `/planx execute ${planId} v${version}` : `/planx revise ${planId}`,
-      ),
-    );
+    lines.push(handOffLine('agent', `/planx revise ${planId}`));
   }
   lines.push(handOffLine('terminal', `planx ${planId} v${version}`), '');
   return lines;
@@ -483,11 +465,7 @@ export function cmdShow(ctx: Ctx): number {
 /* -------------------------------------------------------------- listing */
 
 export function cmdList(ctx: Ctx): number {
-  const plans = listPlans({
-    here: has(ctx.args, '--here'),
-    approved: has(ctx.args, '--approved'),
-    unapproved: has(ctx.args, '--unapproved'),
-  });
+  const plans = listPlans({ here: has(ctx.args, '--here') });
 
   if (ctx.json) {
     ctx.out(JSON.stringify(plans, null, 2));
@@ -498,16 +476,13 @@ export function cmdList(ctx: Ctx): number {
     return 0;
   }
 
-  // Approval is colour, here as in the picker. The `✓` and `🔒` badges spent a
-  // column each saying what green already says, and the padlock was two cells
-  // wide in some terminals and one in others, so the id column moved with it.
   const idWidth = Math.min(38, Math.max(...plans.map((p) => p.id.length)));
   framed(
     ctx,
-    plans.map((plan) => {
-      const title = plan.approved ? green(plan.title) : plan.title;
-      return `  ${cyan(padEnd(plan.id, idWidth))}  ${dim(padEnd(`v${plan.latest}`, 5))} ${dim(padEnd(ago(plan.updated), 9))}${title}`;
-    }),
+    plans.map(
+      (plan) =>
+        `  ${cyan(padEnd(plan.id, idWidth))}  ${dim(padEnd(`v${plan.latest}`, 5))} ${dim(padEnd(ago(plan.updated), 9))}${plan.title}`,
+    ),
   );
   return 0;
 }

@@ -359,19 +359,17 @@ describe('the review frame', () => {
     app.unmount();
   });
 
-  it('offers approve while there is nothing to submit, and submit once there is', async () => {
+  it('offers submit whether or not the version carries anything', async () => {
     const app = mount(seed(), null, 1);
     await app.ready();
 
-    expect(app.stdout.lastFrame).toContain('a approve');
-    expect(app.stdout.lastFrame).not.toContain('s submit');
+    expect(app.stdout.lastFrame).toContain('s submit');
+    expect(app.stdout.lastFrame).not.toContain('a approve');
 
     await app.press('f');
     await app.press('needs work');
     await app.press(ENTER);
     await app.frame('s submit');
-
-    expect(app.stdout.lastFrame).not.toContain('a approve');
     app.unmount();
   });
 });
@@ -770,7 +768,7 @@ describe('rewriting a line in place', () => {
     app.unmount();
   });
 
-  it('counts as something to submit, to lose, and to save on the way to approving', async () => {
+  it('counts as something to submit, and something to lose', async () => {
     const app = mount(seed(), null, 1);
     await app.ready();
 
@@ -782,11 +780,6 @@ describe('rewriting a line in place', () => {
     // Leaving names them: an edit is on disk no sooner than a note is.
     await app.press(ESC);
     await app.frame('1 edited line has not been submitted and will be lost.');
-    await app.press(ESC);
-
-    // Approving is not blocked by them — it saves them on the way in.
-    await app.press('a');
-    await app.frame('This saves 1 edited line on the way in.');
     await app.press(ESC);
 
     await app.press('s');
@@ -1023,13 +1016,17 @@ describe('j walks the feedback', () => {
   });
 });
 
-describe('submitting and approving', () => {
-  it('refuses an empty submit and says how to leave instead', async () => {
+describe('submitting', () => {
+  // An empty submit is the ordinary way to say the plan is fine — it is what
+  // replaced `a`, so it must not be refused.
+  it('accepts a submit that carries nothing', async () => {
     const app = mount(seed(), null, 1);
     await app.ready();
 
     await app.press('s');
-    await app.frame('Nothing to submit');
+    const result = await app.result;
+    expect(result.action).toBe('submit');
+    expect(result.batches).toEqual([{ version: 1, annotations: [], general: '' }]);
     app.unmount();
   });
 
@@ -1047,23 +1044,6 @@ describe('submitting and approving', () => {
     expect(result.action).toBe('submit');
     expect(result.batches[0]?.version).toBe(1);
     expect(result.batches[0]?.annotations[0]?.comment).toBe('needs work');
-    app.unmount();
-  });
-
-  it('asks before approving, and esc backs out', async () => {
-    const app = mount(seed(), null, 1);
-    await app.ready();
-
-    await app.press('a');
-    await app.frame('Approve');
-    await app.press(ESC);
-    await new Promise((r) => setTimeout(r, 120));
-    expect(app.stdout.lastFrame).not.toContain('Approve v');
-
-    await app.press('a');
-    await app.press(ENTER);
-
-    expect((await app.result).action).toBe('approve');
     app.unmount();
   });
 
@@ -1135,7 +1115,7 @@ describe('the keys, and where they sit', () => {
     const keys = inner(bodyRows(app.stdout.lastFrame).at(-1)!)
       .split(' · ')
       .map((part) => part.split(' ')[0]!);
-    expect(keys).toEqual(['←→', 'a', 'd', 'e', 'f', 'n', 'v', 'x', 'esc', '?']);
+    expect(keys).toEqual(['←→', 'd', 'e', 'f', 'n', 's', 'v', 'x', 'esc', '?']);
     app.unmount();
   });
 
@@ -1160,7 +1140,7 @@ describe('the keys, and where they sit', () => {
 
     // The five the fixed order always put last, and so always lost.
     const bar = bodyRows(app.stdout.lastFrame).slice(-3).map(inner).join(' · ');
-    for (const pair of ['a approve', 'v select lines', 'x exit', 'esc back', '? help']) {
+    for (const pair of ['s submit', 'v select lines', 'x exit', 'esc back', '? help']) {
       expect(bar).toContain(pair);
     }
     app.unmount();
@@ -1185,7 +1165,6 @@ describe('the keys, and where they sit', () => {
     expect(keys).toEqual([
       '←→',
       '↑↓',
-      'a',
       'd',
       '^d ^u',
       'e',
@@ -1325,35 +1304,12 @@ describe('what the version has to say about itself', () => {
     app.unmount();
   });
 
-  it('says what is in the way when a carries feedback', async () => {
-    const app = mount(seed(), null, 1);
-    await app.ready();
-
-    await app.press(DOWN);
-    await app.press('f');
-    await app.press('needs work');
-    await app.press(ENTER);
-    await app.frame('s submit');
-
-    await app.press('a');
-    await app.frame('This version has 1 feedback. Delete it or press s to submit.');
-    expect(app.stdout.lastFrame).not.toContain('Approve v1?');
-
-    await app.press('n');
-    await app.press('and a note');
-    await app.press(ENTER);
-    await app.press('a');
-    await app.frame('This version has 1 feedback and a note. Delete them or press s to submit.');
-    app.unmount();
-  });
-
   it('loads the feedback already stored on the version, editable', async () => {
     const id = seed();
     const doc = readVersionText(id, 1)!.split('\n');
     submitFeedback({
       planId: id,
       version: 1,
-      verdict: 'revise',
       annotations: [buildAnnotation(doc, 4, 4, 'left last time', 'a1')],
       general: 'and a standing note',
     });
@@ -1480,7 +1436,6 @@ describe('the plan, the diff and the versions', () => {
     submitFeedback({
       planId: id,
       version: 1,
-      verdict: 'revise',
       annotations: [
         buildAnnotation(doc, 4, 4, 'left on v1 last time', 'a1'),
         buildAnnotation(doc, 5, 5, 'and another', 'a2'),
@@ -1850,7 +1805,7 @@ function mountPicker<T>(
 
 type Pick = { id: string; version: number; row: 'plan' | 'version' };
 
-/** Two plans, one approved, one of them three versions deep. */
+/** Two plans, one of them three versions deep. */
 function planRows(): Array<PickerItem<Pick>> {
   return [
     {
@@ -1858,7 +1813,6 @@ function planRows(): Array<PickerItem<Pick>> {
       label: 'Guard the clock regression',
       hint: '1h ago   guard-clock',
       searchable: 'guard-clock',
-      approved: true,
       deleteAs: 'guard-clock',
       children: [
         { value: { id: 'guard-clock', version: 3, row: 'version' }, label: 'v3', hint: '1h ago' },

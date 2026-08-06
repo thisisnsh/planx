@@ -41,14 +41,12 @@ Every page on this site carries one of these beside the feature it explains.
 | `j` `h` | Walk the feedback; fold every note at once. | [Review Loop](/review-loop) |
 | `d` `←` `→` | The diff against the previous version, and the history. | [Diffing](/diffing) |
 | `n` | One note about the whole plan. | [Review Loop](/review-loop) |
-| `s` | Submit everything at once, and print the command to paste back. | [Review Loop](/review-loop#what-the-agent-sees) |
-| `a` | Approve — marks the version settled, and prints the command that builds it. | [Executing](/executing) |
+| `s` | Submit everything at once, and print the command to paste back. Submitting nothing is how you say the plan is fine. | [Executing](/executing) |
 | `?` | Every key, in the same order the hint bar puts them. | — |
 
 The hint bar along the bottom of the frame only ever offers keys that work on
-the row you are pointing at. `e` disappears on any version but the latest, `d`
-is missing on v1, and `s submit` and `a approve` are never on the bar at the
-same time.
+the row you are pointing at. `e` disappears on any version but the latest, and
+`d` is missing on v1.
 
 ## The problem, concretely
 
@@ -74,8 +72,8 @@ work on the text directly:
 - **Rewrite what you can say yourself.** `e` opens a line as its source and what
   you type is what the plan says — no round trip through an agent that has to
   guess which word you meant.
-- **Approve when you are done.** The version is marked settled, and the review
-  prints the one command that builds it.
+- **Say it is fine by saying nothing.** Press `s` on a version you have left no
+  feedback on, and the review prints the one command that builds it.
 
 A note hangs off a rail that runs down the lines it is about, between the line
 number and the text, so it is never a comment floating near a passage — it is
@@ -123,5 +121,5 @@ planx add-skills
 Then type `/planx` in Claude Code or Codex.
 
 - [Install](/install) — what the installer touches, channels, rollback
-- [Review Loop](/review-loop) — capture, review, revise, approve
+- [Review Loop](/review-loop) — capture, review, revise
 - [CLI reference](/reference/cli) — every command and flag

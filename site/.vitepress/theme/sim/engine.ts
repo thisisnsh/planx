@@ -2,10 +2,9 @@
  * The review, as a state machine — src/tui/ReviewApp.tsx without the terminal.
  *
  * Every key does here what it does in the CLI: the modes are explicit (so `s`
- * is the letter s while a note is being typed), a note is deleted by emptying
- * it, and `a` is refused on a version carrying feedback. What is missing is the
- * store — nothing is written to disk, and `s` prints the hand-off it would have
- * printed.
+ * is the letter s while a note is being typed) and a note is deleted by emptying
+ * it. What is missing is the store — nothing is written to disk, and `s` prints
+ * the hand-off it would have printed.
  */
 
 import { hintLines, orderHints, type Hint } from './hints.js';
@@ -51,10 +50,9 @@ export type Mode =
   | { kind: 'editing'; annotationId: string; draft: string; isNew: boolean }
   | { kind: 'note'; draft: string }
   | { kind: 'line'; line: number; draft: string; caret: number; queue: number[] }
-  | { kind: 'confirm' }
   | { kind: 'leave' }
   | { kind: 'help' }
-  | { kind: 'done'; action: 'submit' | 'approve' | 'quit' | 'back' };
+  | { kind: 'done'; action: 'submit' | 'quit' | 'back' };
 
 export interface SimState {
   plan: SimPlan;
@@ -77,7 +75,7 @@ export interface SimState {
   pendingJump: string | null;
   /** What the reviewer has tried, for the checklist beside the frame. */
   did: Set<string>;
-  /** The markdown the agent is handed, once `s` or `a` has been pressed. */
+  /** The markdown the agent is handed, once `s` has been pressed. */
   handoff: string | null;
   cols: number;
   bodyRows: number;
@@ -264,10 +262,6 @@ export function press(state: SimState, key: string): void {
     case 'help':
       state.mode = { kind: 'browse' };
       return;
-    case 'confirm':
-      if (key === 'enter') return finish(state, 'approve');
-      if (key === 'escape' || key === 'n') state.mode = { kind: 'browse' };
-      return;
     case 'leave':
       if (key === 'enter') return finish(state, 'back');
       if (key === 'escape' || key === 'n') state.mode = { kind: 'browse' };
@@ -325,16 +319,6 @@ function browse(state: SimState, key: string): void {
     return;
   }
   if (key === 's') return finish(state, 'submit');
-  if (key === 'a') {
-    // Approving is for a version you have nothing to say about: it would
-    // otherwise call settled the very lines the feedback is asking to change.
-    if (carries(state)) {
-      state.status = approveBlocked(current(state).length, state.notes[state.versionB] ?? '');
-      return;
-    }
-    state.mode = { kind: 'confirm' };
-    return;
-  }
   if (key === '?') {
     state.mode = { kind: 'help' };
     state.did.add('help');
@@ -373,8 +357,6 @@ function jumpTo(state: SimState, index: number): void {
 }
 
 const current = (state: SimState): Annotation[] => state.annotations[state.versionB] ?? [];
-const carries = (state: SimState) =>
-  current(state).length > 0 || (state.notes[state.versionB] ?? '').trim().length > 0;
 
 function previousVersion(state: SimState): number | null {
   const earlier = state.versions.filter((v) => v < state.versionB);
@@ -693,12 +675,8 @@ function toggleDiff(state: SimState): void {
 
 /* -------------------------------------------------------------- finishing */
 
-function finish(state: SimState, action: 'submit' | 'approve' | 'quit' | 'back'): void {
-  if (action === 'submit' && !carries(state) && !state.touched.size && !state.edits.size) {
-    state.status = 'Nothing to submit — press f to leave feedback, or x to leave.';
-    return;
-  }
-  state.handoff = action === 'submit' || action === 'approve' ? handoffText(state, action) : null;
+function finish(state: SimState, action: 'submit' | 'quit' | 'back'): void {
+  state.handoff = action === 'submit' ? handoffText(state) : null;
   state.did.add(action);
   state.mode = { kind: 'done', action };
 }
@@ -720,13 +698,9 @@ function restart(state: SimState): void {
  * the quoted lines each comment is anchored to, which is the only thing that
  * makes a line number mean anything after a revision has moved it.
  */
-export function handoffText(state: SimState, action: 'submit' | 'approve'): string {
-  const verdict = action === 'approve' ? 'approve' : 'revise';
+export function handoffText(state: SimState): string {
   const docLines = state.model.docLines;
-  const out: string[] = [
-    `## planx — ${state.plan.id} v${state.versionB} (verdict: ${verdict})`,
-    '',
-  ];
+  const out: string[] = [`## planx — ${state.plan.id} v${state.versionB}`, ''];
 
   const edits = [...state.edits].sort(([a], [b]) => a - b);
   if (edits.length) {
@@ -766,8 +740,9 @@ export function handoffText(state: SimState, action: 'submit' | 'approve'): stri
   if (note) asked.push('#### General', '', note, '');
   if (asked.length) out.push('### What was asked', '', ...asked);
 
-  if (verdict === 'approve') {
-    out.push('---', 'Approved. Implement it as written.', '');
+  // Reviewed, and it asked for nothing: the reviewer saying the version is fine.
+  if (!asked.length && !edits.length) {
+    out.push('---', 'Reviewed with nothing to change. Implement it as written.', '');
     return out.join('\n');
   }
 
@@ -778,14 +753,6 @@ export function handoffText(state: SimState, action: 'submit' | 'approve'): stri
   out.push(`${lead} Then run:`);
   out.push(`  planx capture --plan-id ${state.plan.id} --parent v${state.versionB} --stdin`, '');
   return out.join('\n');
-}
-
-function approveBlocked(count: number, note: string): string {
-  const has: string[] = [];
-  if (count) has.push(`${count} feedback${count === 1 ? '' : 's'}`);
-  if (note.trim()) has.push('a note');
-  const single = count + (note.trim() ? 1 : 0) === 1;
-  return `This version has ${has.join(' and ')}. Delete ${single ? 'it' : 'them'} or press s to submit.`;
 }
 
 /* ----------------------------------------------------------------- hints */
@@ -811,11 +778,6 @@ export function hintsFor(state: SimState): Hint[] {
     return [
       ['enter', 'save line'],
       ['esc', 'discard'],
-    ];
-  if (mode.kind === 'confirm')
-    return [
-      ['enter', 'approve'],
-      ['esc', 'cancel'],
     ];
   if (mode.kind === 'leave')
     return [
@@ -856,7 +818,7 @@ export function hintsFor(state: SimState): Hint[] {
   if (previousVersion(state) !== null)
     hints.push(['d', state.versionA !== null ? 'hide diff' : 'show diff']);
   if (state.versions.length > 1) hints.push(['←→', 'version']);
-  hints.push(carries(state) ? ['s', 'submit'] : ['a', 'approve'], ['?', 'help']);
+  hints.push(['s', 'submit'], ['?', 'help']);
   return hints;
 }
 
@@ -874,7 +836,7 @@ function widestHints(state: SimState): Hint[] {
   ];
   if (previousVersion(state) !== null) hints.push(['d', 'show diff']);
   if (state.versions.length > 1) hints.push(['←→', 'version']);
-  hints.push(['a', 'approve'], ['?', 'help']);
+  hints.push(['s', 'submit'], ['?', 'help']);
   return hints;
 }
 
@@ -897,13 +859,11 @@ export function frame(state: SimState): Line[] {
             .map((row, i) => renderRow(state, row, state.offset + i, textWidth, model.railColumn));
 
   const message =
-    state.mode.kind === 'confirm'
-      ? [p(approveMessage(state), 'sig')]
-      : state.mode.kind === 'leave'
-        ? state.touched.size || state.edits.size
-          ? [p(leaveWarning(state), 'red')]
-          : [p('Back to the list?', 'warn')]
-        : statusLine(state, inner);
+    state.mode.kind === 'leave'
+      ? state.touched.size || state.edits.size
+        ? [p(leaveWarning(state), 'red')]
+        : [p('Back to the list?', 'warn')]
+      : statusLine(state, inner);
 
   const summary = summaryLines(state, inner);
   const hints = hintLines(hintsFor(state), inner);
@@ -1051,13 +1011,6 @@ function summaryLines(state: SimState, width: number): Line[] {
   return out;
 }
 
-function approveMessage(state: SimState): string {
-  const saves = state.edits.size
-    ? ` This saves ${state.edits.size} edited line${state.edits.size === 1 ? '' : 's'} on the way in.`
-    : '';
-  return `Approve v${state.versionB}?${saves}`;
-}
-
 function leaveWarning(state: SimState): string {
   const lost: string[] = [];
   if (state.touched.size) lost.push('Your feedback');
@@ -1080,9 +1033,6 @@ function doneLines(state: SimState): Line[] {
   const version = state.versionB;
   const out: Line[] = [];
 
-  if (mode.action === 'approve') {
-    out.push([p(`Approved — `, 'green'), p(id, 'green bold'), p(` v${version}.`, 'green')]);
-  }
   if (mode.action === 'submit') {
     const count = current(state).length;
     const note = (state.notes[version] ?? '').trim() ? ' and a note' : '';
@@ -1090,14 +1040,8 @@ function doneLines(state: SimState): Line[] {
       p(`Submitted ${count} feedback${count === 1 ? '' : 's'}${note} on v${version}.`, 'green'),
     ]);
   }
-  if (mode.action !== 'quit' && mode.action !== 'back') {
-    out.push([
-      p('Paste to your agent:  '),
-      p(
-        mode.action === 'approve' ? `/planx execute ${id} v${version}` : `/planx revise ${id}`,
-        'warn',
-      ),
-    ]);
+  if (mode.action === 'submit') {
+    out.push([p('Paste to your agent:  '), p(`/planx revise ${id}`, 'warn')]);
   }
   if (mode.action === 'quit' || mode.action === 'back') {
     out.push([p('Left without submitting. Nothing was written.', 'dim')]);
@@ -1115,7 +1059,6 @@ function doneLines(state: SimState): Line[] {
 const HELP: Array<[Hint, 'always' | 'versioned']> = [
   [['←→', 'the previous and next version of the plan'], 'versioned'],
   [['↑↓', 'move a row at a time — a note box is one stop, on its first line'], 'always'],
-  [['a', 'approve — only when you have no feedback on this version'], 'always'],
   [['d', 'show the diff against the previous version, or hide it'], 'versioned'],
   [['e', 'rewrite the line, or every line of the selection, in place'], 'always'],
   [['f', 'feedback on the selection, or edit the note under the cursor'], 'always'],

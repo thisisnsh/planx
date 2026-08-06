@@ -8,10 +8,10 @@ citizen, forever.
 ~/.planx/
   config.json                     # render preference, and nothing else
   update.json                     # cache: what npm last said `latest` is
-  index.json                      # id → {title, cwd, updated, latest, approved}
+  index.json                      # id → {title, cwd, updated, latest}
   plans/
     guard-clock-regression-a3f9/
-      meta.json                   # id, title, created, source, cwd, session_id, tags, approved_at
+      meta.json                   # id, title, created, source, cwd, session_id, tags
       versions.json               # ordered version records
       v1.md  v2.md  v3.md
       feedback/  v2-01K9X4….json

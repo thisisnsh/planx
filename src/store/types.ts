@@ -25,8 +25,6 @@ export const PlanMetaSchema = z.object({
   cwd: z.string().default(''),
   session_id: z.string().nullable().default(null),
   tags: z.array(z.string()).default([]),
-  approved_at: z.string().nullable().default(null),
-  approved_version: z.number().int().nullable().default(null),
 });
 export type PlanMeta = z.infer<typeof PlanMetaSchema>;
 
@@ -79,7 +77,6 @@ export const IndexEntrySchema = z.object({
   created: z.string(),
   updated: z.string(),
   latest: z.number().int(),
-  approved: z.boolean().default(false),
 });
 export type IndexEntry = z.infer<typeof IndexEntrySchema>;
 
@@ -113,12 +110,18 @@ export const AnnotationSchema = z.object({
 });
 export type Annotation = z.infer<typeof AnnotationSchema>;
 
+/**
+ * A version's review, whole.
+ *
+ * `verdict` went with approve. Zod strips unknown keys, so a record written by
+ * an older planx still loads — the field is simply ignored rather than needing
+ * a format bump.
+ */
 export const FeedbackSchema = z.object({
   format_version: formatVersion,
   id: z.string(),
   plan_id: z.string(),
   version: z.number().int(),
-  verdict: z.enum(['revise', 'approve', 'reject']),
   annotations: z.array(AnnotationSchema).default([]),
   general: z.string().default(''),
   created: z.string(),

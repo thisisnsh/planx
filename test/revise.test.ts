@@ -46,7 +46,6 @@ function comment(planId: string, version: number, from: number, to: number, body
   submitFeedback({
     planId,
     version,
-    verdict: 'revise',
     annotations: [buildAnnotation(doc, from, to, body, 'a1')],
   });
 }
@@ -140,7 +139,7 @@ describe('revise reports what the reviewer edited', () => {
     const { planId, version } = capture({ text: PLAN, title: 'p' });
     rewriteVersion(planId, version, [{ line: 7, text: 'Extend the guard in the writer.' }]);
     // Submitting edits alone writes an empty record — that is what this is.
-    submitFeedback({ planId, version, verdict: 'revise', annotations: [] });
+    submitFeedback({ planId, version, annotations: [] });
 
     const out = reviseText(planId, version);
     expect(out).not.toContain('### What was asked');

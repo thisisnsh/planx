@@ -66,8 +66,9 @@ in the plan. Then, verbatim, with nothing after it:
 
 Then end your turn. The next round starts when they paste a command back.
 
-## Verdicts
+## A review that asked for nothing
 
-- **approve** — report the id and version. If they asked you to build it,
-  follow `references/execute.md`.
-- **reject** — stop. Ask what they want instead. Do not write another version.
+`planx revise` says **reviewed with nothing to change** when the user submitted
+an empty review. That is them saying the plan is fine. Do not write another
+version — report the id and version, and if they asked you to build it, follow
+`references/execute.md`.

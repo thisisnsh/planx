@@ -6,7 +6,7 @@ import { capture, deriveTitle } from '../src/protocol/capture.js';
 import { carriedOver, presentResume } from '../src/protocol/present.js';
 import { buildAnnotation, submitFeedback } from '../src/protocol/submit.js';
 import { setColorEnabled } from '../src/render/ansi.js';
-import { readMeta, readVersionText } from '../src/store/plans.js';
+import { readVersionText } from '../src/store/plans.js';
 import { normalizedLines } from '../src/store/text.js';
 import { listFeedback } from '../src/store/feedback.js';
 import { paths } from '../src/store/paths.js';
@@ -58,7 +58,6 @@ describe('the review loop', () => {
     submitFeedback({
       planId,
       version: 1,
-      verdict: 'revise',
       annotations: [comment(planId, 1, 6, 6, 'Rework this.')],
     });
 
@@ -76,7 +75,6 @@ describe('one feedback record per version', () => {
     submitFeedback({
       planId,
       version: 1,
-      verdict: 'revise',
       annotations: [comment(planId, 1, 6, 6, 'Rework this.')],
     });
     const first = listFeedback(planId)[0]!;
@@ -84,7 +82,6 @@ describe('one feedback record per version', () => {
     submitFeedback({
       planId,
       version: 1,
-      verdict: 'revise',
       annotations: [comment(planId, 1, 6, 6, 'Rework this, properly.')],
     });
 
@@ -106,11 +103,10 @@ describe('one feedback record per version', () => {
     submitFeedback({
       planId,
       version: 1,
-      verdict: 'revise',
       annotations: [comment(planId, 1, 6, 6, 'Rework this.')],
     });
 
-    submitFeedback({ planId, version: 1, verdict: 'revise', annotations: [] });
+    submitFeedback({ planId, version: 1, annotations: [] });
 
     expect(listFeedback(planId)[0]!.annotations).toEqual([]);
   });
@@ -126,7 +122,6 @@ describe('one feedback record per version', () => {
     submitFeedback({
       planId,
       version: 1,
-      verdict: 'revise',
       annotations: [comment(planId, 1, 6, 6, 'Rework this.')],
     });
     capture({ planId, text: `${SAMPLE_PLAN}\n## Risks\nNone.\n`, parent: 'v1' });
@@ -135,7 +130,6 @@ describe('one feedback record per version', () => {
     submitFeedback({
       planId,
       version: 1,
-      verdict: 'revise',
       annotations: [comment(planId, 1, 6, 6, 'Rework this, properly.')],
     });
 
@@ -151,7 +145,6 @@ describe('one feedback record per version', () => {
       format_version: 1,
       plan_id: planId,
       version: 1,
-      verdict: 'revise' as const,
       general: '',
       addressed_by: null,
     };
@@ -171,7 +164,6 @@ describe('one feedback record per version', () => {
         ...base,
         id: '01BBB',
         created: '2026-01-02T00:00:00.000Z',
-        verdict: 'approve',
         annotations: [comment(planId, 1, 6, 6, 'second pass')],
       }),
     );
@@ -182,22 +174,10 @@ describe('one feedback record per version', () => {
     // doubling it — and the note survives a submit that did not carry one.
     expect(history[0]!.annotations.map((a) => a.comment)).toEqual(['second pass']);
     expect(history[0]!.general).toBe('name the flag');
-    expect(history[0]!.verdict).toBe('approve');
 
     // …and the first write of the new shape takes the old files with it.
-    submitFeedback({ planId, version: 1, verdict: 'revise', annotations: [] });
+    submitFeedback({ planId, version: 1, annotations: [] });
     expect(readdirSync(dir)).toEqual(['v1.json']);
-  });
-});
-
-describe('approval', () => {
-  it('records the approval on the plan', () => {
-    const { planId } = seed();
-    submitFeedback({ planId, version: 1, verdict: 'approve', annotations: [] });
-
-    const meta = readMeta(planId)!;
-    expect(meta.approved_version).toBe(1);
-    expect(meta.approved_at).not.toBeNull();
   });
 });
 
@@ -218,13 +198,12 @@ describe('what the agent sees', () => {
     submitFeedback({
       planId,
       version: 1,
-      verdict: 'revise',
       annotations: [comment(planId, 1, 7, 8, 'Wrong layer. Guard belongs in the R2 write path.')],
       general: 'Direction is fine, but see the comment.',
     });
 
     const text = resumeOf(planId, 1);
-    expect(text).toContain(`## planx — ${planId} v1 (verdict: revise)`);
+    expect(text).toContain(`## planx — ${planId} v1`);
     expect(text).toContain('under "## Approach"');
     expect(text).toContain('> ## Approach');
     expect(text).toContain('**Feedback:** Wrong layer.');
@@ -232,14 +211,13 @@ describe('what the agent sees', () => {
     expect(text).toContain(`planx capture --plan-id ${planId} --parent v1 --stdin`);
   });
 
-  it('tells the agent to stop when the verdict is approve', () => {
+  it('tells the agent to build it when the review asked for nothing', () => {
     const { planId } = seed();
-    submitFeedback({ planId, version: 1, verdict: 'approve', annotations: [] });
+    submitFeedback({ planId, version: 1, annotations: [] });
 
     const text = resumeOf(planId, 1);
-    expect(text).toContain('(verdict: approve)');
-    expect(text).toContain('Approved. Implement it as written.');
-    expect(text).not.toContain('planx capture --plan-id');
+    expect(text).toContain('Reviewed with nothing to change. Implement it as written.');
+    expect(text).not.toContain('planx capture');
   });
 });
 
@@ -264,7 +242,7 @@ describe('the review hand-off', () => {
 
   it('is a block: nothing blank inside it, one blank after it', () => {
     setColorEnabled(false);
-    for (const action of ['quit', 'revise', 'approve'] as const) {
+    for (const action of ['quit', 'revise'] as const) {
       const block = closingBlock(action, 'guard-clock-a3f9', 4);
       expect(block.slice(0, -1).every((line) => line.trim())).toBe(true);
       expect(block.at(-1)).toBe('');
@@ -273,7 +251,7 @@ describe('the review hand-off', () => {
 
   it('always offers the way back in, last, whichever way the review ended', () => {
     setColorEnabled(false);
-    for (const action of ['quit', 'revise', 'approve'] as const) {
+    for (const action of ['quit', 'revise'] as const) {
       const block = closingBlock(action, 'guard-clock-a3f9', 4);
       expect(block.at(-2)).toContain('Reopen it with:  planx guard-clock-a3f9 v4');
       expect(block.join('\n')).not.toContain('nothing submitted');
@@ -283,9 +261,8 @@ describe('the review hand-off', () => {
     expect(closingBlock('revise', 'guard-clock-a3f9', 4)[0]).toContain(
       '/planx revise guard-clock-a3f9',
     );
-    expect(closingBlock('approve', 'guard-clock-a3f9', 4)).toEqual([
-      'Approved — guard-clock-a3f9 v4.',
-      'Paste to your agent:  /planx execute guard-clock-a3f9 v4',
+    expect(closingBlock('revise', 'guard-clock-a3f9', 4)).toEqual([
+      'Paste to your agent:  /planx revise guard-clock-a3f9',
       'Reopen it with:  planx guard-clock-a3f9 v4',
       '',
     ]);

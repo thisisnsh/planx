@@ -34,7 +34,6 @@ Press `v` to start a selection, extend it with the arrows, and then:
 | `n` | A note about the whole plan |
 | `d` `←` `→` | The diff against the previous version, and the history |
 | `s` | Submit everything at once |
-| `a` | Approve — marks the version settled |
 | `?` | Every key |
 
 <PlanxSim scenario="agents" :rows="14" />
@@ -53,9 +52,9 @@ That is gone. Claude captures the plan, tells you to run `planx`, and ends its
 turn. You review whenever you like. The reviewer prints the command to hand
 back, and pasting it starts the next round with the session's context intact.
 
-## After approval
+## After the last round
 
-Approving prints one command to paste back — no questions about agents or
-models. planx cannot switch a running session's model and no agent CLI lets it,
+Submitting a review that asks for nothing prints one command to paste back — no
+questions about agents or models. planx cannot switch a running session's model and no agent CLI lets it,
 so it prints the command and you run it wherever you like. See
 [Executing](/executing).

@@ -28,7 +28,6 @@ function inStore<T>(fn: () => T): T {
 
 interface Review {
   comments?: Array<[number, number, string]>;
-  verdict?: 'revise' | 'approve' | 'reject';
   general?: string;
 }
 
@@ -51,7 +50,6 @@ function review(id: string, version: number, opts: Review) {
     return submitFeedback({
       planId: id,
       version,
-      verdict: opts.verdict ?? 'revise',
       annotations,
       general: opts.general ?? '',
     });
@@ -182,7 +180,7 @@ describe('the review hand-off across two processes', () => {
 
     const result = await cli.run(['revise', id, 'v1']);
     expect(result.code).toBe(0);
-    expect(result.stdout).toContain(`## planx — ${id} v1 (verdict: revise)`);
+    expect(result.stdout).toContain(`## planx — ${id} v1`);
     expect(result.stdout).toContain('Wrong layer. Guard belongs in the R2 write path.');
     expect(result.stdout).toContain('> Extend the snapshot-regression guard in poller.ts.');
     expect(result.stdout).toContain(`planx capture --plan-id ${id} --parent v1 --stdin`);

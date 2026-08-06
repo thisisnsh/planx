@@ -80,14 +80,12 @@ Accepted anywhere a version is named:
 | `h` | Fold or unfold every note at once |
 | `n` | A note about the whole plan |
 | `s` | Submit everything at once |
-| `a` | Approve — marks the version settled |
 | `x` | Leave without submitting |
 | `?` | Help |
 
-The hints along the bottom offer only what the row under the cursor can do, so
-`s` and `a` are never both on screen: `a` while you have nothing to say, `s`
-once you do. `e` is offered on the latest version and nowhere else — rewriting
-v2 while v3 exists would change the text v3 was built from.
+The hints along the bottom offer only what the row under the cursor can do. `e`
+is offered on the latest version and nowhere else — rewriting v2 while v3 exists
+would change the text v3 was built from.
 
 All lowercase, and there is no `c`: it sits next to `ctrl-c`, which is how you
 leave a terminal program.

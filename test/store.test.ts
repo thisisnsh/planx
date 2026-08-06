@@ -159,11 +159,10 @@ describe('plan refs', () => {
 });
 
 describe('listing and index', () => {
-  it('filters by cwd and approval', () => {
+  it('filters by cwd', () => {
     const id = seed();
     expect(listPlans({ here: true })).toHaveLength(0); // seeded with /work/repo
-    expect(listPlans({ unapproved: true }).map((p) => p.id)).toEqual([id]);
-    expect(listPlans({ approved: true })).toHaveLength(0);
+    expect(listPlans().map((p) => p.id)).toEqual([id]);
   });
 
   it('filters by age against the last update, not the read time', () => {

@@ -8,22 +8,6 @@ interface PresentOptions {
   edits?: readonly EditRecord[];
 }
 
-/**
- * One verdict for a batch of feedback records: the most recent one wins.
- *
- * Not "any approve outranks a revise" — approving seals a plan but does not end
- * your ability to review it, so approving and then carving a hole and leaving
- * notes is a supported sequence. Under a precedence rule those later
- * notes would still be reported as an approval and the agent would stop. The
- * reviewer's latest submit is their current position.
- */
-function summarizeVerdict(feedback: Feedback[]): Feedback['verdict'] {
-  const ordered = [...feedback].sort(
-    (a, b) => a.created.localeCompare(b.created) || a.id.localeCompare(b.id),
-  );
-  return ordered[ordered.length - 1]?.verdict ?? 'revise';
-}
-
 export interface ResumeOptions extends PresentOptions {
   /**
    * Comments from earlier versions whose quoted text still appears verbatim in
@@ -55,7 +39,6 @@ export interface CarriedComment {
  * `planx show <id> --plain`.
  */
 export function presentResume(opts: ResumeOptions): string {
-  const verdict = summarizeVerdict(opts.feedback);
   const edits = collapseEdits(opts.edits ?? []);
 
   // A version nobody has opened. An edit is a review, so a hand-rewritten line
@@ -76,7 +59,7 @@ export function presentResume(opts: ResumeOptions): string {
     return out.join('\n');
   }
 
-  const out: string[] = [`## planx — ${opts.planId} v${opts.version} (verdict: ${verdict})`, ''];
+  const out: string[] = [`## planx — ${opts.planId} v${opts.version}`, ''];
 
   // Above what was asked: this is the one part of the review that is already
   // settled, and reading it first is what stops the agent rewriting it.
@@ -89,12 +72,10 @@ export function presentResume(opts: ResumeOptions): string {
 
   if (opts.carried.length) out.push(...carriedSection(opts.carried));
 
-  if (verdict === 'approve') {
-    out.push('---', 'Approved. Implement it as written.', '');
-    return out.join('\n');
-  }
-  if (verdict === 'reject') {
-    out.push('---', 'Rejected. Stop and ask before writing another version.', '');
+  // Reviewed, and it asked for nothing. That is the reviewer saying the version
+  // is fine — it is what an empty submit means, and what `a` used to mean.
+  if (!asked.length && !edits.length) {
+    out.push('---', 'Reviewed with nothing to change. Implement it as written.', '');
     return out.join('\n');
   }
 

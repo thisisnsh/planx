@@ -64,7 +64,8 @@ export const COMMANDS: CommandSpec[] = [
       'In a terminal this opens the review TUI on the diff against the previous version — ' +
       'you opened v4 because v4 is new, and what is new about it is the diff. Press d to see ' +
       'the plan on its own instead. Select lines, comment on them or rewrite them, then ' +
-      'submit. The command name is optional in front of a plan — `planx <id>` is the same ' +
+      'submit — an empty submit is how you say the plan is fine. The command name is ' +
+      'optional in front of a plan — `planx <id>` is the same ' +
       'thing. Piped or with --print it writes the diff to stdout and exits. With no arguments ' +
       'it opens a picker.',
     flags: [
@@ -88,13 +89,9 @@ export const COMMANDS: CommandSpec[] = [
   {
     name: 'list',
     group: 'agent',
-    usage: 'planx list [--here] [--approved] [--json]',
+    usage: 'planx list [--here] [--json]',
     summary: 'List stored plans, newest first.',
-    flags: [
-      { name: '--here', summary: 'Only plans captured in the current directory.' },
-      { name: '--approved', summary: 'Only approved plans.' },
-      { name: '--unapproved', summary: 'Only plans that never reached approve.' },
-    ],
+    flags: [{ name: '--here', summary: 'Only plans captured in the current directory.' }],
   },
   {
     name: 'add-skills',

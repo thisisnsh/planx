@@ -7,7 +7,7 @@ argument-hint: <task> | revise <id> | execute <id> | diff <id>
 # planx
 
 Turn a plan into an artifact the user reviews line by line, then build what
-they approved.
+they settled on.
 
 ## Pick the branch
 
@@ -77,8 +77,8 @@ decisions. Write the plan as markdown with an H1 title and `##` sections. The
 `##` sections matter — they are the unit the user folds, and the unit a comment
 is labelled with when it comes back.
 
-If the user already has an approved plan and is asking for a different one, this
-is a new plan. Do not revise the old one.
+If the user already has a plan and is asking for a different one, this is a new
+plan. Do not revise the old one.
 
 ## 3. Capture it
 

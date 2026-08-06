@@ -62,24 +62,17 @@ describe('the website demo', () => {
     expect(frameText(state)).toContain('Name the function.');
 
     send(state, 's');
-    expect(state.handoff).toContain('## planx — guard-clock-a3f9 v3 (verdict: revise)');
+    expect(state.handoff).toContain('## planx — guard-clock-a3f9 v3');
     expect(state.handoff).toContain('**Feedback:** Name the function.');
     expect(state.handoff).toContain('planx capture --plan-id guard-clock-a3f9 --parent v3');
     expect(frameText(state)).toContain('/planx revise guard-clock-a3f9');
   });
 
-  it('refuses to approve a version carrying feedback', () => {
-    const state = open('playground');
-    send(state, 'a');
-    expect(state.status).toContain('press s to submit');
-    expect(state.mode.kind).toBe('browse');
-  });
-
-  it('hands over the execute command on approve', () => {
+  it('tells the agent to build it when the review asked for nothing', () => {
     const state = open('executing');
-    send(state, 'a', 'enter');
-    expect(state.handoff).toContain('Approved. Implement it as written.');
-    expect(frameText(state)).toContain('/planx execute guard-clock-a3f9 v3');
+    send(state, 's');
+    expect(state.handoff).toContain('Reviewed with nothing to change. Implement it as written.');
+    expect(frameText(state)).toContain('/planx revise guard-clock-a3f9');
   });
 
   it('opens a diff, and puts it away again', () => {

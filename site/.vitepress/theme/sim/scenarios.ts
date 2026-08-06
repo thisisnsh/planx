@@ -80,8 +80,8 @@ export const SCENARIOS: Record<string, () => Scenario> = {
     diff: false,
     lede: 'v3 with nothing left on it. Submitting an empty review is how you say the plan is fine — and what prints is the one command that builds it.',
     tasks: [
-      { id: 'submit', label: 's submits with nothing, and prints /planx execute' },
       { id: 'move', label: '↑ ↓ read it through once more first' },
+      { id: 'submit', label: 's submits with nothing left to say' },
       { id: 'help', label: '? lists every key' },
     ],
   }),
@@ -95,7 +95,7 @@ export const SCENARIOS: Record<string, () => Scenario> = {
     tasks: [
       { id: 'feedback', label: 'f leaves a comment on the line under the cursor' },
       { id: 'submit', label: 's prints the one command you paste into the chat' },
-      { id: 'approve', label: 'a instead of s, when there is nothing left to say' },
+      { id: 'note', label: 'n leaves one note about the whole plan' },
     ],
   }),
 };
