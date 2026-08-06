@@ -54,7 +54,16 @@ const chips = computed(() => {
     out.push({
       key,
       label: what,
-      token: key === 'esc' ? 'escape' : key === '←' ? 'left' : key === '→' ? 'right' : key,
+      token:
+        key === 'esc'
+          ? 'escape'
+          : key === '←'
+            ? 'left'
+            : key === '→'
+              ? 'right'
+              : key.startsWith('^')
+                ? `ctrl+${key.slice(1)}`
+                : key,
     });
   }
   return out;

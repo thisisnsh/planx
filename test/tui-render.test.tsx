@@ -216,6 +216,7 @@ const DOWN = '\x1b[B';
 const LEFT = '\x1b[D';
 const RIGHT = '\x1b[C';
 const BACKSPACE = '\x7f';
+const CTRL_D = '\x04';
 /** Option+arrow, as Terminal.app and iTerm each send it. */
 const ALT_LEFT = '\x1b[1;3D';
 const ALT_RIGHT = '\x1b[1;3C';
@@ -1969,7 +1970,7 @@ describe('the picker as a version tree', () => {
     const keys = inner(bodyRows(app.stdout.lastFrame).at(-1)!)
       .split(' · ')
       .map((part) => part.split(' ')[0]!);
-    expect(keys).toEqual(['→', '↑↓', 'd', 'enter', 'esc']);
+    expect(keys).toEqual(['→', '↑↓', '^d', 'enter', 'esc']);
     app.unmount();
   });
 
@@ -2063,7 +2064,7 @@ describe('deleting from the picker', () => {
     const app = mountPicker(planRows(), () => []);
     await app.ready();
 
-    await app.press('d');
+    await app.press(CTRL_D);
     await app.frame('delete guard-clock? this cannot be undone');
     await app.frame('type delete to confirm:');
     // Nothing is typed yet, so enter is not on offer.
@@ -2084,7 +2085,7 @@ describe('deleting from the picker', () => {
     });
     await app.ready();
 
-    await app.press('d');
+    await app.press(CTRL_D);
     await app.frame('cannot be undone');
     await typeWord(app);
     // The bar says the gate has what it wanted.
@@ -2105,7 +2106,7 @@ describe('deleting from the picker', () => {
     });
     await app.ready();
 
-    await app.press('d');
+    await app.press(CTRL_D);
     await app.frame('cannot be undone');
     await typeWord(app, 'del');
     await app.press(ENTER);
@@ -2125,7 +2126,7 @@ describe('deleting from the picker', () => {
     });
     await app.ready();
 
-    await app.press('d');
+    await app.press(CTRL_D);
     await app.frame('cannot be undone');
     await typeWord(app);
     await app.frame('enter delete');
@@ -2149,7 +2150,7 @@ describe('deleting from the picker', () => {
     await app.frame('v3');
     await app.press(DOWN);
     await app.press(DOWN);
-    await app.press('d');
+    await app.press(CTRL_D);
     await app.frame('delete guard-clock v2? this cannot be undone');
     await typeWord(app);
     await app.press(ENTER);
@@ -2159,19 +2160,53 @@ describe('deleting from the picker', () => {
     app.unmount();
   });
 
-  it('offers d only where the row can actually be deleted', async () => {
+  /**
+   * The whole reason the key moved: `d` opened the confirmation before the
+   * filter ever saw it, so no plan whose name starts with `d` could be found.
+   */
+  it('sends d to the filter, so a plan named with one is findable', async () => {
+    const app = mountPicker(
+      [
+        {
+          value: { id: 'deploy-queue', version: 1, row: 'plan' },
+          label: 'Drain the deploy queue',
+          searchable: 'deploy-queue',
+          deleteAs: 'deploy-queue',
+        },
+        {
+          value: { id: 'guard-clock', version: 1, row: 'plan' },
+          label: 'Guard the clock regression',
+          searchable: 'guard-clock',
+          deleteAs: 'guard-clock',
+        },
+      ],
+      () => [],
+    );
+    await app.ready();
+
+    await app.press('d');
+    await app.frame('filter: d');
+    expect(app.stdout.lastFrame).not.toContain('cannot be undone');
+
+    await app.press('eploy');
+    await app.frame('filter: deploy');
+    expect(app.stdout.lastFrame).not.toContain('Guard the clock');
+    app.unmount();
+  });
+
+  it('offers ^d only where the row can actually be deleted', async () => {
     const app = mountPicker(planRows(), () => []);
     await app.ready();
-    await app.frame('d delete');
+    await app.frame('^d delete');
 
     // v3 is the latest, so it cannot go and the hint stops offering it.
     await app.press(RIGHT);
     await app.press(DOWN);
     await new Promise((r) => setTimeout(r, 120));
-    expect(app.stdout.lastFrame).not.toContain('d delete');
+    expect(app.stdout.lastFrame).not.toContain('^d delete');
 
     // Pressing it anyway does nothing at all.
-    await app.press('d');
+    await app.press(CTRL_D);
     await new Promise((r) => setTimeout(r, 120));
     expect(app.stdout.lastFrame).not.toContain('cannot be undone');
     app.unmount();

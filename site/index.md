@@ -90,8 +90,9 @@ revises.
 ## Every plan you have, in one list
 
 Bare `planx` opens the picker rather than a plan: every plan in the store,
-newest first, `→` into its versions, and `d` on the row in front of you to
-delete it.
+newest first, `→` into its versions, and `^d` on the row in front of you to
+delete it. Every printable character goes to the filter, so a plan whose name
+starts with a `d` is still findable.
 
 <PlanxPicker />
 

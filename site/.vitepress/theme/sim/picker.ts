@@ -136,7 +136,9 @@ export function pickerPress(state: PickerState, key: string): void {
     state.status = 'esc leaves the picker.';
     return;
   }
-  if (key === 'd' && here) {
+  // `^d`, not `d`. A bare letter opened the confirmation before the filter ever
+  // saw it, so no plan whose name starts with `d` could be filtered for.
+  if (key === 'ctrl+d' && here) {
     state.confirming = here.item.deleteAs;
     state.did.add('confirm');
     return;
@@ -174,7 +176,7 @@ export function pickerHints(state: PickerState): Hint[] {
     if (open) hints.push(['←', 'collapse']);
     else if (!here.child && here.item.children?.length) hints.push(['→', 'versions']);
   }
-  if (here) hints.push(['d', 'delete']);
+  if (here) hints.push(['^d', 'delete']);
   return hints;
 }
 

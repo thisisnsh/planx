@@ -5,9 +5,9 @@ automatically, and there is no background GC. They are a few kilobytes each.
 
 Deleting is something you do by hand, in the picker, on the row in front of you.
 
-## `d`, in the picker
+## `^d`, in the picker
 
-Open bare `planx`, put the cursor on what you want gone, and press `d`.
+Open bare `planx`, put the cursor on what you want gone, and press `^d`.
 
 - On a **plan row**, that is the whole plan and every version of it.
 - On a **version row** — press `→` on a plan to open its versions — that is
@@ -21,9 +21,14 @@ A red line at the foot names the target in full before anything happens:
 delete guard-clock-a3f9 v3? this cannot be undone
 ```
 
-`enter` confirms, `esc` backs out. `d` is only offered when the highlighted row
+`enter` confirms, `esc` backs out. `^d` is only offered when the highlighted row
 can actually be deleted, so a key that is going to refuse is a key you never
 see.
+
+**It is `^d` and not `d`** because every printable character goes to the filter.
+A bare `d` took the keystroke before the filter saw it, so no plan whose name
+starts with a `d` could be filtered for — and finding a plan is what the list is
+for.
 
 ## It is permanent
 

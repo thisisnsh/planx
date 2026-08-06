@@ -201,5 +201,5 @@ planx --dir /tmp/scratch list
 PLANX_DIR=/tmp/scratch planx list
 ```
 
-Worth knowing before you experiment with `d` in the picker, which deletes
+Worth knowing before you experiment with `^d` in the picker, which deletes
 permanently.

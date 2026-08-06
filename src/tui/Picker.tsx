@@ -19,7 +19,7 @@ export interface PickerItem<T> {
   children?: Array<PickerItem<T>>;
   /**
    * How this row is named in a delete confirmation — `guard-clock-a3f9 v3`.
-   * Absent means the row cannot be deleted, and `d` is not offered on it.
+   * Absent means the row cannot be deleted, and `^d` is not offered on it.
    */
   deleteAs?: string;
 }
@@ -87,12 +87,14 @@ function flatten<T>(items: Array<PickerItem<T>>, expanded: ReadonlySet<number>):
  * A plan row opens into its versions, newest first. That is what makes a
  * version number reachable on a narrow terminal — the old single row put the
  * version in the middle of a grey column and truncated it away first — and it
- * is what gives `d` something specific to point at.
+ * is what gives `^d` something specific to point at.
  *
  * Filtering is a fuzzy subsequence match, so `gcr` finds
- * guard-clock-regression. Typing collapses everything and matches plans only: a
- * filter is for finding a plan, and matching `v3` across forty of them would
- * bury the thing you were looking for.
+ * guard-clock-regression. Every printable character goes to it — deleting is
+ * `^d`, because a bare `d` took the keystroke before the filter saw it and made
+ * every plan starting with `d` unfindable. Typing collapses everything and
+ * matches plans only: a filter is for finding a plan, and matching `v3` across
+ * forty of them would bury the thing you were looking for.
  *
  * It wears the same frame the review does. Bare `planx` used to show two
  * unrelated visual languages before you reached the plan — a list of plain rows,
@@ -189,7 +191,10 @@ export function Picker<T>({
       return collapse(here.parent);
     }
     if (key.return) return onDone(here ? [here.item.value] : []);
-    if (input === 'd' && here?.item.deleteAs) {
+    // `^d`, not `d`. A bare letter opened the confirmation before the filter
+    // ever saw it, so no plan whose name starts with `d` could be filtered for
+    // — and finding a plan is what the list is for.
+    if (key.ctrl && input === 'd' && here?.item.deleteAs) {
       return setConfirming({ target: here.item.deleteAs, typed: '' });
     }
 
@@ -228,7 +233,7 @@ export function Picker<T>({
     if (open) hints.push(['←', 'collapse']);
     else if (!here.child && here.item.children?.length) hints.push(['→', 'versions']);
   }
-  if (here?.item.deleteAs) hints.push(['d', 'delete']);
+  if (here?.item.deleteAs) hints.push(['^d', 'delete']);
 
   const drawn = [
     `  ${bold(title)}`,
