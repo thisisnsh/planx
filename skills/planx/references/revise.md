@@ -52,10 +52,21 @@ hand-off line.
 ## 3. Capture
 
 ```bash
-planx capture --plan-id <plan-id> --parent v<n> --stdin <<'PLAN'
+planx capture --plan-id <plan-id> --parent v<n> --stdin \
+  --source claude --session-id "$CLAUDE_CODE_SESSION_ID" <<'PLAN'
 ...
 PLAN
 ```
+
+The session id is what lets the review start you again on the other side of it.
+Pass whichever variable is yours:
+
+| agent | the variable in your shell |
+| --- | --- |
+| Claude Code | `$CLAUDE_CODE_SESSION_ID` |
+| Codex | `$CODEX_THREAD_ID` |
+
+Whichever one is set is the agent you are, and its value is the id.
 
 ## 4. Hand back and stop
 

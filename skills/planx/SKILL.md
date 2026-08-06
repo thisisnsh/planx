@@ -82,7 +82,7 @@ plan. Do not revise the old one.
 ## 3. Capture it
 
 ```bash
-planx capture --stdin --source claude <<'PLAN'
+planx capture --stdin --source claude --session-id "$CLAUDE_CODE_SESSION_ID" <<'PLAN'
 # <title>
 
 ## Context
@@ -92,6 +92,17 @@ PLAN
 
 This prints the plan id and version. Keep both. If the user named the plan, add
 `--name "<their name>"`.
+
+The session id is what lets the review start you again on the other side of it,
+with everything you already know still in context. Pass whichever variable is
+yours:
+
+| agent | the variable in your shell |
+| --- | --- |
+| Claude Code | `$CLAUDE_CODE_SESSION_ID` |
+| Codex | `$CODEX_THREAD_ID` |
+
+Whichever one is set is the agent you are, and its value is the id.
 
 The heredoc is the point: the plan goes in on stdin and never touches a temp
 file on its way. Do not write it out and pass `--file` — that is a hand-off
