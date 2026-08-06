@@ -3,18 +3,17 @@ import { defineConfig } from 'vitepress';
 export default defineConfig({
   title: 'planx',
   description: "Your agent's plan, as a versioned artifact you can annotate and lock.",
-  // Project page under thisisnsh.github.io/planx/. Swap to '/' if a custom
-  // domain is wired up later.
-  base: '/planx/',
+  // Served from the root of planx.sh, so no base path.
+  base: '/',
   cleanUrls: true,
   lastUpdated: true,
+  sitemap: { hostname: 'https://planx.sh/' },
 
   head: [
     ['meta', { name: 'theme-color', content: '#ffd400' }],
-    // The wordmark's block cursor, on its own. Paths are base-relative because
-    // the site is served from /planx/.
-    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/planx/favicon.svg' }],
-    ['link', { rel: 'apple-touch-icon', href: '/planx/apple-touch-icon.png' }],
+    // The wordmark's block cursor, on its own.
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
+    ['link', { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' }],
   ],
 
   // Black and yellow, and only that. A light variant of this palette is a

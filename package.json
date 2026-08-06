@@ -11,7 +11,7 @@
     "cli",
     "tui"
   ],
-  "homepage": "https://thisisnsh.github.io/planx/",
+  "homepage": "https://planx.sh/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/thisisnsh/planx.git"

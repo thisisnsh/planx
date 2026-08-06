@@ -9,10 +9,10 @@
 [![license](https://img.shields.io/badge/license-MIT-ffd400?labelColor=0b0b0c)](LICENSE)
 [![node](https://img.shields.io/node/v/@thisisnsh/planx?labelColor=0b0b0c)](https://nodejs.org)
 
-[**Docs**](https://thisisnsh.github.io/planx) ·
-[**Try the review in your browser**](https://thisisnsh.github.io/planx) ·
-[Install](https://thisisnsh.github.io/planx/install) ·
-[CLI](https://thisisnsh.github.io/planx/reference/cli)
+[**Docs**](https://planx.sh) ·
+[**Try the review in your browser**](https://planx.sh) ·
+[Install](https://planx.sh/install) ·
+[CLI](https://planx.sh/reference/cli)
 
 </div>
 
@@ -60,7 +60,7 @@ $ planx
 
 Locks are enforced by the CLI, not by the prompt — a prompt is advice, and an
 unattended agent will eventually ignore it. They guard against agent drift, not
-a hostile agent: see [Locking](https://thisisnsh.github.io/planx/locking) and
+a hostile agent: see [Locking](https://planx.sh/locking) and
 [SECURITY.md](SECURITY.md).
 
 ## The loop
@@ -138,17 +138,17 @@ Every explanation lives on the site — and **the review runs there in your
 browser**, beside the feature it explains. Same rows, same keys, same rules,
 nothing installed.
 
-### → **[thisisnsh.github.io/planx](https://thisisnsh.github.io/planx)**
+### → **[planx.sh](https://planx.sh)**
 
-[Install](https://thisisnsh.github.io/planx/install) ·
-[Claude Code](https://thisisnsh.github.io/planx/claude-code) ·
-[Codex](https://thisisnsh.github.io/planx/codex) ·
-[Review Loop](https://thisisnsh.github.io/planx/review-loop) ·
-[Locking](https://thisisnsh.github.io/planx/locking) ·
-[Diffing](https://thisisnsh.github.io/planx/diffing) ·
-[Executing](https://thisisnsh.github.io/planx/executing) ·
-[CLI reference](https://thisisnsh.github.io/planx/reference/cli) ·
-[Troubleshooting](https://thisisnsh.github.io/planx/troubleshooting)
+[Install](https://planx.sh/install) ·
+[Claude Code](https://planx.sh/claude-code) ·
+[Codex](https://planx.sh/codex) ·
+[Review Loop](https://planx.sh/review-loop) ·
+[Locking](https://planx.sh/locking) ·
+[Diffing](https://planx.sh/diffing) ·
+[Executing](https://planx.sh/executing) ·
+[CLI reference](https://planx.sh/reference/cli) ·
+[Troubleshooting](https://planx.sh/troubleshooting)
 
 ## Contributing
 
