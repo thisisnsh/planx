@@ -7,7 +7,7 @@ import {
   launchFor,
   launchLine,
   runAgent,
-  type Intent,
+  splitCommandLine,
 } from '../exec/launch.js';
 import { runInstall, runUninstall } from '../install/install.js';
 import { capture } from '../protocol/capture.js';
@@ -35,8 +35,15 @@ import {
 } from '../store/plans.js';
 import type { VersionRecord } from '../store/types.js';
 import type { PickerItem } from '../tui/Picker.js';
-import type { Launchable, ReviewResult } from '../tui/ReviewApp.js';
-import { clearScreen, isInteractive, runPicker, runReview, runSteps } from '../tui/run.js';
+import type { Commands, ReviewResult } from '../tui/ReviewApp.js';
+import {
+  clearScreen,
+  isInteractive,
+  runPicker,
+  runReview,
+  runSteps,
+  type RunReviewOptions,
+} from '../tui/run.js';
 import {
   fetchLatest,
   isNewer,
@@ -364,15 +371,24 @@ async function reviewLoop(ctx: Ctx, named: string | null): Promise<number> {
 /** Not an exit code: the review asking for the list again. */
 const BACK = -1;
 
-async function runInteractiveReview(
+/**
+ * One pass through the review, and whatever the reviewer picked off the list.
+ *
+ * `review` is the seam a test drives it through: mounting Ink needs a terminal,
+ * and what this function does with the result — the order it writes in, and
+ * running the reviewer's own line rather than rebuilding one — is the part with
+ * anything to get wrong.
+ */
+export async function runInteractiveReview(
   ctx: Ctx,
   id: string,
   versionA: number | null,
   versionB: number,
+  review: (opts: RunReviewOptions) => Promise<ReviewResult> = runReview,
 ): Promise<number> {
   const meta = readMeta(id);
   const records = readVersions(id).versions;
-  const result = await runReview({
+  const result = await review({
     planId: id,
     title: meta?.title ?? id,
     versionA,
@@ -385,7 +401,7 @@ async function runInteractiveReview(
     mode: ctx.mode,
     version: ctx.version,
     previous: listFeedback(id),
-    launchable: launchableVersions(records),
+    commands: versionCommands(id, records),
   });
 
   if (result.action === 'back') return BACK;
@@ -430,8 +446,8 @@ async function runInteractiveReview(
     }
   }
 
-  if (result.handoff === 'agent') {
-    return handOffToAgent(ctx, id, result.action === 'submit' ? 'revise' : 'execute', result);
+  if (result.action === 'revise' || result.action === 'execute') {
+    return handOffToAgent(ctx, id, result);
   }
 
   for (const line of closingBlock(id, result.version, carried)) ctx.out(line);
@@ -439,19 +455,32 @@ async function runInteractiveReview(
 }
 
 /**
- * Which intents planx could start an agent for, version by version.
+ * The command for each intent, version by version — what the hand-off list
+ * shows, and what it hands back once the reviewer has had their way with it.
  *
  * Reviving a session planx was never told about is not something to attempt
- * with a guess, and neither is running an agent the version does not name — so
- * a version missing either is one the prompt does not offer.
+ * with a guess, and neither is running an agent the version does not name, so a
+ * version missing either gets a null. A null is an entry the list does not
+ * show, which is what keeps this the only place that decides what can start.
  */
-function launchableVersions(records: readonly VersionRecord[]): Launchable {
-  const out: Launchable = {};
+function versionCommands(id: string, records: readonly VersionRecord[]): Commands {
+  const out: Commands = {};
   for (const record of records) {
     const agent = record.agent && isAgent(record.agent) ? record.agent : null;
+    const line = (intent: 'revise' | 'execute', prompt: string) => {
+      if (!agent) return null;
+      const launch = launchFor({
+        agent,
+        intent,
+        argv: record.agent_argv ?? [],
+        sessionId: record.session_id ?? null,
+        prompt,
+      });
+      return launch && launchLine(launch);
+    };
     out[record.n] = {
-      revise: agent !== null && Boolean(record.session_id),
-      execute: agent !== null,
+      revise: line('revise', `/planx revise ${id}`),
+      execute: line('execute', `/planx execute ${id} v${record.n}`),
     };
   }
   return out;
@@ -460,47 +489,38 @@ function launchableVersions(records: readonly VersionRecord[]): Launchable {
 /**
  * Start the agent, and become it.
  *
- * The command is printed in full first — flags included — so what happened, and
- * what it was granted, is on the scrollback above the agent's first frame. A
- * machine without that agent on its `PATH` still ends up with the command it
- * was going to run.
+ * The line is the reviewer's rather than one rebuilt here: they saw it, and
+ * could have rewritten it, so this splits what they left and spawns it. It is
+ * printed in full first — flags included — so what happened, and what it was
+ * granted, is on the scrollback above the agent's first frame. A machine
+ * without that binary on its `PATH` still ends up with the command it was going
+ * to run.
+ *
+ * Split, not shelled: `&&`, `|` and `$(…)` in an edited line reach the agent as
+ * text rather than being interpreted.
  */
-async function handOffToAgent(
-  ctx: Ctx,
-  id: string,
-  intent: Intent,
-  result: ReviewResult,
-): Promise<number> {
-  const record = readVersions(id).versions.find((v) => v.n === result.version);
-  const agent = record?.agent;
-  const prompt =
-    intent === 'revise' ? `/planx revise ${id}` : `/planx execute ${id} v${result.version}`;
-  const launch =
-    agent && isAgent(agent)
-      ? launchFor({
-          agent,
-          intent,
-          argv: record?.agent_argv ?? [],
-          sessionId: record?.session_id ?? null,
-          prompt,
-        })
-      : null;
+async function handOffToAgent(ctx: Ctx, id: string, result: ReviewResult): Promise<number> {
+  const carried = result.action === 'revise';
+  const [bin, ...args] = splitCommandLine(result.command ?? '');
 
-  if (!launch) {
-    for (const line of closingBlock(id, result.version, intent === 'revise')) ctx.out(line);
+  if (!bin) {
+    for (const line of closingBlock(id, result.version, carried)) ctx.out(line);
     return 0;
   }
 
-  ctx.out(`${dim('Running')}  ${yellow(launchLine(launch))}`);
+  ctx.out(`${dim('Running')}  ${yellow(result.command!)}`);
   ctx.out('');
-  return runAgent(launch, {
-    cwd: readMeta(id)?.cwd || null,
-    onFallback: (cwd) => ctx.out(dim(`Its directory is gone — running in ${cwd} instead.`)),
-    onMissing: (bin) => {
-      ctx.err(red(`planx: ${bin} is not on your PATH, so there is nothing here to start.`));
-      for (const line of closingBlock(id, result.version, intent === 'revise')) ctx.out(line);
+  return runAgent(
+    { bin, args },
+    {
+      cwd: readMeta(id)?.cwd || null,
+      onFallback: (cwd) => ctx.out(dim(`Its directory is gone — running in ${cwd} instead.`)),
+      onMissing: (missing) => {
+        ctx.err(red(`planx: ${missing} is not on your PATH, so there is nothing here to start.`));
+        for (const line of closingBlock(id, result.version, carried)) ctx.out(line);
+      },
     },
-  });
+  );
 }
 
 /** `no feedback`, `1 feedback`, `2 feedbacks` — the review's own word for it. */

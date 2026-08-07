@@ -1,7 +1,7 @@
 import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { closingBlock, handOffLine } from '../src/cli/commands.js';
+import { closingBlock, handOffLine, runInteractiveReview, type Ctx } from '../src/cli/commands.js';
 import { capture, deriveTitle } from '../src/protocol/capture.js';
 import { carriedOver, presentResume } from '../src/protocol/present.js';
 import { buildAnnotation, submitFeedback } from '../src/protocol/submit.js';
@@ -218,6 +218,70 @@ describe('what the agent sees', () => {
     const text = resumeOf(planId, 1);
     expect(text).toContain('Reviewed with nothing to change. Implement it as written.');
     expect(text).not.toContain('planx capture');
+  });
+});
+
+/**
+ * What the review's ending does to the store and to the terminal.
+ *
+ * The list hands back a command the reviewer may have rewritten, so this is
+ * about running *that* rather than rebuilding one — and about the order, since
+ * the feedback has to be on disk before anything is handed the terminal.
+ */
+describe('what the reviewer picked', () => {
+  function ctx(out: string[], err: string[]): Ctx {
+    return {
+      args: { positionals: [], values: new Map(), bools: new Set(), unknown: [] },
+      json: false,
+      mode: 'plain',
+      version: '9.9.9',
+      out: (line) => out.push(line),
+      err: (line) => err.push(line),
+    };
+  }
+
+  /** A review that ended on `action`, with whatever the reviewer left behind. */
+  function ended(action: 'revise' | 'execute' | 'commands' | 'back', command: string | null) {
+    return async () => ({
+      action,
+      command,
+      batches: [
+        { version: 1, annotations: [], general: 'the whole thing reads well', touched: true },
+      ],
+      version: 1,
+      edits: [],
+      editedVersion: null,
+    });
+  }
+
+  it('writes the feedback first, then runs the line the reviewer left', async () => {
+    const { planId } = seed();
+    const out: string[] = [];
+    const err: string[] = [];
+    // A binary that is not on PATH: what it was asked to run is still reported,
+    // and the closing block lands after it.
+    const line = 'planx-no-such-agent --model opus "/planx execute x v1"';
+
+    const code = await runInteractiveReview(ctx(out, err), planId, null, 1, ended('execute', line));
+
+    expect(out[0]).toContain(`Submitted no feedback on ${planId} v1.`);
+    expect(out[1]).toBe(`Running  ${line}`);
+    expect(listFeedback(planId)[0]?.general).toBe('the whole thing reads well');
+    // Split rather than shelled: the first token is the binary planx tried.
+    expect(err.join('\n')).toContain('planx-no-such-agent is not on your PATH');
+    expect(out.join('\n')).toContain(`Reopen it in your terminal:  planx ${planId} v1`);
+    expect(code).not.toBe(0);
+  });
+
+  it('prints the block instead when the reviewer only wanted the commands', async () => {
+    const { planId } = seed();
+    const out: string[] = [];
+
+    const code = await runInteractiveReview(ctx(out, []), planId, null, 1, ended('commands', null));
+
+    expect(out.join('\n')).not.toContain('Running');
+    expect(out.join('\n')).toContain(`Revise this plan in your agent:  /planx revise ${planId}`);
+    expect(code).toBe(0);
   });
 });
 

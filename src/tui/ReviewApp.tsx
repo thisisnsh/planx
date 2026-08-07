@@ -2,6 +2,7 @@ import { Box, Text, useApp, useInput, useStdout, type Key } from 'ink';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildAnnotation } from '../protocol/submit.js';
 import {
+  blue,
   bold,
   dim,
   inverse,
@@ -55,18 +56,26 @@ export interface FeedbackBatch {
   touched: boolean;
 }
 
-/** Per version: whether planx could start an agent for each intent. */
-export type Launchable = Record<number, { revise: boolean; execute: boolean }>;
+/**
+ * Per version: the launch line for each intent, or null where planx cannot
+ * build one — no session recorded to fork, no agent named on the version.
+ *
+ * The commands themselves rather than a pair of flags, because they are what
+ * the list shows, what the reviewer edits and what planx ends up running. A
+ * null is an entry the list does not draw, so there is no second source of
+ * truth about what can be started.
+ */
+export type Commands = Record<number, { revise: string | null; execute: string | null }>;
 
 export interface ReviewResult {
   /**
-   * What the reviewer asked for. `back` means the list again, with nothing
-   * submitted; the other two both write everything first and differ only in
-   * which command they hand on.
+   * What the reviewer picked off the hand-off list. `back` means the plan list
+   * again, with nothing submitted; the other three all write everything first
+   * and differ only in what happens next to the plan.
    */
-  action: 'submit' | 'execute' | 'back';
-  /** Whether planx runs that command itself or prints it for you to paste. */
-  handoff: 'agent' | 'command';
+  action: 'revise' | 'execute' | 'commands' | 'back';
+  /** The launch line, as the reviewer left it. Only on revise and execute. */
+  command: string | null;
   /**
    * Every version the reviewer edited, plus the one they finished on — and the
    * empty ones belong here: a batch with no annotations and no note is how
@@ -102,12 +111,11 @@ export interface ReviewAppProps {
    */
   previous: Feedback[];
   /**
-   * Which intents planx could actually start an agent for, per version. Where
-   * it could not — no session recorded to fork, no agent named on the version —
-   * the prompt is skipped and the command is printed: a choice between one
-   * thing and nothing is not a choice.
+   * The launch line for each intent, per version. Where planx cannot build one
+   * — no session recorded to fork, no agent named on the version — the entry is
+   * not offered at all rather than being drawn and declining a press.
    */
-  launchable?: Launchable;
+  commands?: Commands;
   /** What a second ctrl+c does. Defaults to ending the process with 130. */
   onQuit?: () => void;
   /** How long the ctrl+c guard stays armed. Defaults to two seconds. */
@@ -140,13 +148,27 @@ type Mode =
   | { kind: 'line'; line: number; draft: string; caret: number; queue: number[] }
   | { kind: 'leave' }
   /**
-   * `s` and `x` asking which way the command goes: into an agent planx starts,
-   * or onto the terminal for you to paste. It is two rows the frame already
-   * has — the status line and the hint bar — rather than a screen of its own,
-   * so the plan stays visible behind the question.
+   * `s` asking what happens next to this plan.
+   *
+   * One vertical list, drawn over the last rows of the plan rather than in a
+   * screen of its own, so the document stays visible behind it. `editing` is
+   * which side of the list the keyboard is on: the entries, or the command the
+   * highlighted one would run.
    */
-  | { kind: 'handoff'; intent: 'revise' | 'execute' }
+  | { kind: 'handoff'; entries: HandoffEntry[]; index: number; editing: boolean; caret: number }
   | { kind: 'help' };
+
+type HandoffMode = Extract<Mode, { kind: 'handoff' }>;
+
+/** One thing that can happen next, and the line that would make it happen. */
+interface HandoffEntry {
+  action: 'revise' | 'execute' | 'commands';
+  label: string;
+  /** The launch line as it stands, rewritten in place. Null where there is none. */
+  command: string | null;
+  /** What planx built, so `esc` in the editor can put it back. */
+  original: string | null;
+}
 
 /**
  * What `space` would do where the cursor is.
@@ -241,7 +263,6 @@ export function ReviewApp(props: ReviewAppProps) {
    */
   const canSubmit =
     annotations.length > 0 || general.trim().length > 0 || edits.size > 0 || touched.size > 0;
-  const launchable = props.launchable?.[versionB] ?? { revise: false, execute: false };
   const draftId = mode.kind === 'editing' ? mode.annotationId : null;
   const draftText = mode.kind === 'editing' ? mode.draft : '';
   const draftCaret = mode.kind === 'editing' ? mode.caret : 0;
@@ -682,7 +703,7 @@ export function ReviewApp(props: ReviewAppProps) {
    * finished: submitting edits alone still writes that version's record, so
    * `planx revise` has something to report the edits against.
    */
-  function finish(action: ReviewResult['action'], handoff: ReviewResult['handoff'] = 'command') {
+  function finish(action: ReviewResult['action'], command: string | null = null) {
     const versions = new Set<number>([versionB, ...touched]);
     if (edits.size) versions.add(latest);
 
@@ -696,7 +717,7 @@ export function ReviewApp(props: ReviewAppProps) {
       }));
     props.onDone({
       action,
-      handoff,
+      command,
       batches,
       version: versionB,
       edits: [...edits].sort(([a], [b]) => a - b).map(([line, text]) => ({ line, text })),
@@ -705,16 +726,42 @@ export function ReviewApp(props: ReviewAppProps) {
   }
 
   /**
-   * Ask which way the command goes.
+   * Open the list of what can happen next to this plan.
    *
-   * The prompt is drawn either way. Where planx cannot start anything — a
-   * version captured before it recorded sessions, or by an agent it cannot
-   * name — the command is the whole list rather than the second half of one,
-   * so it answers to `1`. Skipping the prompt entirely made the review look
-   * like it had simply ignored the key.
+   * From any row of any version, whether or not there is anything to submit.
+   * By the time you are done reading a plan the question is not which key you
+   * pressed but what happens to it next, so there is one key that asks it.
    */
-  function handOff(intent: 'revise' | 'execute') {
-    setMode({ kind: 'handoff', intent });
+  function handOff() {
+    setMode({ kind: 'handoff', entries: handoffEntries(), index: 0, editing: false, caret: 0 });
+  }
+
+  /**
+   * What can happen next, in order, each dropped where it cannot work.
+   *
+   * A line rewritten with `e` does not bring `Revise` back. The edit *is* the
+   * change — settled text, already in the version — so there is nothing left to
+   * ask an agent for. A comment and the note are requests, and a request needs
+   * a round.
+   *
+   * Where planx cannot start something it is not offered: a version captured
+   * before planx recorded sessions shows `Execute` and the command, one that
+   * names no agent shows the command alone. Nothing greyed out, nothing that
+   * declines a press after advertising itself.
+   */
+  function handoffEntries(): HandoffEntry[] {
+    const lines = props.commands?.[versionB] ?? { revise: null, execute: null };
+    const asking = annotations.length > 0 || general.trim().length > 0;
+    const entries: HandoffEntry[] = [];
+
+    if (asking && lines.revise) {
+      entries.push(entry('revise', 'Revise in the session that wrote it', lines.revise));
+    }
+    if (lines.execute) {
+      entries.push(entry('execute', 'Execute in a new session', lines.execute));
+    }
+    entries.push(entry('commands', 'Just give me the command', null));
+    return entries;
   }
 
   /* ---------------------------------------------------------- keyboard */
@@ -772,13 +819,12 @@ export function ReviewApp(props: ReviewAppProps) {
       if (input === 'd' && previousVersion !== null) return toggleDiff();
       if (input === 'h') return setHiddenFeedback((on) => !on);
       if (input === 'n') return setMode({ kind: 'note', draft: general, caret: general.length });
-      if (input === 's') return canSubmit ? handOff('revise') : undefined;
+      // The one way out with something to say, on every row. Whatever is pending
+      // is submitted whichever entry the list ends on — including with feedback
+      // still open on a plan you are about to build, which is supported: the
+      // execute skill works the comments into the build.
+      if (input === 's') return handOff();
       if (input === '?') return setMode({ kind: 'help' });
-      // Executing with feedback still on screen submits it first. Nothing is
-      // lost and nothing is warned about: a plan being built with comments on
-      // it is a supported thing now, and the execute skill works them into the
-      // build rather than bouncing them back.
-      if (input === 'x') return handOff('execute');
     },
     { isActive: mode.kind === 'browse' },
   );
@@ -901,19 +947,78 @@ export function ReviewApp(props: ReviewAppProps) {
         if (key.return) return finish('back');
         if (key.escape || input === 'n') setMode({ kind: 'browse' });
       }
-      if (mode.kind === 'handoff') {
-        const action = mode.intent === 'revise' ? 'submit' : 'execute';
-        // With no agent to start, the command is the only option, and the only
-        // option is `1` — the number is the position in the list on screen.
-        if (input === '1') return finish(action, launchable[mode.intent] ? 'agent' : 'command');
-        if (input === '2' && launchable[mode.intent]) return finish(action, 'command');
-        // Back to the plan, not out of planx: `x` is easy to hit, and the way
-        // back from it has to be free. Every other key is ignored rather than
-        // falling through to the document underneath.
+    },
+    { isActive: mode.kind === 'help' || mode.kind === 'leave' },
+  );
+
+  /**
+   * The hand-off list, and the command editor inside it.
+   *
+   * Anything unbound is ignored rather than falling through to the document
+   * underneath, and there are no numbers: the list is walked, not indexed.
+   */
+  useInput(
+    (input, key) => {
+      if (mode.kind !== 'handoff') return;
+      const here = mode.entries[mode.index];
+      if (!here) return;
+
+      if (!mode.editing) {
+        if (key.upArrow) return setMode({ ...mode, index: Math.max(0, mode.index - 1) });
+        if (key.downArrow) {
+          return setMode({ ...mode, index: Math.min(mode.entries.length - 1, mode.index + 1) });
+        }
+        // Into the line itself, to change the model, add a directory, rewrite
+        // the prompt, or replace the command outright.
+        if (key.rightArrow && here.command !== null) {
+          return setMode({ ...mode, editing: true, caret: here.command.length });
+        }
+        if (key.return) return finish(here.action, here.command);
+        // Back to the plan, on the row you were on — not out of planx.
         if (key.escape) return setMode({ kind: 'browse' });
+        return;
+      }
+
+      const command = here.command ?? '';
+      // The edit survives arrowing away to another entry and back; `esc` is what
+      // throws it away, and it puts back the line planx built.
+      if (key.escape) {
+        return setMode({ ...withCommand(mode, here.original), editing: false, caret: 0 });
+      }
+      if (key.upArrow || key.downArrow) return setMode({ ...mode, editing: false });
+      if (key.return) {
+        // Nothing to run, so nothing happens. The list is still there.
+        if (!command.trim()) return;
+        return finish(here.action, command);
+      }
+      // `←` at the start of the line is the way back out of it, which is the
+      // same key that got you here, reversed.
+      if (key.leftArrow && !key.meta && mode.caret === 0) {
+        return setMode({ ...mode, editing: false });
+      }
+
+      const moved = caretKey(command, mode.caret, input, key);
+      if (moved !== null) return setMode({ ...mode, caret: moved });
+
+      if (key.backspace || key.delete) {
+        if (mode.caret === 0) return;
+        return setMode({
+          ...withCommand(mode, `${command.slice(0, mode.caret - 1)}${command.slice(mode.caret)}`),
+          caret: mode.caret - 1,
+        });
+      }
+      if (input && !key.ctrl && !key.meta) {
+        const text = input.replace(/[\r\n]+/g, ' ');
+        return setMode({
+          ...withCommand(
+            mode,
+            `${command.slice(0, mode.caret)}${text}${command.slice(mode.caret)}`,
+          ),
+          caret: mode.caret + text.length,
+        });
       }
     },
-    { isActive: mode.kind === 'help' || mode.kind === 'leave' || mode.kind === 'handoff' },
+    { isActive: mode.kind === 'handoff' },
   );
 
   // Folding notes takes rows out from under the cursor — `h` can take dozens —
@@ -983,6 +1088,21 @@ export function ReviewApp(props: ReviewAppProps) {
     bodyHeight,
   );
 
+  // The list is drawn *over* the last few rows of the plan rather than pushing
+  // anything around: the frame is exactly as tall as it was, the document does
+  // not reflow, and `esc` puts you back on the row you were on.
+  if (mode.kind === 'handoff') {
+    // On a body too short to hold the whole block the question is what goes:
+    // the answers are the part you cannot act without.
+    const block = handoffLines(mode, {
+      question: canSubmit
+        ? `Submit feedback on ${props.planId} v${versionB} — then what?`
+        : `${props.planId} v${versionB} — what next?`,
+      width: inner,
+    }).slice(-bodyHeight);
+    body.splice(bodyHeight - block.length, block.length, ...block);
+  }
+
   /**
    * A question stands alone.
    *
@@ -1003,16 +1123,10 @@ export function ReviewApp(props: ReviewAppProps) {
       ? touched.size || edits.size
         ? red(leaveWarning(touched.size > 0, edits.size))
         : yellow('Back to the list?')
-      : // Yellow, the colour the review already uses for a question. Not red:
-        // nothing here destroys anything, and red is the leave warning's.
+      : // The hand-off list carries its own question, on its own first line, so
+        // this row stays empty while the list is up.
         mode.kind === 'handoff'
-        ? // A question, because that is what it is — the same as the leave
-          // prompt above it, which has always read that way.
-          yellow(
-            mode.intent === 'revise'
-              ? `Submit feedback for ${props.planId} v${versionB}?`
-              : `Execute ${props.planId} v${versionB}?`,
-          )
+        ? ''
         : statusLine({
             status,
             note: mode.kind === 'note' ? mode.draft : '',
@@ -1049,8 +1163,6 @@ export function ReviewApp(props: ReviewAppProps) {
             diffing: versionA !== null,
             canDiff: previousVersion !== null,
             manyVersions: props.versions.length > 1,
-            canSubmit,
-            canLaunch: mode.kind === 'handoff' && launchable[mode.intent],
           }),
           inner,
         ),
@@ -1061,6 +1173,22 @@ export function ReviewApp(props: ReviewAppProps) {
       <Text>{bottomRule(frameWidth, ` ★ ${REPO} `)}</Text>
     </Box>
   );
+}
+
+function entry(
+  action: HandoffEntry['action'],
+  label: string,
+  command: string | null,
+): HandoffEntry {
+  return { action, label, command, original: command };
+}
+
+/** The list with the highlighted entry's command replaced by what was typed. */
+function withCommand(mode: HandoffMode, command: string | null): HandoffMode {
+  return {
+    ...mode,
+    entries: mode.entries.map((e, i) => (i === mode.index ? { ...e, command } : e)),
+  };
 }
 
 function headerText(props: ReviewAppProps, versionA: number | null, versionB: number): string {
@@ -1210,6 +1338,47 @@ function caretLine(draft: string, caret: number, width: number): string {
   return `${visible.slice(0, at)}${inverse(draft[caret] ?? ' ')}${visible.slice(at + 1)}`;
 }
 
+/* ------------------------------------------------------- the hand-off */
+
+/** Columns between the longest label and the command column. */
+const COMMAND_GAP = 3;
+
+interface HandoffOptions {
+  /** The block's first line, in the yellow every planx question is already in. */
+  question: string;
+  width: number;
+}
+
+/**
+ * The list of what happens next, as rows to draw over the plan.
+ *
+ * The entries are blue: the highlighted one at full strength with a `▸`, the
+ * rest dim. Only the highlighted row draws its command — the whole launch line,
+ * flags and all, in a column past the widest label — and inside the command the
+ * entry itself goes dim, so which side of the list you are typing on is visible
+ * without reading a hint.
+ */
+function handoffLines(mode: HandoffMode, opts: HandoffOptions): string[] {
+  const labelWidth = Math.max(...mode.entries.map((e) => e.label.length));
+  const room = Math.max(1, opts.width - CURSOR_GUTTER - labelWidth - COMMAND_GAP);
+
+  return [
+    yellow(truncate(opts.question, opts.width)),
+    '',
+    ...mode.entries.map((item, i) => {
+      const active = i === mode.index;
+      const label = `${active ? '▸' : ' '} ${padEnd(item.label, labelWidth)}`;
+      const painted = active && !mode.editing ? blue(label) : dim(label);
+      if (!active || item.command === null) return painted;
+      // The caret is the lit block the note and the line editor already use.
+      const command = mode.editing
+        ? caretLine(item.command, mode.caret, room)
+        : dim(truncate(item.command, room));
+      return `${painted}${' '.repeat(COMMAND_GAP)}${command}`;
+    }),
+  ];
+}
+
 /* --------------------------------------------------------------- chrome */
 
 /** The yellow label that says which of the two notes this row is. */
@@ -1306,10 +1475,6 @@ interface HintContext {
   diffing: boolean;
   canDiff: boolean;
   manyVersions: boolean;
-  /** This version carries something `s` would write. */
-  canSubmit: boolean;
-  /** planx could start an agent for the intent the prompt is asking about. */
-  canLaunch: boolean;
 }
 
 /**
@@ -1349,21 +1514,19 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
       ['enter', 'back'],
       ['esc', 'stay'],
     ];
-  // Where planx can start something, the command is the second option; where it
-  // cannot, the command is the only one and takes the first number. The prompt
-  // is drawn either way — the question is still worth asking, and a key that
-  // silently did nothing read as a bug.
-  if (mode.kind === 'handoff')
-    return ctx.canLaunch
-      ? [
-          ['1', mode.intent === 'revise' ? 'revise in the agent' : 'execute in a new agent'],
-          ['2', 'give me the command'],
-          ['esc', 'back'],
-        ]
-      : [
-          ['1', 'give me the command'],
-          ['esc', 'back'],
-        ];
+  // The list is walked, not indexed, so its bar says how to walk it. Inside the
+  // command the keys are the editor's, plus the one that gets back out.
+  if (mode.kind === 'handoff') {
+    if (mode.editing)
+      return [
+        ['enter', 'run'],
+        ['esc', 'discard'],
+        ['↑↓', 'back to the list'],
+      ];
+    const hints: Hint[] = [['↑↓', 'choose']];
+    if (mode.entries[mode.index]?.command !== null) hints.push(['→', 'edit the command']);
+    return [...hints, ['enter', 'go'], ['esc', 'back']];
+  }
   if (mode.kind === 'help') return [['any key', 'to close']];
 
   const hints: Hint[] = [
@@ -1371,7 +1534,6 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
     // you cannot see: `n` writes the version's one note either way.
     ['n', ctx.hasNote ? 'edit note' : 'add note'],
     ['v', ctx.selecting ? 'unselect lines' : 'select lines'],
-    ['x', 'execute'],
     ['esc', 'back'],
     // The one key that ends the session, and the only one that used to be
     // nowhere on screen.
@@ -1397,10 +1559,9 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
   if (ctx.anyFeedback) hints.push(['j', 'next feedback']);
   if (ctx.canDiff) hints.push(['d', ctx.diffing ? 'hide diff' : 'show diff']);
   if (ctx.manyVersions) hints.push(['←→', 'version']);
-  // Submitting is offered where there is something to submit. An empty submit
-  // used to be how you said the plan was fine; `x` is that now.
-  if (ctx.canSubmit) hints.push(['s', 'submit']);
-  hints.push(['?', 'help']);
+  // Unconditional: `s` is the one way out with anything to say, and on a version
+  // carrying nothing it still opens the list that says what happens next.
+  hints.push(['s', 'submit'], ['?', 'help']);
   return hints;
 }
 
@@ -1421,7 +1582,6 @@ function spaceHint(action: SpaceAction): string {
 function widestHints(ctx: Pick<HintContext, 'canDiff' | 'manyVersions'>): Hint[] {
   const hints: Hint[] = [
     ['n', 'edit note'],
-    ['x', 'execute'],
     ['esc', 'back'],
     ['^c', 'exit'],
     ['space', 'collapse'],
@@ -1508,10 +1668,9 @@ const HELP: Array<[Hint, 'always' | 'versioned']> = [
   [['h', 'fold or unfold every note at once'], 'always'],
   [['j', 'the next feedback on this version, wrapping at the end'], 'always'],
   [['n', 'add or edit the note about the whole plan'], 'always'],
-  [['s', 'submit everything at once'], 'always'],
+  [['s', 'submit everything at once, then pick what happens to the plan next'], 'always'],
   [['space', 'collapse the section you are in, or the note — or expand what is hidden'], 'always'],
   [['v', 'start or end a selection, then ↑ ↓ to extend'], 'always'],
-  [['x', 'execute this plan, in a new agent or as a command'], 'always'],
   [['esc', 'back to the list'], 'always'],
   [['?', 'this list'], 'always'],
 ];

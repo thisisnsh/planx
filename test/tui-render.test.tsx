@@ -8,7 +8,7 @@ import { listFeedback } from '../src/store/feedback.js';
 import { readVersionText } from '../src/store/plans.js';
 import type { Feedback } from '../src/store/types.js';
 import { Picker, type PickerItem } from '../src/tui/Picker.js';
-import { ReviewApp, type Launchable, type ReviewResult } from '../src/tui/ReviewApp.js';
+import { ReviewApp, type Commands, type ReviewResult } from '../src/tui/ReviewApp.js';
 import { brandTitle, MIN_FRAME_WIDTH, topRule } from '../src/tui/frame.js';
 import { Steps, stepLines } from '../src/tui/Steps.js';
 import { noticeFor, setUpdateNotice } from '../src/update/check.js';
@@ -133,7 +133,7 @@ function mount(
   columns = 100,
   rows = 30,
   previous: Feedback[] = [],
-  launchable?: Launchable,
+  commands?: Commands,
   /** The clocks the review runs on: the held-arrow one, and the exit guard's. */
   timing: { now?: () => number; exitWindowMs?: number } = {},
 ): Harness {
@@ -155,7 +155,7 @@ function mount(
       mode="rich"
       version="9.9.9"
       previous={previous}
-      launchable={launchable}
+      commands={commands}
       now={timing.now}
       exitWindowMs={timing.exitWindowMs}
       onQuit={() => quits.push(Date.now())}
@@ -224,9 +224,11 @@ const ESC = '\x1b';
 const ENTER = '\r';
 const SPACE = ' ';
 const DOWN = '\x1b[B';
+const UP = '\x1b[A';
 const LEFT = '\x1b[D';
 const RIGHT = '\x1b[C';
 const BACKSPACE = '\x7f';
+const CTRL_A = '\x01';
 const CTRL_D = '\x04';
 const CTRL_C = '\x03';
 /** Option+arrow, as Terminal.app and iTerm each send it. */
@@ -364,15 +366,16 @@ describe('the review frame', () => {
     app.unmount();
   });
 
-  it('offers lowercase shortcuts, with x for execute and no c to collide with ctrl-c', async () => {
+  it('offers lowercase shortcuts, with no x and no c to collide with ctrl-c', async () => {
     const app = mount(seed(), null, 1);
     await app.ready();
 
     const frame = app.stdout.lastFrame;
     expect(frame).toContain('f add feedback');
     expect(frame).toContain('n add note');
-    expect(frame).toContain('x execute');
-    expect(frame).not.toContain('x exit');
+    // `s` is the one way out with something to say, and `x` is unbound.
+    expect(frame).toContain('s submit');
+    expect(frame).not.toContain('x execute');
     expect(frame).not.toContain('c comment');
     app.unmount();
   });
@@ -382,11 +385,16 @@ describe('the review frame', () => {
    * the bar whether or not there was anything to send. `x` is that now, so `s`
    * appears when the version carries something it would write.
    */
-  it('offers submit only once the version carries something', async () => {
+  /**
+   * `s` is the way out with anything to say, so it is on the bar before there is
+   * anything to say — on a version carrying nothing it opens the same list, and
+   * that list is how the plan gets built.
+   */
+  it('offers submit on a version carrying nothing', async () => {
     const app = mount(seed(), null, 1);
     await app.ready();
 
-    expect(app.stdout.lastFrame).not.toContain('s submit');
+    expect(app.stdout.lastFrame).toContain('s submit');
     expect(app.stdout.lastFrame).not.toContain('a approve');
 
     await app.press('f');
@@ -912,8 +920,8 @@ describe('rewriting a line in place', () => {
     await app.press(ESC);
 
     await app.press('s');
-    // The prompt is always drawn, so finishing takes its answer too.
-    await app.press('1');
+    // The list always opens, so finishing takes the entry you pick too.
+    await app.press(ENTER);
     const result = await app.result;
     expect(result.editedVersion).toBe(1);
     expect(result.edits).toEqual([{ line: 1, text: '# Guard the clock regression rewritten' }]);
@@ -938,8 +946,8 @@ describe('rewriting a line in place', () => {
     expect(app.stdout.lastFrame).not.toContain('line edited on this version');
 
     await app.press('s');
-    // The prompt is always drawn, so finishing takes its answer too.
-    await app.press('1');
+    // The list always opens, so finishing takes the entry you pick too.
+    await app.press(ENTER);
     const result = await app.result;
     expect(result.editedVersion).toBe(2);
     expect(result.batches.map((b) => b.version)).toEqual([1, 2]);
@@ -1204,15 +1212,24 @@ describe('j walks the feedback', () => {
   });
 });
 
+/** A version planx can start either intent for: an agent, and a session to fork. */
+const CAN: Commands = {
+  1: {
+    revise: 'claude --resume 01J8XR --fork-session "/planx revise guard"',
+    execute: 'claude "/planx execute guard v1"',
+  },
+};
+
 describe('submitting', () => {
-  // A review that asked for nothing ends in `x`: the plan is fine, so build it.
+  // A review that asked for nothing still ends in `s`: the list it opens has
+  // nothing about revising on it, and the plan is fine, so build it.
   it('executes a version nobody had anything to say about', async () => {
-    const app = mount(seed(), null, 1);
+    const app = mount(seed(), null, 1, [1], 100, 30, [], CAN);
     await app.ready();
 
-    await app.press('x');
-    // The prompt is always drawn, so finishing takes its answer too.
-    await app.press('1');
+    await app.press('s');
+    await app.frame('Execute in a new session');
+    await app.press(ENTER);
     const result = await app.result;
     expect(result.action).toBe('execute');
     // Untouched, so there is nothing for the submit to announce.
@@ -1220,15 +1237,16 @@ describe('submitting', () => {
     app.unmount();
   });
 
-  it('ignores s when there is nothing to submit', async () => {
+  it('opens the list on s even with nothing to submit', async () => {
     const app = mount(seed(), null, 1);
     await app.ready();
 
     await app.press('s');
-    await new Promise((r) => setTimeout(r, 120));
-    // Still on the plan: no prompt, no hand-off, nothing resolved.
-    expect(app.stdout.lastFrame).toContain('# Guard the clock regression');
-    expect(app.stdout.lastFrame).not.toContain('Submit feedback for');
+    // Not a submit question: there is nothing to submit, and the list still has
+    // to say what happens to the plan.
+    await app.frame('— what next?');
+    expect(app.stdout.lastFrame).not.toContain('Submit feedback on');
+    expect(app.stdout.lastFrame).toContain('Just give me the command');
     app.unmount();
   });
 
@@ -1241,22 +1259,22 @@ describe('submitting', () => {
     await app.press(ENTER);
     await app.frame('needs work');
     await app.press('s');
-    // The prompt is always drawn, so finishing takes its answer too.
-    await app.press('1');
+    await app.frame('Just give me the command');
+    await app.press(ENTER);
 
     const result = await app.result;
-    expect(result.action).toBe('submit');
+    expect(result.action).toBe('commands');
     expect(result.batches[0]?.version).toBe(1);
     expect(result.batches[0]?.annotations[0]?.comment).toBe('needs work');
     app.unmount();
   });
 
   /**
-   * A plan being built with comments still on it is a supported thing now, so
-   * `x` writes them on the way out rather than warning about them.
+   * A plan being built with comments still on it is a supported thing, so the
+   * execute entry writes them on the way out rather than warning about them.
    */
-  it('x submits what is on screen and then executes', async () => {
-    const app = mount(seed(), null, 1);
+  it('submits what is on screen and then executes', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], CAN);
     await app.ready();
 
     await app.press('f');
@@ -1264,9 +1282,11 @@ describe('submitting', () => {
     await app.press(ENTER);
     await app.frame('one thing');
 
-    await app.press('x');
-    // The prompt is always drawn, so finishing takes its answer too.
-    await app.press('1');
+    await app.press('s');
+    await app.frame('Execute in a new session');
+    // Past `Revise`, which a comment has put on the list.
+    await app.press(DOWN);
+    await app.press(ENTER);
     const result = await app.result;
     expect(result.action).toBe('execute');
     expect(result.batches[0]?.annotations[0]?.comment).toBe('one thing');
@@ -1306,34 +1326,38 @@ describe('submitting', () => {
 
 /**
  * planx knows which plan, which version and which session wrote it, so it can
- * run the command it would otherwise have printed. The question is two rows the
- * frame already has, not a screen of its own.
+ * build the command it would otherwise only have printed — and the list is where
+ * you pick which one, and change it before it runs.
  */
-describe('the hand-off prompt', () => {
-  const CAN: Launchable = { 1: { revise: true, execute: true } };
+describe('the hand-off list', () => {
+  /** Leave a comment, so `Revise` is on the list. */
+  async function comment(app: Harness, text = 'one more thing') {
+    await app.press('f');
+    await app.press(text);
+    await app.press(ENTER);
+    await app.frame(text);
+  }
 
-  it('asks on x, and again on s, naming what it is about to do', async () => {
+  it('opens on s, over the plan, with the whole list on it', async () => {
     const id = seed();
     const app = mount(id, null, 1, [1], 100, 30, [], CAN);
     await app.ready();
+    await comment(app);
 
-    await app.press('x');
-    await app.frame(`Execute ${id} v1?`);
-    expect(app.stdout.lastFrame).toContain('1 execute in a new agent');
-    expect(app.stdout.lastFrame).toContain('2 give me the command');
-    expect(app.stdout.lastFrame).toContain('esc back');
-    // The plan is still behind the question.
-    expect(app.stdout.lastFrame).toContain('# Guard the clock regression');
-
-    await app.press(ESC);
-    await app.frame('x execute');
-
-    await app.press('f');
-    await app.press('one more thing');
-    await app.press(ENTER);
     await app.press('s');
-    await app.frame(`Submit feedback for ${id} v1?`);
-    expect(app.stdout.lastFrame).toContain('1 revise in the agent');
+    await app.frame(`Submit feedback on ${id} v1 — then what?`);
+    const frame = app.stdout.lastFrame;
+    expect(frame).toContain('Revise in the session that wrote it');
+    expect(frame).toContain('Execute in a new session');
+    expect(frame).toContain('Just give me the command');
+    // The first entry is highlighted, and draws the command it would run.
+    expect(frame).toContain('claude --resume 01J8XR --fork-session');
+    expect(frame).toContain('↑↓ choose');
+    expect(frame).toContain('→ edit the command');
+    expect(frame).toContain('enter go');
+    expect(frame).toContain('esc back');
+    // The plan is still behind it.
+    expect(frame).toContain('# Guard the clock regression');
     app.unmount();
   });
 
@@ -1342,96 +1366,264 @@ describe('the hand-off prompt', () => {
     await app.ready();
     const before = bodyRows(app.stdout.lastFrame).length;
 
-    await app.press('x');
-    await app.frame('give me the command');
+    await app.press('s');
+    await app.frame('Just give me the command');
     expect(bodyRows(app.stdout.lastFrame)).toHaveLength(before);
     app.unmount();
   });
 
-  it('takes 1 as the agent and 2 as the command, and ignores everything else', async () => {
+  it('esc goes back to the plan, on the row it was on', async () => {
     const app = mount(seed(), null, 1, [1], 100, 30, [], CAN);
     await app.ready();
+    await app.press(DOWN);
+    await app.press(DOWN);
+    const before = app.stdout.lastFrame;
 
-    await app.press('x');
-    await app.frame('give me the command');
-    // A key the prompt does not answer to falls through to nothing, rather than
-    // reaching the document underneath.
-    await app.press('g');
-    await new Promise((r) => setTimeout(r, 120));
-    expect(app.stdout.lastFrame).toContain('give me the command');
-
-    await app.press('2');
-    const result = await app.result;
-    expect(result).toMatchObject({ action: 'execute', handoff: 'command' });
+    await app.press('s');
+    await app.frame('Just give me the command');
+    await app.press(ESC);
+    await app.frame('s submit');
+    expect(app.stdout.lastFrame).toBe(before);
     app.unmount();
   });
 
-  it('hands the agent the work when 1 is pressed', async () => {
+  it('arrows move the highlight and clamp at the ends', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], CAN);
+    await app.ready();
+    await comment(app);
+
+    await app.press('s');
+    await app.frame('Revise in the session that wrote it');
+    // Up at the top does nothing: the first entry keeps the command column.
+    await app.press(UP);
+    await app.frame('claude --resume 01J8XR --fork-session');
+
+    await app.press(DOWN);
+    await app.frame('claude "/planx execute guard v1"');
+    // Down past the last entry stays on it, and it has no command to draw.
+    await app.press(DOWN);
+    await app.press(DOWN);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(app.stdout.lastFrame).toContain('▸ Just give me the command');
+    expect(app.stdout.lastFrame).not.toContain('claude ');
+    app.unmount();
+  });
+
+  it('ignores a number, and does not let an unbound key reach the document', async () => {
     const app = mount(seed(), null, 1, [1], 100, 30, [], CAN);
     await app.ready();
 
-    await app.press('f');
-    await app.press('needs work');
-    await app.press(ENTER);
     await app.press('s');
-    await app.frame('1 revise in the agent');
-    await app.press('1');
+    await app.frame('Just give me the command');
+    // `1` and `2` used to answer this. `G` would jump to the bottom of the plan.
+    for (const key of ['1', '2', 'G']) await app.press(key);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(app.stdout.lastFrame).toContain('▸ Execute in a new session');
+    expect(app.stdout.lastFrame).toContain('# Guard the clock regression');
+    app.unmount();
+  });
 
-    expect(await app.result).toMatchObject({ action: 'submit', handoff: 'agent' });
+  it('hands back the entry and its command on enter', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], CAN);
+    await app.ready();
+    await comment(app, 'needs work');
+
+    await app.press('s');
+    await app.frame('Revise in the session that wrote it');
+    await app.press(ENTER);
+    expect(await app.result).toMatchObject({
+      action: 'revise',
+      command: 'claude --resume 01J8XR --fork-session "/planx revise guard"',
+    });
+    app.unmount();
+  });
+
+  it('prints the commands rather than running one', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], CAN);
+    await app.ready();
+
+    await app.press('s');
+    await app.press(DOWN);
+    await app.frame('▸ Just give me the command');
+    await app.press(ENTER);
+    expect(await app.result).toMatchObject({ action: 'commands', command: null });
     app.unmount();
   });
 
   /**
-   * A version captured before planx recorded sessions has nothing to start, so
-   * the command is the whole list rather than the second half of one — and it
-   * answers to `1`, because the number is the position on screen. The prompt is
-   * still drawn: a key that silently did nothing read as a bug.
+   * A rewritten line is settled text, already in the version. There is nothing
+   * left to ask an agent for, so `Revise` does not come back for it.
    */
-  it('offers the command as the only option when there is no agent to start', async () => {
-    const app = mount(seed(), null, 1, [1], 100, 30, [], { 1: { revise: false, execute: false } });
+  it('offers Revise for a comment or a note, and not for an edited line', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], CAN);
     await app.ready();
 
-    await app.press('x');
-    await app.frame('1 give me the command');
-    expect(app.stdout.lastFrame).toContain('Execute ');
-    expect(app.stdout.lastFrame).not.toContain('2 give me the command');
-    expect(app.stdout.lastFrame).not.toContain('execute in a new agent');
-
-    await app.press('1');
-    expect(await app.result).toMatchObject({ action: 'execute', handoff: 'command' });
-    app.unmount();
-  });
-
-  it('asks per intent: no session to fork, but an agent to execute in', async () => {
-    const app = mount(seed(), null, 1, [1], 100, 30, [], { 1: { revise: false, execute: true } });
-    await app.ready();
-
-    // Execute can start something, so the agent is option 1.
-    await app.press('x');
-    await app.frame('1 execute in a new agent');
+    await app.press('s');
+    await app.frame('Just give me the command');
+    expect(app.stdout.lastFrame).not.toContain('Revise in the session');
     await app.press(ESC);
 
-    await app.press('f');
-    await app.press('needs work');
+    await app.press('e');
+    await app.press(' rewritten');
+    await app.press(ENTER);
+    await app.frame('1 line edited on this version.');
+    await app.press('s');
+    await app.frame('Just give me the command');
+    expect(app.stdout.lastFrame).not.toContain('Revise in the session');
+    await app.press(ESC);
+
+    await app.press('n');
+    await app.press('one note about the whole plan');
     await app.press(ENTER);
     await app.press('s');
-    await app.frame('1 give me the command');
-    await app.press('1');
-    expect(await app.result).toMatchObject({ action: 'submit', handoff: 'command' });
+    await app.frame('Revise in the session that wrote it');
     app.unmount();
   });
 
-  it('ignores 2 where there is no second option', async () => {
-    const app = mount(seed(), null, 1, [1], 100, 30, [], { 1: { revise: false, execute: false } });
+  /**
+   * A version captured before planx recorded sessions has nothing to fork, and
+   * one that names no agent has nothing to start at all. Neither is drawn and
+   * then made to decline a press.
+   */
+  it('drops the entries planx cannot start', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], {
+      1: { revise: null, execute: 'claude "/planx execute guard v1"' },
+    });
     await app.ready();
 
-    await app.press('x');
-    await app.frame('1 give me the command');
-    await app.press('2');
-    await new Promise((r) => setTimeout(r, 120));
-    expect(app.stdout.lastFrame).toContain('1 give me the command');
+    await app.press('s');
+    await app.frame('Execute in a new session');
+    expect(app.stdout.lastFrame).not.toContain('Revise in the session');
     app.unmount();
   });
+
+  it('leaves the command as the whole list where nothing can be started', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], { 1: { revise: null, execute: null } });
+    await app.ready();
+
+    await app.press('s');
+    await app.frame('▸ Just give me the command');
+    expect(app.stdout.lastFrame).not.toContain('Execute in a new session');
+    // Nothing to edit on the only entry, so the bar does not offer it.
+    expect(app.stdout.lastFrame).not.toContain('→ edit the command');
+
+    await app.press(ENTER);
+    expect(await app.result).toMatchObject({ action: 'commands', command: null });
+    app.unmount();
+  });
+});
+
+/** `→` opens the launch line itself, and what runs is what is on screen. */
+describe('editing the command', () => {
+  it('types into it and runs what it says', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], CAN);
+    await app.ready();
+
+    await app.press('s');
+    await app.press(RIGHT);
+    await app.frame('enter run');
+    expect(app.stdout.lastFrame).toContain('esc discard');
+    expect(app.stdout.lastFrame).toContain('↑↓ back to the list');
+
+    // The caret sits at the end, so this appends.
+    await app.press(' --extra');
+    await app.press(ENTER);
+    expect(await app.result).toMatchObject({
+      action: 'execute',
+      command: 'claude "/planx execute guard v1" --extra',
+    });
+    app.unmount();
+  });
+
+  /**
+   * The tail of a long line is only on screen while it is being typed — the
+   * editor scrolls under the caret, and the list truncates — so the edit is
+   * read back through the editor rather than off the entry row.
+   */
+  it('keeps the edit when you arrow away and back, and drops it on esc', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], CAN);
+    await app.ready();
+    await comment(app);
+
+    await app.press('s');
+    await app.press(RIGHT);
+    await app.press(' --kept');
+    await app.frame('--kept');
+
+    // Out of the command, down to another entry, back up, and back in.
+    await app.press(UP);
+    await app.press(DOWN);
+    await app.press(UP);
+    await app.press(RIGHT);
+    await app.frame('--kept');
+
+    // `esc` inside the command puts back the line planx built, and leaves you on
+    // the list rather than back on the plan.
+    await app.press(ESC);
+    await app.frame('↑↓ choose');
+    expect(app.stdout.lastFrame).toContain('Revise in the session that wrote it');
+
+    await app.press(RIGHT);
+    await app.frame('/planx revise guard"');
+    expect(app.stdout.lastFrame).not.toContain('--kept');
+    app.unmount();
+  });
+
+  it('leaves the command on ← at the start, and moves the caret anywhere else', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], CAN);
+    await app.ready();
+
+    await app.press('s');
+    await app.press(RIGHT);
+    await app.frame('enter run');
+    // Mid-line: the caret moves and the editor stays open.
+    await app.press(LEFT);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(app.stdout.lastFrame).toContain('enter run');
+
+    await app.press(CTRL_A);
+    await app.press(LEFT);
+    await app.frame('↑↓ choose');
+    app.unmount();
+  });
+
+  it('does nothing on enter with the command emptied', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], CAN);
+    await app.ready();
+
+    await app.press('s');
+    await app.press(RIGHT);
+    await app.frame('enter run');
+    for (let i = 0; i < 40; i++) await app.press(BACKSPACE);
+    await app.press(ENTER);
+    await new Promise((r) => setTimeout(r, 120));
+    // Still there: nothing to run, so nothing happened.
+    expect(app.stdout.lastFrame).toContain('enter run');
+    app.unmount();
+  });
+
+  /** Only the highlighted entry draws a command — the others are labels alone. */
+  it('draws the command against the entry it belongs to', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], CAN);
+    await app.ready();
+    await comment(app);
+
+    await app.press('s');
+    await app.frame('claude --resume 01J8XR --fork-session');
+    const rows = bodyRows(app.stdout.lastFrame).map(inner);
+    const revise = rows.find((row) => row.includes('Revise in the session'))!;
+    const execute = rows.find((row) => row.includes('Execute in a new session'))!;
+    expect(revise).toContain('claude --resume');
+    expect(execute.trim()).toBe('Execute in a new session');
+    app.unmount();
+  });
+
+  async function comment(app: Harness, text = 'one more thing') {
+    await app.press('f');
+    await app.press(text);
+    await app.press(ENTER);
+    await app.frame(text);
+  }
 });
 
 /**
@@ -1585,7 +1777,7 @@ describe('the keys, and where they sit', () => {
     const keys = inner(bodyRows(app.stdout.lastFrame).at(-1)!)
       .split(' · ')
       .map((part) => part.split(' ')[0]!);
-    expect(keys).toEqual(['←→', 'd', 'e', 'f', 'j', 'n', 's', 'space', 'v', 'x', 'esc', '^c', '?']);
+    expect(keys).toEqual(['←→', 'd', 'e', 'f', 'j', 'n', 's', 'space', 'v', 'esc', '^c', '?']);
     app.unmount();
   });
 
@@ -1641,14 +1833,7 @@ describe('the keys, and where they sit', () => {
 
     // The five the fixed order always put last, and so always lost.
     const bar = bodyRows(app.stdout.lastFrame).slice(-3).map(inner).join(' · ');
-    for (const pair of [
-      's submit',
-      'v select lines',
-      'x execute',
-      'esc back',
-      '^c exit',
-      '? help',
-    ]) {
+    for (const pair of ['s submit', 'v select lines', 'esc back', '^c exit', '? help']) {
       expect(bar).toContain(pair);
     }
     app.unmount();
@@ -1685,7 +1870,6 @@ describe('the keys, and where they sit', () => {
       's',
       'space',
       'v',
-      'x',
       'esc',
       '?',
       // The way out is the last word of the list, under `?` rather than above
@@ -1868,7 +2052,7 @@ describe('what the version has to say about itself', () => {
    */
   it('says nothing about the version while a prompt is up', async () => {
     const id = seed();
-    const app = mount(id, null, 1, [1], 100, 30, [], { 1: { revise: true, execute: true } });
+    const app = mount(id, null, 1, [1], 100, 30, [], CAN);
     await app.ready();
 
     await app.press(DOWN);
@@ -1883,8 +2067,7 @@ describe('what the version has to say about itself', () => {
     const height = bodyRows(app.stdout.lastFrame).length;
 
     for (const [key, question] of [
-      ['x', `Execute ${id} v1?`],
-      ['s', `Submit feedback for ${id} v1?`],
+      ['s', `Submit feedback on ${id} v1 — then what?`],
       [ESC, 'Back to the list?'],
     ] as const) {
       await app.press(key);
@@ -1991,8 +2174,8 @@ describe('the plan, the diff and the versions', () => {
     await app.frame('about v1');
 
     await app.press('s');
-    // The prompt is always drawn, so finishing takes its answer too.
-    await app.press('1');
+    // The list always opens, so finishing takes the entry you pick too.
+    await app.press(ENTER);
     const result = await app.result;
     expect(result.batches.map((b) => b.version)).toEqual([1, 2]);
     expect(result.batches[0]?.annotations[0]?.comment).toBe('about v1');
@@ -2028,8 +2211,8 @@ describe('the plan, the diff and the versions', () => {
     await app.frame('only about v2');
 
     await app.press('s');
-    // The prompt is always drawn, so finishing takes its answer too.
-    await app.press('1');
+    // The list always opens, so finishing takes the entry you pick too.
+    await app.press(ENTER);
     const result = await app.result;
     expect(result.batches.map((b) => b.version)).toEqual([2]);
     app.unmount();

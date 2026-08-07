@@ -4,7 +4,7 @@ import type { RenderMode } from '../render/diff.js';
 import type { Feedback } from '../store/types.js';
 import { terminalWidth } from './frame.js';
 import { Picker, type PickerItem } from './Picker.js';
-import { ReviewApp, type Launchable, type ReviewResult } from './ReviewApp.js';
+import { ReviewApp, type Commands, type ReviewResult } from './ReviewApp.js';
 import { Steps, stepLine, type StepRow } from './Steps.js';
 
 /**
@@ -49,8 +49,8 @@ export interface RunReviewOptions {
   /** Every note left on this plan; the review loads the ones for the version
    *  you are on, editable, and rewrites them on submit. */
   previous: Feedback[];
-  /** Which intents planx could start an agent for, per version. */
-  launchable?: Launchable;
+  /** The launch line for each intent, per version — what the hand-off list shows. */
+  commands?: Commands;
 }
 
 export async function runReview(opts: RunReviewOptions): Promise<ReviewResult> {
@@ -79,7 +79,7 @@ export async function runReview(opts: RunReviewOptions): Promise<ReviewResult> {
         mode={opts.mode}
         version={opts.version}
         previous={opts.previous}
-        launchable={opts.launchable}
+        commands={opts.commands}
         onDone={finish}
       />,
       // ctrl+c is the review's own, twice — see `useDoubleCtrlC`. Ink killing
@@ -93,7 +93,7 @@ export async function runReview(opts: RunReviewOptions): Promise<ReviewResult> {
     instance.waitUntilExit().then(() =>
       finish({
         action: 'back',
-        handoff: 'command',
+        command: null,
         batches: [],
         version: opts.versionB,
         edits: [],
