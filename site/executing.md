@@ -96,10 +96,11 @@ was, the document does not reflow, and `esc` puts you back on the row you were
 on — which is why it is drawn over the plan rather than added under it.
 
 The question is the block's first line, in planx's own yellow — the same value
-as the frame around it — and the entries start on the very next row. The block's
-one blank row is *above* the question, separating it from the plan; the last
-entry sits directly on the hint bar. That is the rule everywhere in the review:
-one blank above whatever the page ends on, and nothing below it.
+as the frame around it — and the entries start on the very next row. One blank
+row separates the block from the plan, and another separates its last entry from
+the hint bar. The version summary and the back question do not need that second
+gap; they sit directly on their hints. The hint bar itself always sits directly
+on the bottom rule.
 
 The entries are blue. The highlighted one takes a `▸` and the blue at full
 strength; the rest are grey, as is every command. Inside the command the entry
@@ -108,12 +109,9 @@ editors already use — so which side of the list you are typing on is visible
 without reading a hint.
 
 An armed `ctrl+c` takes the hint bar rather than a row of its own. Nothing is
-reserved for it, on any planx screen.
-
-The rows the list does not need are not left under it: the status row and the
-summary the version would have drawn are counted into the hint bar's own
-padding, so the frame keeps its height, the bottom rule never moves, and the gap
-under the list is nothing at all.
+reserved for it, on any planx screen. The review counts the rows it actually
+draws, so unused status and summary rows cannot turn into padding below the
+hints.
 
 <PlanxSim scenario="executing" :rows="14" />
 
@@ -227,9 +225,9 @@ underneath another agent and took the context, the permissions and your ability
 to intervene with it.
 
 `Execute in a new session` means what it says: the agent it starts has none of
-the planning conversation, so the execute branch loads the plan with `planx show
-<id> v<n> --plain` before anything else. Revising has no such step — the session
-it resumes wrote the plan.
+the planning conversation, so the execute branch loads the plan with
+`planx show <id> v<n> --plain` before anything else. Revising has no such step —
+the session it resumes wrote the plan.
 
 ## Why there is no model picker
 

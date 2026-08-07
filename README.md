@@ -80,8 +80,9 @@ Node 20.19+. The postinstall runs `planx add-skills`, which writes one skill
 into `~/.claude/skills/` and `~/.codex/skills/` and touches no agent config —
 there is no hook to register. Then type `/planx` in Claude Code or Codex.
 
-Upgrading: `planx update`, which planx offers on its own border when a newer
-release is available. Removal: `planx remove-skills`, then
+Upgrading: `planx update`. When a newer release is available, planx marks it on
+the border and offers to install it before an interactive review; skipping asks
+again next time. Removal: `planx remove-skills`, then
 `npm uninstall -g @thisisnsh/planx`.
 
 <details>

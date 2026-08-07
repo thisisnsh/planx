@@ -95,6 +95,18 @@ Nothing is stored about having seen it. There is no dismissal to go stale: the
 notice is a fact about two version numbers, recomputed every run, so if 0.6.0
 lands while you are still on 0.4.0 it says 0.6.0.
 
+Opening an interactive review also turns that notice into a choice:
+
+```
+Update to v0.5.0?
+❯ Install update   runs planx update
+  Skip for now     asks again next time
+```
+
+Install hands off to the same update command below. Skip opens the review and
+writes no dismissal, so the choice is there again the next time. Printed,
+`--stat`, `--json` and piped diffs never ask.
+
 Then:
 
 ```bash

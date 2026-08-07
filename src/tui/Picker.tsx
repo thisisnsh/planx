@@ -44,6 +44,8 @@ export interface PickerProps<T> {
   version?: string;
   /** Delete the row, and return the list as it stands afterwards. */
   onDelete?: (item: PickerItem<T>) => Array<PickerItem<T>>;
+  /** What enter does here. The plan list opens; a short choice prompt chooses. */
+  enterLabel?: string;
   /** What a second ctrl+c does. Defaults to ending the process with 130. */
   onQuit?: () => void;
   onDone: (chosen: T[]) => void;
@@ -141,6 +143,7 @@ export function Picker<T>({
   items: initial,
   version,
   onDelete,
+  enterLabel = 'open',
   onQuit,
   onDone,
 }: PickerProps<T>) {
@@ -270,7 +273,7 @@ export function Picker<T>({
 
   const hints: Hint[] = [
     ['↑↓', 'choose'],
-    ['enter', 'open'],
+    ['enter', enterLabel],
     ['^c', 'exit'],
   ];
   // The tree is the only thing on this screen with no key on the bar saying it

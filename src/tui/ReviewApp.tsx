@@ -197,17 +197,14 @@ type SpaceAction =
   | { kind: 'section'; heading: number; folded: boolean; inside?: boolean };
 
 /**
- * Top rule, the gaps above and below the body, the row kept for the status
- * line, the bottom rule. Five rows.
+ * Top rule, the blank under it, the blank between the body and its tail, and
+ * the bottom rule. The hand-off moves that middle blank below its list instead.
  *
- * There is no blank under the block any more: what the version has to say sits
- * directly on the hint bar, and the rows it does not use are given to the bar's
- * own padding rather than left as a gap above it.
- *
- * The hint bar is added on top of this, because it wraps: how many rows it
- * takes is a function of the terminal's width.
+ * The hint bar and whatever the version says about itself are added on top of
+ * these four rows. Counting what is actually drawn keeps the last hint against
+ * the bottom rule instead of hiding an unused status row underneath it.
  */
-const CHROME_WITHOUT_HINTS = 5;
+const CHROME_AROUND_BODY = 4;
 const MIN_BODY = 5;
 const MIN_WIDTH = 48;
 /** The cursor arrow and the space after it. */
@@ -320,21 +317,8 @@ export function ReviewApp(props: ReviewAppProps) {
     return earlier.length ? Math.max(...earlier) : null;
   }, [props.versions, versionB]);
 
-  // Reserve, do not react. The hint set changes with the row under the cursor,
-  // so a body sized to whatever the bar happens to need right now would grow
-  // and shrink as the cursor moved — visibly worse than the truncation this
-  // replaces. The frame keeps room for the widest bar and pads the rest.
-  const reserveRows = hintLines(
-    widestHints({
-      canDiff: previousVersion !== null,
-      manyVersions: props.versions.length > 1,
-    }),
-    inner,
-  ).length;
-
   // What the version has to say about itself, drawn between the status line and
-  // the hints. A function of the version and not of the cursor, so the body does
-  // not breathe as you move around inside it.
+  // the hints. A function of the version and not of the cursor.
   const summary = useMemo(
     () =>
       summaryLines({
@@ -346,9 +330,58 @@ export function ReviewApp(props: ReviewAppProps) {
     [annotations.length, general, shownEdits.size, inner],
   );
 
+  const asking = mode.kind === 'leave' || mode.kind === 'handoff';
+
+  // Never bold. Colour carries the weight — red for what destroys something,
+  // yellow for everything else — and a bold row inside a frame reads as a
+  // heading, which a question is not.
+  const message =
+    mode.kind === 'leave'
+      ? touched.size || edits.size
+        ? red(leaveWarning(touched.size > 0, edits.size))
+        : yellow('Back to the list?')
+      : // The hand-off list carries its own question, on its own first line, so
+        // this row stays empty while the list is up.
+        mode.kind === 'handoff'
+        ? ''
+        : statusLine({
+            status,
+            note: mode.kind === 'note' ? mode.draft : '',
+            caret: mode.kind === 'note' ? mode.caret : 0,
+            typing: mode.kind === 'note',
+            width: inner,
+          });
+
+  /** What sits under the plan, with empty status rows omitted entirely. */
+  const tail = [...(message ? [message] : []), ...(asking ? [] : summary)];
+
+  // What space would do where the cursor is, so the hint says it rather than
+  // making you press it to find out.
+  const space = spaceAction();
+  const hintRows = leaving
+    ? [red(EXIT_PROMPT)]
+    : hintLines(
+        hintsFor(mode, rows[selection.cursor], {
+          anyFeedback: annotations.length > 0,
+          space,
+          // Where `e` cannot work it is not offered: a key that declines one
+          // press after being advertised teaches the wrong thing.
+          canEdit: versionB === latest,
+          canAnnotate: spanAtCursor(rows, selection) !== null,
+          annotated: Boolean(annotationAtCursor()),
+          hasNote: general.trim().length > 0,
+          selecting: selection.active,
+          plural: spanSize(rows, selection) > 1,
+          diffing: versionA !== null,
+          canDiff: previousVersion !== null,
+          manyVersions: props.versions.length > 1,
+        }),
+        inner,
+      ).map((line) => (line ? dim(line) : ''));
+
   const bodyHeight = Math.max(
     MIN_BODY,
-    (stdout?.rows ?? 24) - CHROME_WITHOUT_HINTS - reserveRows - summary.length,
+    (stdout?.rows ?? 24) - CHROME_AROUND_BODY - hintRows.length - tail.length,
   );
 
   const move = useCallback(
@@ -1101,10 +1134,6 @@ export function ReviewApp(props: ReviewAppProps) {
   // viewport would otherwise draw a frame shorter than the terminal, and Ink
   // adds a newline under any frame that does not reach the bottom — the same
   // gap the chrome constant was leaving.
-  // What space would do where the cursor is, so the hint says it rather than
-  // making you press it to find out.
-  const space = spaceAction();
-
   const body = fit(
     mode.kind === 'help'
       ? helpLines(inner, previousVersion !== null)
@@ -1125,70 +1154,10 @@ export function ReviewApp(props: ReviewAppProps) {
   );
 
   /**
-   * A question stands alone.
-   *
-   * While one is up, the summary block under it is not drawn: what the version
-   * holds is a thing to read while you are reading the plan, not an answer to
-   * `Execute this?`. The rows it gives up are not left blank under the question
-   * — they go to the hint bar's padding, so the question ends the page the way
-   * the summary does — but they still feed `bodyHeight`, because a document
-   * that reflowed under the question would leave `esc` putting you somewhere
-   * else in the plan.
-   */
-  const asking = mode.kind === 'leave' || mode.kind === 'handoff';
-
-  // Never bold. Colour carries the weight — red for what destroys something,
-  // yellow for everything else — and a bold row inside a frame reads as a
-  // heading, which a question is not.
-  const message =
-    mode.kind === 'leave'
-      ? touched.size || edits.size
-        ? red(leaveWarning(touched.size > 0, edits.size))
-        : yellow('Back to the list?')
-      : // The hand-off list carries its own question, on its own first line, so
-        // this row stays empty while the list is up.
-        mode.kind === 'handoff'
-        ? ''
-        : statusLine({
-            status,
-            note: mode.kind === 'note' ? mode.draft : '',
-            caret: mode.kind === 'note' ? mode.caret : 0,
-            typing: mode.kind === 'note',
-            width: inner,
-          });
-
-  /**
-   * What sits under the plan: the row for whatever just happened, then what
-   * this version holds — and only the rows with something on them. An empty
-   * status line is not a blank row, it is nothing.
-   *
-   * One blank above the block and none below it, so the gap between the plan
-   * and the hint bar is one line whether the version carries a summary, a
-   * question, or neither.
-   */
-  const tail = [...(message ? [message] : []), ...(asking ? [] : summary)];
-
-  /**
-   * The rows from the top of the body to just above the hint bar.
-   *
-   * Reserved rather than measured: the blank, the status row and the summary
-   * are counted whether or not they are used, and whatever the tail leaves over
-   * becomes padding under the hints. So the frame is exactly as tall on every
-   * screen — a status message arriving and a question opening both cost
-   * nothing — and the bottom rule never moves.
-   */
-  const room = bodyHeight + 2 + summary.length;
-
-  /**
    * One array rather than groups of rows, because the hand-off list has to be
-   * able to reach into the bottom of it. Drawn only over the body, the list
-   * left the reserved status and summary rows stranded underneath it as blanks
-   * — one, or four, depending on how much feedback the version happened to
-   * carry — so the gap under the question changed size from plan to plan while
-   * the question itself sat flush against the last line of the document.
-   *
-   * The document does not reflow either way, so `esc` puts you back on the row
-   * you were on.
+   * able to reach into the bottom of the body. Its separating blank belongs
+   * below the list, immediately above the hints; the other screens put theirs
+   * between the document and the summary or question.
    */
   const frameRows = (() => {
     if (mode.kind !== 'handoff') return [...body, '', ...tail];
@@ -1201,8 +1170,8 @@ export function ReviewApp(props: ReviewAppProps) {
         question: `Submit ${props.planId} v${versionB}`,
         width: inner,
       }),
-    ].slice(-room);
-    const above = room - block.length;
+    ].slice(-bodyHeight);
+    const above = bodyHeight - block.length;
     return [...body.slice(0, above), ...Array(Math.max(0, above - body.length)).fill(''), ...block];
   })();
 
@@ -1213,6 +1182,7 @@ export function ReviewApp(props: ReviewAppProps) {
       {frameRows.map((line, i) => (
         <Text key={i}>{frameLine(line, inner)}</Text>
       ))}
+      {mode.kind === 'handoff' ? <Text>{frameLine('', inner)}</Text> : null}
       {/*
         An armed ctrl+c takes the hint bar rather than a row of its own. The
         row it used to have was reserved on every frame and empty on almost all
@@ -1220,33 +1190,7 @@ export function ReviewApp(props: ReviewAppProps) {
         asked yet — and the hints are the one thing on screen it is safe to
         interrupt, because `^c exit` is what they were saying anyway.
       */}
-      {fit(
-        leaving
-          ? [red(EXIT_PROMPT)]
-          : hintLines(
-              hintsFor(mode, rows[selection.cursor], {
-                anyFeedback: annotations.length > 0,
-                space,
-                // Where `e` cannot work it is not offered: a key that declines one
-                // press after being advertised teaches the wrong thing.
-                canEdit: versionB === latest,
-                canAnnotate: spanAtCursor(rows, selection) !== null,
-                annotated: Boolean(annotationAtCursor()),
-                hasNote: general.trim().length > 0,
-                selecting: selection.active,
-                plural: spanSize(rows, selection) > 1,
-                diffing: versionA !== null,
-                canDiff: previousVersion !== null,
-                manyVersions: props.versions.length > 1,
-              }),
-              inner,
-            ).map((line) => (line ? dim(line) : '')),
-        // Plus whatever the block under the plan did not use. The rows have to
-        // go somewhere for the frame to keep its height, and under the bar is
-        // the one place they read as the frame's own bottom margin rather than
-        // as a gap between two things.
-        reserveRows + room - frameRows.length,
-      ).map((line, i) => (
+      {hintRows.map((line, i) => (
         <Text key={i}>{frameLine(line, inner)}</Text>
       ))}
       <Text>{bottomRule(frameWidth, ` ★ ${REPO} `)}</Text>
@@ -1664,32 +1608,6 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
 /** Which way `space` goes here. A gap only ever opens. */
 function spaceHint(action: SpaceAction): string {
   return action.kind === 'gap' || action.folded ? 'expand' : 'collapse';
-}
-
-/**
- * The widest bar browse mode can produce, for the height to be reserved from.
- *
- * It is one real hint set rather than the union of all of them: a heading on a
- * version carrying feedback, with every either/or resolved to the longer side.
- * That branch offers the most keys of any row — `space` for the section on top
- * of the ones a document line always has — and `j` rides along with it, so
- * nothing the cursor can land on needs more rows than this.
- */
-function widestHints(ctx: Pick<HintContext, 'canDiff' | 'manyVersions'>): Hint[] {
-  const hints: Hint[] = [
-    ['n', 'edit note'],
-    ['esc', 'back'],
-    ['^c', 'exit'],
-    ['space', 'collapse'],
-    ['v', 'unselect lines'],
-    ['e', 'edit lines'],
-    ['f', 'edit feedback'],
-    ['j', 'next feedback'],
-  ];
-  if (ctx.canDiff) hints.push(['d', 'show diff']);
-  if (ctx.manyVersions) hints.push(['←→', 'version']);
-  hints.push(['s', 'submit'], ['?', 'help']);
-  return hints;
 }
 
 /**

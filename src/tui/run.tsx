@@ -6,6 +6,7 @@ import { terminalWidth } from './frame.js';
 import { Picker, type PickerItem } from './Picker.js';
 import { ReviewApp, type Commands, type ReviewResult } from './ReviewApp.js';
 import { Steps, stepLine, type StepRow } from './Steps.js';
+import { UpdatePrompt, type UpdateChoice } from './UpdatePrompt.js';
 
 /**
  * Is there a terminal to draw on?
@@ -228,6 +229,8 @@ export interface RunPickerOptions<T> {
   items: Array<PickerItem<T>>;
   /** Delete the highlighted row, and return the list as it stands afterwards. */
   onDelete?: (item: PickerItem<T>) => Array<PickerItem<T>>;
+  /** What the hint bar says enter does. Defaults to `open`. */
+  enterLabel?: string;
   /** planx's own version, for the frame's top edge. */
   version?: string;
 }
@@ -249,11 +252,32 @@ export async function runPicker<T>(opts: RunPickerOptions<T>): Promise<T[]> {
         subtitle={opts.subtitle}
         items={opts.items}
         onDelete={opts.onDelete}
+        enterLabel={opts.enterLabel}
         version={opts.version}
         onDone={finish}
       />,
       { exitOnCtrlC: false },
     );
+
+    instance.waitUntilExit().then(() => finish([]));
+  });
+}
+
+/** Ask about a cached update before opening a review. No answer means skip. */
+export async function runUpdatePrompt(latest: string, current: string): Promise<UpdateChoice> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (chosen: UpdateChoice[]) => {
+      if (settled) return;
+      settled = true;
+      instance.unmount();
+      endFrame();
+      resolve(chosen[0] ?? 'skip');
+    };
+
+    const instance = render(<UpdatePrompt latest={latest} current={current} onDone={finish} />, {
+      exitOnCtrlC: false,
+    });
 
     instance.waitUntilExit().then(() => finish([]));
   });

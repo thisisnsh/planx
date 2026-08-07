@@ -9,6 +9,7 @@ import { readVersionText } from '../src/store/plans.js';
 import type { Feedback } from '../src/store/types.js';
 import { Picker, type PickerItem } from '../src/tui/Picker.js';
 import { ReviewApp, type Commands, type ReviewResult } from '../src/tui/ReviewApp.js';
+import { UpdatePrompt, type UpdateChoice } from '../src/tui/UpdatePrompt.js';
 import { brandTitle, MIN_FRAME_WIDTH, topRule } from '../src/tui/frame.js';
 import { Steps, stepLines } from '../src/tui/Steps.js';
 import { noticeFor, setUpdateNotice } from '../src/update/check.js';
@@ -249,6 +250,11 @@ function bodyRows(frame: string): string[] {
   return frameRows(frame).filter((line) => line.startsWith('│'));
 }
 
+/** Rows inside the frame, including blank ones and preserving their positions. */
+function allBodyRows(frame: string): string[] {
+  return frame.split('\n').filter((line) => stripAnsi(line).startsWith('│'));
+}
+
 /**
  * Where a note box opens — the tee is in the rail's column by construction.
  *
@@ -357,6 +363,38 @@ describe('the review frame', () => {
     // The first line of the plan is on the row after it, not jammed against
     // the header.
     expect(rows[2]).toContain('# Guard the clock regression');
+    app.unmount();
+  });
+
+  it('puts bottom spacing on the intended side of the hints', async () => {
+    const id = seed();
+    const app = mount(id, null, 1, [1], 100, 30, [], CAN);
+    await app.ready();
+
+    await app.press('f');
+    await app.press('one thing');
+    await app.press(ENTER);
+    await app.frame('This version has 1 feedback.');
+
+    let rows = allBodyRows(app.stdout.lastFrame).map(inner);
+    let boundary = rows.findIndex((row) => row.includes('This version has 1 feedback.'));
+    expect(rows.slice(boundary + 1).every(Boolean)).toBe(true);
+    expect(rows.slice(boundary + 1).join(' ')).toContain('s submit');
+
+    await app.press('s');
+    await app.frame(`Submit ${id} v1`);
+    rows = allBodyRows(app.stdout.lastFrame).map(inner);
+    boundary = rows.findLastIndex((row) => row === '');
+    expect(rows.slice(boundary + 1).every(Boolean)).toBe(true);
+    expect(rows.slice(boundary + 1).join(' ')).toContain('enter go');
+
+    await app.press(ESC);
+    await app.press(ESC);
+    await app.frame('will be lost');
+    rows = allBodyRows(app.stdout.lastFrame).map(inner);
+    boundary = rows.findIndex((row) => row.includes('Back to the list?'));
+    expect(rows.slice(boundary + 1).every(Boolean)).toBe(true);
+    expect(rows.slice(boundary + 1).join(' ')).toContain('enter back');
     app.unmount();
   });
 
@@ -2593,6 +2631,48 @@ describe('the update notice on the border', () => {
     await app.ready();
     await app.frame('v0.5.0 is available');
     app.unmount();
+  });
+});
+
+describe('the update choice before a review', () => {
+  function mountUpdate(): {
+    stdout: FakeStdout;
+    stdin: FakeStdin;
+    chosen: Promise<UpdateChoice[]>;
+    unmount: () => void;
+  } {
+    const stdout = new FakeStdout();
+    const stdin = new FakeStdin();
+    let resolve!: (choice: UpdateChoice[]) => void;
+    const chosen = new Promise<UpdateChoice[]>((done) => (resolve = done));
+    const instance = render(<UpdatePrompt latest="0.6.0" current="0.5.0" onDone={resolve} />, {
+      stdout: stdout as unknown as NodeJS.WriteStream,
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      exitOnCtrlC: false,
+      patchConsole: false,
+    });
+    return { stdout, stdin, chosen, unmount: () => instance.unmount() };
+  }
+
+  it('can install with enter or skip for this run', async () => {
+    const install = mountUpdate();
+    await waitFor(() => install.stdout.lastFrame.includes('Update to v0.6.0?'));
+    expect(install.stdout.lastFrame).toContain('Install update');
+    expect(install.stdout.lastFrame).toContain('runs planx update');
+    expect(install.stdout.lastFrame).toContain('Skip for now');
+    expect(install.stdout.lastFrame).toContain('asks again next time');
+    expect(install.stdout.lastFrame).toContain('enter choose');
+    install.stdin.send(ENTER);
+    await expect(install.chosen).resolves.toEqual(['update']);
+    install.unmount();
+
+    const skip = mountUpdate();
+    await waitFor(() => skip.stdout.lastFrame.includes('Update to v0.6.0?'));
+    skip.stdin.send(DOWN);
+    await waitFor(() => skip.stdout.lastFrame.includes('❯ Skip for now'));
+    skip.stdin.send(ENTER);
+    await expect(skip.chosen).resolves.toEqual(['skip']);
+    skip.unmount();
   });
 });
 

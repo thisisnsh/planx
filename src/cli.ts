@@ -24,6 +24,7 @@ import { StoreCorruptionError } from './store/atomic.js';
 import { readConfig } from './store/config.js';
 import { setStoreRoot } from './store/paths.js';
 import { PlanNotFoundError, resolvePlanRef, VersionNotFoundError } from './store/plans.js';
+import { clearScreen, isInteractive, runUpdatePrompt } from './tui/run.js';
 import {
   noticeFor,
   readUpdate,
@@ -212,6 +213,21 @@ export async function main(argv: readonly string[]): Promise<number> {
     const latest = interactive ? readUpdate(version) : null;
     if (latest) setUpdateNotice(noticeFor(latest));
     spawnUpdateCheck(interactive);
+
+    // `planx diff …`, bare `planx`, and the `planx <id>` shorthand all arrive
+    // here as the diff command. Printed diffs never ask: a pipe has no answer,
+    // and the output it requested must stay machine-readable.
+    if (
+      command === 'diff' &&
+      isInteractive() &&
+      !has(args, '--print') &&
+      !has(args, '--stat') &&
+      latest
+    ) {
+      const choice = await runUpdatePrompt(latest, version);
+      clearScreen();
+      if (choice === 'update') return cmdUpdate(ctx);
+    }
   }
 
   return dispatch(command, ctx);

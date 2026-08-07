@@ -1177,24 +1177,6 @@ export function hintsFor(state: SimState): Hint[] {
   return hints;
 }
 
-/** The widest bar browse mode can produce, for the height to reserve. */
-function widestHints(state: SimState): Hint[] {
-  const hints: Hint[] = [
-    ['n', 'edit note'],
-    ['esc', 'back'],
-    ['^c', 'exit'],
-    ['space', 'collapse'],
-    ['v', 'unselect lines'],
-    ['e', 'edit lines'],
-    ['f', 'edit feedback'],
-    ['j', 'next feedback'],
-  ];
-  if (previousVersion(state) !== null) hints.push(['d', 'show diff']);
-  if (state.versions.length > 1) hints.push(['←→', 'version']);
-  hints.push(['s', 'submit'], ['?', 'help']);
-  return hints;
-}
-
 /* ---------------------------------------------------------------- render */
 
 /** Every row of the frame, top rule to bottom rule, at the current width. */
@@ -1227,24 +1209,18 @@ export function frame(state: SimState): Line[] {
         : statusLine(state, inner);
 
   // A question stands alone: while a prompt is up, what the version holds is
-  // not drawn. The rows it gives up go to the hint bar's padding, so the
-  // question ends the page the way the summary does.
+  // not drawn.
   const asking = state.mode.kind === 'leave' || state.mode.kind === 'handoff';
   const summary = summaryLines(state, inner);
   const hints = hintLines(hintsFor(state), inner);
-  const reserve =
-    state.mode.kind === 'browse' ? hintLines(widestHints(state), inner).length : hints.length;
 
   // What sits under the plan — see the CLI's `tail`. Only the rows with
   // something on them: one blank above the block, none below it.
   const tail: Line[] = [...(message.length ? [message] : []), ...(asking ? [] : summary)];
-  // Reserved whether or not it is used, so the frame keeps its height and the
-  // hand-off list has room to anchor to the bottom of.
-  const room = body.length + 2 + summary.length;
   const page = (() => {
     if (state.mode.kind !== 'handoff') return [...body, [] as Line, ...tail];
-    const block = [[] as Line, ...handoffLines(state, state.mode, inner)].slice(-room);
-    const above = room - block.length;
+    const block = [[] as Line, ...handoffLines(state, state.mode, inner)].slice(-body.length);
+    const above = body.length - block.length;
     return [
       ...body.slice(0, above),
       ...Array.from({ length: Math.max(0, above - body.length) }, (): Line => []),
@@ -1256,12 +1232,8 @@ export function frame(state: SimState): Line[] {
     topRule(width, headerLine(state)),
     frameLine([], inner),
     ...page.map((line) => frameLine(line, inner)),
-    ...pad2(
-      hints.map((line) => [p(line, 'dim')] as Line),
-      // Plus whatever the block under the plan did not use, so the frame is
-      // exactly as tall on every screen.
-      reserve + room - page.length,
-    ).map((line) => frameLine(line, inner)),
+    ...(state.mode.kind === 'handoff' ? [frameLine([], inner)] : []),
+    ...hints.map((line) => frameLine([p(line, 'dim')], inner)),
     bottomRule(width, ` ★ ${REPO} `),
   ];
 }
