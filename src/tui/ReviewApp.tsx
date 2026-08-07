@@ -790,7 +790,8 @@ export function ReviewApp(props: ReviewAppProps) {
    * press after advertising itself — which is why the numbers are positional
    * and not fixed: `1` is whatever is first here, not always Revise.
    *
-   * Every command planx can build appears twice, once to run and once to copy.
+   * Every intent planx can build appears twice, once to run and once to hand
+   * its slash command to an agent.
    * A version with nothing to start still has one row, because the way back
    * into the review is a command too and a list you cannot answer is not a
    * question.
@@ -805,11 +806,14 @@ export function ReviewApp(props: ReviewAppProps) {
     if (lines.execute) {
       entries.push(entry('execute', 'Execute plan in a new session', lines.execute));
     }
-    if (revise) entries.push(entry('commands', 'Copy revise command', revise));
-    // The skill, not the launch line: this one is pasted into an agent that is
+    if (revise) {
+      entries.push(
+        entry('commands', 'Copy revise command for agent', `/planx revise ${props.planId}`),
+      );
+    }
+    // The skill, not the launch line: these are pasted into an agent that is
     // already running, where `claude` and its flags are the wrong half of the
-    // command. Copying the line planx would have run is for a terminal, and
-    // that is what the row above it is.
+    // command. The rows above are the terminal launch lines.
     if (lines.execute) {
       entries.push(
         entry(

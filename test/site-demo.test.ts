@@ -150,8 +150,8 @@ describe('the website demo', () => {
       .filter((line) => line.includes(':  '));
     expect(lines).toEqual([
       'Reopen it in your terminal:  planx guard-clock-a3f9 v3',
-      'Revise this plan in your agent:  /planx revise guard-clock-a3f9',
       'Execute it in your agent:  /planx execute guard-clock-a3f9 v3',
+      'Revise this plan in your agent:  /planx revise guard-clock-a3f9',
     ]);
   });
 

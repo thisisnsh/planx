@@ -8,7 +8,7 @@ and it opens one list of what can happen next to the plan:
   Submit guard-clock-regression-a3f9 v3
 ▸ 1. Revise plan in the session that wrote it   claude --resume 01J8XR "/planx revise guard-clock-regression-a3f9"
   2. Execute plan in a new session              claude "/planx execute guard-clock-regression-a3f9 v3"
-  3. Copy revise command                        claude --resume 01J8XR "/planx revise guard-clock-regression-a3f9"
+  3. Copy revise command for agent              /planx revise guard-clock-regression-a3f9
   4. Copy execute skill for agent               /planx execute guard-clock-regression-a3f9 v3
 ```
 
@@ -24,14 +24,14 @@ happens next to this plan. So there is one key, and one list. `x` is unbound.
 | --- | --- |
 | `Revise plan in the session that wrote it` | this version carries a comment or a note, **and** planx recorded a session and an agent for it |
 | `Execute plan in a new session` | planx recorded an agent for this version |
-| `Copy revise command` | the same condition as `Revise` |
+| `Copy revise command for agent` | the same condition as `Revise` |
 | `Copy execute skill for agent` | the same condition as `Execute` |
 | `Copy reopen command` | nothing else can be built, so the list would be empty |
 
-Every command planx can build appears twice: once to run, once to copy — except
-that the execute row copies the **skill**, `/planx execute <id> v<n>`, and not
-the launch line. That one is pasted into an agent that is already running, where
-`claude` and its flags are the wrong half of the command. The numbers are what
+Every intent planx can build appears twice: once to run, once to copy its
+**skill** for an agent — `/planx revise <id>` or `/planx execute <id> v<n>` —
+without the launch line. These are pasted into an agent that is already running,
+where `claude` and its flags are the wrong half of the command. The numbers are what
 you press — `↑↓` and `enter` still work — and they are
 positional, so `1` is whatever is first on this version rather than always
 `Revise`.
@@ -150,18 +150,18 @@ review has unmounted, because those programs want a stdin of their own and Ink
 is holding the terminal until then.
 
 The closing block prints either way, so a clipboard that could not be reached
-leaves you with the command rather than with a promise:
+leaves you with the command rather than with a promise. The copied command is
+always the final line and uses the terminal's white:
 
 ```
 Copied to your clipboard.
 
 Reopen it in your terminal:  planx guard-clock-regression-a3f9 v3
-Execute this plan in your agent:  /planx execute guard-clock-regression-a3f9 v3
+Execute it in your agent:  /planx execute guard-clock-regression-a3f9 v3
+Revise this plan in your agent:  /planx revise guard-clock-regression-a3f9
 ```
 
-Paste the second one to an agent and the `/planx` skill takes the execute branch:
-it loads the stored version with `planx show`, drops it into the current context,
-and implements it there.
+Paste the final line to an agent and the `/planx` skill takes the selected branch.
 
 **Every line says where its command runs.** A slash command and a bare command
 look alike enough on a terminal that a lead like `Paste to your agent:` was the
@@ -177,10 +177,10 @@ Revise this plan in your agent:  /planx revise guard-clock-regression-a3f9
 Execute it in your agent:  /planx execute guard-clock-regression-a3f9 v3
 ```
 
-The execute line carries no qualifier about the feedback. The order already says
-it: revise is the line above. Colour tells the three apart — the way back is grey
-throughout, revise is yellow, execute is blue — and the labels stay grey on every
-line, so the command is what the eye lands on.
+The execute line carries no qualifier about the feedback. Colour tells the three
+apart — terminal commands are white, revise is yellow, and execute is blue — and
+the labels stay grey on every line, so the command is what the eye lands on. A
+copied command becomes white when it moves to the end.
 
 Going back to the list gets the reopen line alone, which is what every block opens
 on — it is the one entry that is true of every ending:

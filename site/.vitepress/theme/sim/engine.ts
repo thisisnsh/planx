@@ -442,8 +442,9 @@ function handOff(state: SimState): void {
  * ask an agent for. A comment and the note are requests, and a request needs a
  * round.
  *
- * Every command appears twice, once to run and once to copy, which is why the
- * numbers are positional: `1` is whatever is first here, not always Revise.
+ * Every intent appears twice, once to run and once to copy for an agent, which
+ * is why the numbers are positional: `1` is whatever is first here, not always
+ * Revise.
  */
 function handoffEntries(state: SimState): HandoffEntry[] {
   const id = state.plan.id;
@@ -454,8 +455,10 @@ function handoffEntries(state: SimState): HandoffEntry[] {
 
   if (revise) entries.push(entry('revise', 'Revise plan in the session that wrote it', revise));
   entries.push(entry('execute', 'Execute plan in a new session', execute));
-  if (revise) entries.push(entry('commands', 'Copy revise command', revise));
-  // The skill rather than the launch line — this one is pasted into an agent
+  if (revise) {
+    entries.push(entry('commands', 'Copy revise command for agent', `/planx revise ${id}`));
+  }
+  // The skills rather than the launch lines — these are pasted into an agent
   // that is already running. See the CLI's `handoffEntries`.
   entries.push(
     entry('commands', 'Copy execute skill for agent', `/planx execute ${id} v${state.versionB}`),
@@ -1488,23 +1491,49 @@ function doneLines(state: SimState): Line[] {
   }
 
   // No blank lines between the entries: four adjacent lines read as one block,
-  // which is what they are. The way back is grey throughout — it is not the
-  // next step — and the two next steps carry a colour each.
-  out.push([p('Reopen it in your terminal:  ', 'dim'), p(`planx ${id} v${version}`, 'dim')]);
+  // which is what they are. Terminal commands are white, and the two agent
+  // steps carry a colour each unless that command was copied.
+  const entries: Array<{ command: string; line: Line }> = [
+    {
+      command: `planx ${id} v${version}`,
+      line: [p('Reopen it in your terminal:  ', 'dim'), p(`planx ${id} v${version}`)],
+    },
+  ];
   if (mode.action === 'commands') {
     if (carried) {
-      out.push([p('Revise this plan in your agent:  ', 'dim'), p(`/planx revise ${id}`, 'warn')]);
-      out.push([
-        p('Execute it in your agent:  ', 'dim'),
-        p(`/planx execute ${id} v${version}`, 'blue'),
-      ]);
+      entries.push(
+        {
+          command: `/planx revise ${id}`,
+          line: [p('Revise this plan in your agent:  ', 'dim'), p(`/planx revise ${id}`, 'warn')],
+        },
+        {
+          command: `/planx execute ${id} v${version}`,
+          line: [
+            p('Execute it in your agent:  ', 'dim'),
+            p(`/planx execute ${id} v${version}`, 'blue'),
+          ],
+        },
+      );
     } else {
-      out.push([
-        p('Execute this plan in your agent:  ', 'dim'),
-        p(`/planx execute ${id} v${version}`, 'blue'),
-      ]);
+      entries.push({
+        command: `/planx execute ${id} v${version}`,
+        line: [
+          p('Execute this plan in your agent:  ', 'dim'),
+          p(`/planx execute ${id} v${version}`, 'blue'),
+        ],
+      });
     }
   }
+  const copiedIndex = entries.findIndex(({ command }) => command === mode.command);
+  if (copiedIndex >= 0) {
+    const copied = entries[copiedIndex];
+    if (copied) {
+      entries.splice(copiedIndex, 1);
+      copied.line[copied.line.length - 1] = p(copied.command);
+      entries.push(copied);
+    }
+  }
+  out.push(...entries.map(({ line }) => line));
   out.push([]);
   out.push([p('press r to review it again', 'dim')]);
   return out;

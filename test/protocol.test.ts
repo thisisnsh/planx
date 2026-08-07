@@ -341,6 +341,16 @@ describe('the review hand-off', () => {
     ]);
   });
 
+  it('puts the copied command last', () => {
+    setColorEnabled(false);
+    expect(closingBlock('guard-clock-a3f9', 3, true, '/planx revise guard-clock-a3f9')).toEqual([
+      'Reopen it in your terminal:  planx guard-clock-a3f9 v3',
+      'Execute it in your agent:  /planx execute guard-clock-a3f9 v3',
+      'Revise this plan in your agent:  /planx revise guard-clock-a3f9',
+      '',
+    ]);
+  });
+
   // Four adjacent lines read as one block, which is what they are.
   it('runs the entries together, with no blank line between them', () => {
     setColorEnabled(false);
@@ -350,14 +360,15 @@ describe('the review hand-off', () => {
   });
 
   /**
-   * Colour is what tells the three apart at a glance: the way back is grey
-   * throughout, and the two next steps carry one each.
+   * Colour is what tells the three apart at a glance: the way back is white,
+   * and the two next steps carry one each.
    */
-  it('paints the way back grey, revise yellow and execute blue', () => {
+  it('paints the way back white, revise yellow and execute blue', () => {
     setColorEnabled(true);
     const [reopen, revise, execute] = closingBlock('guard-clock-a3f9', 3, true);
-    // Grey label, grey command: this is the way back, not the next step.
-    expect(reopen).toContain(`\x1b[2mplanx guard-clock-a3f9 v3\x1b[22m`);
+    // Grey label, white command: terminal commands remain easy to read.
+    expect(reopen).toContain(`\x1b[22m  planx guard-clock-a3f9 v3`);
+    expect(reopen).not.toContain(`\x1b[2mplanx guard-clock-a3f9 v3\x1b[22m`);
     // Truecolor, not a palette slot: planx has one yellow and one blue, and
     // they are the same wherever they are drawn.
     expect(revise).toContain(yellow('/planx revise guard-clock-a3f9'));
@@ -365,6 +376,15 @@ describe('the review hand-off', () => {
     expect(revise).toContain('\x1b[38;2;255;212;0m');
     // The labels are grey on every line, so the command is what stands out.
     for (const line of [reopen, revise, execute]) expect(line).toContain('\x1b[2m');
+    setColorEnabled(false);
+  });
+
+  it('paints the copied command white as well as putting it last', () => {
+    setColorEnabled(true);
+    const copied = '/planx revise guard-clock-a3f9';
+    const block = closingBlock('guard-clock-a3f9', 3, true, copied);
+    expect(block.at(-2)).toContain(`\x1b[22m  ${copied}`);
+    expect(block.at(-2)).not.toContain(yellow(copied));
     setColorEnabled(false);
   });
 });

@@ -1385,11 +1385,11 @@ describe('the hand-off list', () => {
     await app.press('s');
     await app.frame(`Submit ${id} v1`);
     const frame = app.stdout.lastFrame;
-    // Every command planx can build, once to run and once to copy, numbered in
+    // Every intent planx can build, once to run and once to copy for an agent, numbered in
     // the order they are on the list.
     expect(frame).toContain('1. Revise plan in the session that wrote it');
     expect(frame).toContain('2. Execute plan in a new session');
-    expect(frame).toContain('3. Copy revise command');
+    expect(frame).toContain('3. Copy revise command for agent');
     expect(frame).toContain('4. Copy execute skill for agent');
     expect(frame).toContain('claude --resume 01J8XR');
     expect(frame).toContain('↑↓ choose');
@@ -1507,6 +1507,21 @@ describe('the hand-off list', () => {
       action: 'commands',
       // The skill, not the launch line: this one is pasted into a running agent.
       command: `/planx execute ${id} v1`,
+    });
+    app.unmount();
+  });
+
+  it('copies only the revise command for an agent', async () => {
+    const id = seed();
+    const app = mount(id, null, 1, [1], 100, 30, [], CAN);
+    await app.ready();
+    await comment(app, 'needs work');
+
+    await app.press('s');
+    await app.press('3');
+    expect(await app.result).toMatchObject({
+      action: 'commands',
+      command: `/planx revise ${id}`,
     });
     app.unmount();
   });
@@ -1683,12 +1698,12 @@ describe('editing the command', () => {
     const rows = bodyRows(app.stdout.lastFrame).map(inner);
     const revise = rows.find((row) => row.includes('Revise plan in the session'))!;
     const execute = rows.find((row) => row.includes('Execute plan in a new session'))!;
-    const copy = rows.find((row) => row.includes('Copy revise command'))!;
+    const copy = rows.find((row) => row.includes('Copy revise command for agent'))!;
     expect(revise).toContain('claude --resume');
     expect(execute).toContain('claude "/planx execute guard v1"');
-    // The copy row carries the same line as the row that would run it.
-    expect(copy).toContain('claude --resume');
-    expect(copy.slice(copy.indexOf('claude'))).toBe(revise.slice(revise.indexOf('claude')));
+    // The copy row carries only the slash command for an already-running agent.
+    expect(copy).toContain('/planx revise guard');
+    expect(copy).not.toContain('claude --resume');
     app.unmount();
   });
 

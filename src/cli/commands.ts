@@ -475,7 +475,8 @@ export async function runInteractiveReview(
     );
   }
 
-  for (const line of closingBlock(id, result.version, carried)) ctx.out(line);
+  const copied = result.action === 'commands' ? (result.command ?? undefined) : undefined;
+  for (const line of closingBlock(id, result.version, carried, copied)) ctx.out(line);
   return 0;
 }
 
@@ -567,14 +568,13 @@ function countFeedback(n: number): string {
  * three adjacent lines together, and a ragged right edge of labels reads worse
  * than a ragged left edge of commands.
  *
- * The label is grey on every line, so the command is what the eye lands on, and
- * the tone is what tells the commands apart: the way back is grey with its
- * label, and the two next steps carry a colour each.
+ * The label is grey on every line, so the command is what the eye lands on. The
+ * way back uses the terminal's white, and the two next steps carry a colour each.
  */
 export function handOffLine(
   label: string,
   command: string,
-  tone: (text: string) => string = dim,
+  tone: (text: string) => string = (text) => text,
 ): string {
   return `${dim(`${label}:`)}  ${tone(command)}`;
 }
@@ -582,9 +582,9 @@ export function handOffLine(
 /**
  * How a review signs off: how to get back in, and what to do next.
  *
- * Reopening comes first, on every exit including a plain quit. It is the one
- * line that is true of every ending — a review that finished successfully
- * should not leave you without a way back to what you were just looking at.
+ * Reopening comes first, on every exit including a plain quit. When a command
+ * was copied, that entry moves to the end and uses the terminal's white so the
+ * clipboard's contents are the last thing the reviewer sees.
  *
  * What follows depends on what the submit carried. Feedback has to be answered
  * before the plan can be built, so it takes two commands; a submit that carried
@@ -594,23 +594,51 @@ export function handOffLine(
  * No blank lines between the entries. The air was there to give each command
  * room; four adjacent lines read as one block, which is what they are.
  *
- * `Execute it in your agent` carries no qualifier: the order already says the
- * feedback comes first, because revise is the line above it.
+ * `Execute it in your agent` carries no qualifier. The normal order puts revise
+ * first; a copied command moves after the other choices so it is easiest to find.
  */
-export function closingBlock(planId: string, version: number, carried?: boolean): string[] {
-  const lines = [handOffLine('Reopen it in your terminal', `planx ${planId} v${version}`)];
+export function closingBlock(
+  planId: string,
+  version: number,
+  carried?: boolean,
+  copiedCommand?: string,
+): string[] {
+  const plain = (text: string) => text;
+  const entries: Array<{ label: string; command: string; tone: (text: string) => string }> = [
+    {
+      label: 'Reopen it in your terminal',
+      command: `planx ${planId} v${version}`,
+      tone: plain,
+    },
+  ];
 
   if (carried === true) {
-    lines.push(
-      handOffLine('Revise this plan in your agent', `/planx revise ${planId}`, yellow),
-      handOffLine('Execute it in your agent', `/planx execute ${planId} v${version}`, blue),
+    entries.push(
+      { label: 'Revise this plan in your agent', command: `/planx revise ${planId}`, tone: yellow },
+      {
+        label: 'Execute it in your agent',
+        command: `/planx execute ${planId} v${version}`,
+        tone: blue,
+      },
     );
   } else if (carried === false) {
-    lines.push(
-      handOffLine('Execute this plan in your agent', `/planx execute ${planId} v${version}`, blue),
-    );
+    entries.push({
+      label: 'Execute this plan in your agent',
+      command: `/planx execute ${planId} v${version}`,
+      tone: blue,
+    });
   }
 
+  const copiedIndex = entries.findIndex(({ command }) => command === copiedCommand);
+  if (copiedIndex >= 0) {
+    const copied = entries[copiedIndex];
+    if (copied) {
+      entries.splice(copiedIndex, 1);
+      entries.push({ ...copied, tone: plain });
+    }
+  }
+
+  const lines = entries.map(({ label, command, tone }) => handOffLine(label, command, tone));
   lines.push('');
   return lines;
 }
