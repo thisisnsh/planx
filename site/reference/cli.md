@@ -51,13 +51,18 @@ planx capture --plan-id guard-clock-a3f9 --parent v2 --stdin
 Pick a plan back up: the feedback left on it.
 
 ```
-planx revise <id> [version] [--json]
+planx revise <id> [version] [--executing] [--json]
 ```
 
 One read with everything asked of the plan: each comment against the lines it quotes, and every line the reviewer rewrote by hand. It does not return the plan itself — the agent that wrote it already has it, and `planx show <id> --plain` is there for a session that does not. Comments left on an earlier version whose quoted text is still present word for word are reported as probably never addressed. Safe to run twice; it waits for nothing.
 
+| Flag | Meaning |
+| --- | --- |
+| `--executing` | For a reader about to build the plan: close on that, not on capture. |
+
 ```bash
 planx revise guard-clock-a3f9
+planx revise guard-clock-a3f9 --executing
 ```
 
 ## `planx executed`

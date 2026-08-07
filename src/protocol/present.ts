@@ -14,6 +14,16 @@ export interface ResumeOptions extends PresentOptions {
    * this one. See {@link carriedOver}.
    */
   carried: CarriedComment[];
+  /**
+   * The reader is about to build the plan, not revise it.
+   *
+   * Same feedback, same quotes, same carried-over section — a different last
+   * line. Executing a plan that still carries comments is supported, and
+   * `Revise the plan addressing every comment. Then run planx capture` is the
+   * wrong instruction for an agent that is about to build it. It was also the
+   * last thing in the output, which is the worst place for a wrong one.
+   */
+  executing?: boolean;
 }
 
 export interface CarriedComment {
@@ -80,6 +90,16 @@ export function presentResume(opts: ResumeOptions): string {
   }
 
   out.push('---');
+  if (opts.executing) {
+    out.push(
+      'Build the plan, addressing every comment as you go. Do not capture a new',
+      'version: the plan is what was reviewed, and the comments are instructions on',
+      'top of it for this build.',
+      '',
+    );
+    return out.join('\n');
+  }
+
   // A version whose only review is a set of edits has no comment to address,
   // and telling the agent to address every comment there sends it looking for
   // one. What it has to do instead is carry the reviewer's words through.

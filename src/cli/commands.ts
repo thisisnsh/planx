@@ -247,7 +247,16 @@ export function cmdRevise(ctx: Ctx): number {
     return 0;
   }
 
-  ctx.out(presentResume({ planId: id, version, feedback, carried, edits }));
+  ctx.out(
+    presentResume({
+      planId: id,
+      version,
+      feedback,
+      carried,
+      edits,
+      executing: has(ctx.args, '--executing'),
+    }),
+  );
   return 0;
 }
 

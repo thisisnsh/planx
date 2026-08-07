@@ -49,7 +49,7 @@ export const COMMANDS: CommandSpec[] = [
   {
     name: 'revise',
     group: 'agent',
-    usage: 'planx revise <id> [version] [--json]',
+    usage: 'planx revise <id> [version] [--executing] [--json]',
     summary: 'Pick a plan back up: the feedback left on it.',
     description:
       'One read with everything asked of the plan: each comment against the lines it quotes, ' +
@@ -58,7 +58,13 @@ export const COMMANDS: CommandSpec[] = [
       'session that does not. Comments left on an earlier version whose quoted text is still ' +
       'present word for word are reported as probably never addressed. Safe to run twice; it ' +
       'waits for nothing.',
-    examples: ['planx revise guard-clock-a3f9'],
+    flags: [
+      {
+        name: '--executing',
+        summary: 'For a reader about to build the plan: close on that, not on capture.',
+      },
+    ],
+    examples: ['planx revise guard-clock-a3f9', 'planx revise guard-clock-a3f9 --executing'],
   },
   {
     name: 'executed',

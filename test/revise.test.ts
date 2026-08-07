@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 /** What `cmdRevise` assembles, without going through the CLI. */
-function reviseText(planId: string, version: number): string {
+function reviseText(planId: string, version: number, executing = false): string {
   const text = readVersionText(planId, version)!;
   const history = listFeedback(planId);
   return presentResume({
@@ -38,6 +38,7 @@ function reviseText(planId: string, version: number): string {
     feedback: history.filter((f) => f.version === version),
     carried: carriedOver(history, version, text),
     edits: readVersions(planId).versions.find((v) => v.n === version)?.edits ?? [],
+    executing,
   });
 }
 
@@ -95,6 +96,49 @@ describe('revise', () => {
 
     expect(second).toBe(first);
     expect(JSON.stringify(listFeedback(planId))).toBe(before);
+  });
+});
+
+/**
+ * Executing a plan that still carries comments is supported, and the last thing
+ * an agent about to build it reads must not be an instruction to revise and
+ * capture. `--executing` is the same feedback with a different closing.
+ */
+describe('revise for a reader about to build it', () => {
+  it('closes on the build instruction and never names planx capture', () => {
+    const { planId, version } = capture({ text: PLAN, title: 'p' });
+    comment(planId, version, 7, 7, 'Wrong layer.');
+
+    const out = reviseText(planId, version, true);
+    // Same feedback, quoted against the same lines.
+    expect(out).toContain('**Feedback:** Wrong layer.');
+    expect(out).toContain('> Extend the guard in poller.ts.');
+
+    expect(out).toContain('Build the plan, addressing every comment as you go.');
+    expect(out).toContain('Do not capture a new');
+    expect(out).not.toContain('planx capture');
+    expect(out).not.toContain('Revise the plan');
+  });
+
+  it('says the same thing for a version whose only review is an edited line', () => {
+    const { planId, version } = capture({ text: PLAN, title: 'p' });
+    rewriteVersion(planId, version, [{ line: 7, text: 'Extend the guard on the R2 write path.' }]);
+
+    const out = reviseText(planId, version, true);
+    expect(out).toContain('### Edited by the reviewer');
+    expect(out).toContain('Build the plan, addressing every comment as you go.');
+    expect(out).not.toContain('planx capture');
+  });
+
+  /** Nothing to build against, and nothing to capture either. */
+  it('leaves the unreviewed and the nothing-to-change readings alone', () => {
+    const { planId, version } = capture({ text: PLAN, title: 'p' });
+    expect(reviseText(planId, version, true)).toContain('No review of v1 yet');
+
+    submitFeedback({ planId, version, annotations: [] });
+    const out = reviseText(planId, version, true);
+    expect(out).toContain('Reviewed with nothing to change. Implement it as written.');
+    expect(out).not.toContain('planx capture');
   });
 });
 
