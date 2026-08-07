@@ -221,9 +221,9 @@ export interface AddVersionOptions {
   agent?: string | null;
   parent?: number | null;
   note?: string | null;
-  /** The agent session that wrote this version, so planx can fork it later. */
+  /** The agent session that wrote this version, so planx can resume it later. */
   sessionId?: string | null;
-  /** That session's own command line, so a fork lands in the same state. */
+  /** That session's own command line, so a resume lands in the same state. */
   agentArgv?: readonly string[];
 }
 

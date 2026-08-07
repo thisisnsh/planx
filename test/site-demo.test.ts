@@ -97,7 +97,7 @@ describe('the website demo', () => {
     const state = open('executing');
     send(state, 's');
     expect(frameText(state)).toContain('▸ 1. Execute plan in a new session');
-    expect(frameText(state)).toContain('2. Copy execute command');
+    expect(frameText(state)).toContain('2. Copy execute skill for agent');
     expect(frameText(state)).toContain('↑↓ choose');
 
     send(state, 'enter');
@@ -119,10 +119,10 @@ describe('the website demo', () => {
   it('takes esc back to the plan rather than out of planx', () => {
     const state = open('executing');
     send(state, 's');
-    expect(frameText(state)).toContain('Copy execute command');
+    expect(frameText(state)).toContain('Copy execute skill for agent');
     send(state, 'escape');
     expect(frameText(state)).toContain('s submit');
-    expect(frameText(state)).not.toContain('Copy execute command');
+    expect(frameText(state)).not.toContain('Copy execute skill for agent');
   });
 
   it('opens a diff, and puts it away again', () => {

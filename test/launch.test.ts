@@ -33,21 +33,22 @@ afterEach(() => {
 });
 
 describe('the command each agent gets', () => {
-  it('forks the recorded session to revise, and opens a fresh one to execute', () => {
+  it('resumes the recorded session to revise, and opens a fresh one to execute', () => {
     const argv = ['--model', 'opus'];
     const prompt = '/planx revise guard-clock-a3f9';
 
+    // The session that wrote the plan, carried on rather than forked.
     expect(
       launchFor({ agent: 'claude', intent: 'revise', argv, sessionId: 'sess-1', prompt }),
     ).toEqual({
       bin: 'claude',
-      args: ['--model', 'opus', '--resume', 'sess-1', '--fork-session', prompt],
+      args: ['--model', 'opus', '--resume', 'sess-1', prompt],
     });
 
-    // Codex takes `fork` as a subcommand, so its flags go in front of it.
+    // Codex takes `resume` as a subcommand, so its flags go in front of it.
     expect(
       launchFor({ agent: 'codex', intent: 'revise', argv, sessionId: 'sess-1', prompt }),
-    ).toEqual({ bin: 'codex', args: ['--model', 'opus', 'fork', 'sess-1', prompt] });
+    ).toEqual({ bin: 'codex', args: ['--model', 'opus', 'resume', 'sess-1', prompt] });
 
     for (const agent of ['claude', 'codex'] as const) {
       expect(launchFor({ agent, intent: 'execute', argv, prompt })).toEqual({
@@ -87,7 +88,7 @@ describe('replaying the recorded launch line', () => {
     expect(replayableArgv(['--model=opus'])).toEqual(['--model=opus']);
   });
 
-  it('drops the session selectors, so they cannot collide with the fork', () => {
+  it('drops the session selectors, so they cannot collide with the resume', () => {
     expect(
       replayableArgv(['--resume', 'old-session', '--model', 'opus', '-c', '--fork-session']),
     ).toEqual(['--model', 'opus']);

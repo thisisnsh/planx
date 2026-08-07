@@ -448,16 +448,18 @@ function handOff(state: SimState): void {
 function handoffEntries(state: SimState): HandoffEntry[] {
   const id = state.plan.id;
   const asking = current(state).length > 0 || (state.notes[state.versionB] ?? '').trim().length > 0;
-  const revise = asking
-    ? `claude --resume ${SIM_SESSION} --fork-session "/planx revise ${id}"`
-    : null;
+  const revise = asking ? `claude --resume ${SIM_SESSION} "/planx revise ${id}"` : null;
   const execute = `claude "/planx execute ${id} v${state.versionB}"`;
   const entries: HandoffEntry[] = [];
 
   if (revise) entries.push(entry('revise', 'Revise plan in the session that wrote it', revise));
   entries.push(entry('execute', 'Execute plan in a new session', execute));
   if (revise) entries.push(entry('commands', 'Copy revise command', revise));
-  entries.push(entry('commands', 'Copy execute command', execute));
+  // The skill rather than the launch line — this one is pasted into an agent
+  // that is already running. See the CLI's `handoffEntries`.
+  entries.push(
+    entry('commands', 'Copy execute skill for agent', `/planx execute ${id} v${state.versionB}`),
+  );
   return entries;
 }
 
@@ -1139,10 +1141,16 @@ export function hintsFor(state: SimState): Hint[] {
   const space = spaceAction(state);
   const hints: Hint[] = [
     ['n', (state.notes[state.versionB] ?? '').trim() ? 'edit note' : 'add note'],
-    ['v', state.selection.active ? 'unselect lines' : 'select lines'],
-    ['esc', 'back'],
-    ['^c', 'exit'],
   ];
+
+  // `v` goes wherever `f` and `e` go: on a deletion or a gap there is no line
+  // of this version to anchor a selection to, and the same range can be
+  // selected from the line itself. It stays on while one is live, because `v`
+  // is the press that ends it.
+  if (state.selection.active || spanAtCursor(state) !== null)
+    hints.push(['v', state.selection.active ? 'unselect lines' : 'select lines']);
+
+  hints.push(['esc', 'back'], ['^c', 'exit']);
 
   // What space acts on is under the cursor and needs no naming; which way it
   // goes is the only thing you cannot see from the row.
@@ -1219,27 +1227,27 @@ export function frame(state: SimState): Line[] {
         : statusLine(state, inner);
 
   // A question stands alone: while a prompt is up, what the version holds is
-  // not drawn. The rows stay, blank, so the document does not reflow under it.
+  // not drawn. The rows it gives up go to the hint bar's padding, so the
+  // question ends the page the way the summary does.
   const asking = state.mode.kind === 'leave' || state.mode.kind === 'handoff';
-  const summary = summaryLines(state, inner).map((line) => (asking ? ([] as Line) : line));
+  const summary = summaryLines(state, inner);
   const hints = hintLines(hintsFor(state), inner);
   const reserve =
     state.mode.kind === 'browse' ? hintLines(widestHints(state), inner).length : hints.length;
 
-  // Everything between the top gap and the hint bar, as one block — see the
-  // CLI's `frameRows`. The hand-off list is anchored to the bottom of it with
-  // its one blank row on top, rather than drawn over the body alone and left
-  // floating above however many reserved rows this version happens to have.
-  const rest: Line[] = [...body, [], message, ...summary, []];
+  // What sits under the plan — see the CLI's `tail`. Only the rows with
+  // something on them: one blank above the block, none below it.
+  const tail: Line[] = [...(message.length ? [message] : []), ...(asking ? [] : summary)];
+  // Reserved whether or not it is used, so the frame keeps its height and the
+  // hand-off list has room to anchor to the bottom of.
+  const room = body.length + 2 + summary.length;
   const page = (() => {
-    if (state.mode.kind !== 'handoff') return rest;
-    const block = [[] as Line, ...handoffLines(state, state.mode, inner), [] as Line].slice(
-      -rest.length,
-    );
-    const room = rest.length - block.length;
+    if (state.mode.kind !== 'handoff') return [...body, [] as Line, ...tail];
+    const block = [[] as Line, ...handoffLines(state, state.mode, inner)].slice(-room);
+    const above = room - block.length;
     return [
-      ...body.slice(0, room),
-      ...Array.from({ length: Math.max(0, room - body.length) }, (): Line => []),
+      ...body.slice(0, above),
+      ...Array.from({ length: Math.max(0, above - body.length) }, (): Line => []),
       ...block,
     ];
   })();
@@ -1250,7 +1258,9 @@ export function frame(state: SimState): Line[] {
     ...page.map((line) => frameLine(line, inner)),
     ...pad2(
       hints.map((line) => [p(line, 'dim')] as Line),
-      reserve,
+      // Plus whatever the block under the plan did not use, so the frame is
+      // exactly as tall on every screen.
+      reserve + room - page.length,
     ).map((line) => frameLine(line, inner)),
     bottomRule(width, ` ★ ${REPO} `),
   ];

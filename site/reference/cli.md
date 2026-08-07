@@ -39,7 +39,7 @@ Reads the plan from stdin or a file and appends it as a new version. Capturing c
 | `--source <NAME>` | Which agent produced this (claude, codex, …). |
 | `--note <N>` | One line about what changed in this version. |
 | `--agent <NAME>` | Agent identifier recorded on the version. |
-| `--session-id <ID>` | The agent session that wrote this, so planx can fork it. |
+| `--session-id <ID>` | The agent session that wrote this, so planx can resume it. |
 
 ```bash
 planx capture --stdin --title "Guard the clock regression" < plan.md

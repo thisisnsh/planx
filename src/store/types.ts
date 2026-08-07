@@ -72,9 +72,9 @@ export const VersionRecordSchema = z.object({
    * breaks on it, and it goes in the release notes instead.
    */
   edits: z.array(EditRecordSchema).default([]),
-  /** The agent session that captured this version, for forking. */
+  /** The agent session that captured this version, for resuming. */
   session_id: z.string().nullable().default(null),
-  /** How that session was started, so the fork lands in the same state. */
+  /** How that session was started, so the resume lands in the same state. */
   agent_argv: z.array(z.string()).default([]),
 });
 export type VersionRecord = z.infer<typeof VersionRecordSchema>;

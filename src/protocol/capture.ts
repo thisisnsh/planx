@@ -23,7 +23,7 @@ export interface CaptureOptions {
   name?: string | null;
   agent?: string | null;
   sessionId?: string | null;
-  /** The agent's own command line, so a fork of this session lands the same way. */
+  /** The agent's own command line, so resuming this session lands the same way. */
   agentArgv?: readonly string[];
   author?: 'agent' | 'human' | 'import';
   cwd?: string;
@@ -91,7 +91,7 @@ export function capture(opts: CaptureOptions): CaptureResult {
 
   // Every version carries the session that produced it, not just the first:
   // `meta.session_id` is the session that started the plan, and the one worth
-  // forking is the one that wrote the version being reviewed.
+  // resuming is the one that wrote the version being reviewed.
   const added = addVersion(planId, opts.text, {
     author: opts.author ?? 'agent',
     agent: opts.agent ?? null,

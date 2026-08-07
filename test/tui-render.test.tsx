@@ -328,7 +328,7 @@ describe('the review frame', () => {
       const rows = bodyRows(app.stdout.lastFrame);
       heights.add(rows.length);
       // What the bar offers is how the row under the cursor names itself.
-      bars.add(rows.slice(-2).map(inner).join(' · '));
+      bars.add(hintBar(rows, 2));
       await app.press(DOWN);
     }
 
@@ -1212,10 +1212,10 @@ describe('j walks the feedback', () => {
   });
 });
 
-/** A version planx can start either intent for: an agent, and a session to fork. */
+/** A version planx can start either intent for: an agent, and a session to resume. */
 const CAN: Commands = {
   1: {
-    revise: 'claude --resume 01J8XR --fork-session "/planx revise guard"',
+    revise: 'claude --resume 01J8XR "/planx revise guard"',
     execute: 'claude "/planx execute guard v1"',
   },
 };
@@ -1352,8 +1352,8 @@ describe('the hand-off list', () => {
     expect(frame).toContain('1. Revise plan in the session that wrote it');
     expect(frame).toContain('2. Execute plan in a new session');
     expect(frame).toContain('3. Copy revise command');
-    expect(frame).toContain('4. Copy execute command');
-    expect(frame).toContain('claude --resume 01J8XR --fork-session');
+    expect(frame).toContain('4. Copy execute skill for agent');
+    expect(frame).toContain('claude --resume 01J8XR');
     expect(frame).toContain('↑↓ choose');
     expect(frame).toContain('1-4 pick');
     expect(frame).toContain('→ edit the command');
@@ -1370,7 +1370,7 @@ describe('the hand-off list', () => {
     const before = bodyRows(app.stdout.lastFrame).length;
 
     await app.press('s');
-    await app.frame('Copy execute command');
+    await app.frame('Copy execute skill for agent');
     expect(bodyRows(app.stdout.lastFrame)).toHaveLength(before);
     app.unmount();
   });
@@ -1383,7 +1383,7 @@ describe('the hand-off list', () => {
     const before = app.stdout.lastFrame;
 
     await app.press('s');
-    await app.frame('Copy execute command');
+    await app.frame('Copy execute skill for agent');
     await app.press(ESC);
     await app.frame('s submit');
     expect(app.stdout.lastFrame).toBe(before);
@@ -1408,16 +1408,17 @@ describe('the hand-off list', () => {
     await app.press(DOWN);
     await app.press(DOWN);
     await new Promise((r) => setTimeout(r, 120));
-    expect(app.stdout.lastFrame).toContain('▸ 4. Copy execute command');
+    expect(app.stdout.lastFrame).toContain('▸ 4. Copy execute skill for agent');
     app.unmount();
   });
 
   it('answers to its numbers, and does not let an unbound key reach the document', async () => {
-    const app = mount(seed(), null, 1, [1], 100, 30, [], CAN);
+    const id = seed();
+    const app = mount(id, null, 1, [1], 100, 30, [], CAN);
     await app.ready();
 
     await app.press('s');
-    await app.frame('Copy execute command');
+    await app.frame('Copy execute skill for agent');
     // `G` would jump to the bottom of the plan, and `9` names no row here.
     for (const key of ['G', '9']) await app.press(key);
     await new Promise((r) => setTimeout(r, 120));
@@ -1428,7 +1429,7 @@ describe('the hand-off list', () => {
     await app.press('2');
     expect(await app.result).toMatchObject({
       action: 'commands',
-      command: 'claude "/planx execute guard v1"',
+      command: `/planx execute ${id} v1`,
     });
     app.unmount();
   });
@@ -1443,18 +1444,19 @@ describe('the hand-off list', () => {
     await app.press(ENTER);
     expect(await app.result).toMatchObject({
       action: 'revise',
-      command: 'claude --resume 01J8XR --fork-session "/planx revise guard"',
+      command: 'claude --resume 01J8XR "/planx revise guard"',
     });
     app.unmount();
   });
 
   it('hands back the line to copy rather than running it', async () => {
-    const app = mount(seed(), null, 1, [1], 100, 30, [], CAN);
+    const id = seed();
+    const app = mount(id, null, 1, [1], 100, 30, [], CAN);
     await app.ready();
 
     await app.press('s');
     await app.press(DOWN);
-    await app.frame('▸ 2. Copy execute command');
+    await app.frame('▸ 2. Copy execute skill for agent');
     // A copy row will not open its command, and says so.
     expect(app.stdout.lastFrame).toContain('enter copy');
     expect(app.stdout.lastFrame).not.toContain('→ edit the command');
@@ -1465,7 +1467,8 @@ describe('the hand-off list', () => {
     await app.press(ENTER);
     expect(await app.result).toMatchObject({
       action: 'commands',
-      command: 'claude "/planx execute guard v1"',
+      // The skill, not the launch line: this one is pasted into a running agent.
+      command: `/planx execute ${id} v1`,
     });
     app.unmount();
   });
@@ -1479,7 +1482,7 @@ describe('the hand-off list', () => {
     await app.ready();
 
     await app.press('s');
-    await app.frame('Copy execute command');
+    await app.frame('Copy execute skill for agent');
     expect(app.stdout.lastFrame).not.toContain('Revise plan in the session');
     await app.press(ESC);
 
@@ -1488,7 +1491,7 @@ describe('the hand-off list', () => {
     await app.press(ENTER);
     await app.frame('1 line edited on this version.');
     await app.press('s');
-    await app.frame('Copy execute command');
+    await app.frame('Copy execute skill for agent');
     expect(app.stdout.lastFrame).not.toContain('Revise plan in the session');
     await app.press(ESC);
 
@@ -1501,7 +1504,7 @@ describe('the hand-off list', () => {
   });
 
   /**
-   * A version captured before planx recorded sessions has nothing to fork, and
+   * A version captured before planx recorded sessions has nothing to resume, and
    * one that names no agent has nothing to start at all. Neither is drawn and
    * then made to decline a press.
    */
@@ -1638,7 +1641,7 @@ describe('editing the command', () => {
     await comment(app);
 
     await app.press('s');
-    await app.frame('claude --resume 01J8XR --fork-session');
+    await app.frame('claude --resume 01J8XR');
     const rows = bodyRows(app.stdout.lastFrame).map(inner);
     const revise = rows.find((row) => row.includes('Revise plan in the session'))!;
     const execute = rows.find((row) => row.includes('Execute plan in a new session'))!;
@@ -1792,6 +1795,21 @@ function inner(row: string): string {
 }
 
 /**
+ * The hint bar, as one line.
+ *
+ * From the last row with anything on it rather than the last row of the frame:
+ * the bar's reserve also absorbs whatever the block above it did not use, so
+ * what follows it is padding that keeps the frame its height. `lines` is how
+ * many rows the bar itself wrapped to at this width.
+ */
+function hintBar(rows: string[], lines = 1): string {
+  const text = rows.map(inner);
+  let end = text.length;
+  while (end > 0 && !text[end - 1]) end--;
+  return text.slice(Math.max(0, end - lines), end).join(' · ');
+}
+
+/**
  * The row the cursor is on.
  *
  * By column, not by searching for the glyph: a folded note draws `▸` inside its
@@ -1816,7 +1834,7 @@ describe('the keys, and where they sit', () => {
     await app.press(ENTER);
     await app.frame('s submit');
 
-    const keys = inner(bodyRows(app.stdout.lastFrame).at(-1)!)
+    const keys = hintBar(bodyRows(app.stdout.lastFrame))
       .split(' · ')
       .map((part) => part.split(' ')[0]!);
     expect(keys).toEqual(['←→', 'd', 'e', 'f', 'j', 'n', 's', 'space', 'v', 'esc', '^c', '?']);
@@ -1874,7 +1892,7 @@ describe('the keys, and where they sit', () => {
     await app.frame('s submit');
 
     // The five the fixed order always put last, and so always lost.
-    const bar = bodyRows(app.stdout.lastFrame).slice(-3).map(inner).join(' · ');
+    const bar = hintBar(bodyRows(app.stdout.lastFrame), 3);
     for (const pair of ['s submit', 'v select lines', 'esc back', '^c exit', '? help']) {
       expect(bar).toContain(pair);
     }
@@ -1939,8 +1957,11 @@ describe('the keys, and where they sit', () => {
    * A deletion is a line of the version before this one. There is nothing in
    * this version for a comment to hang off or for `e` to rewrite, so neither
    * key is offered — it used to advertise `f` and then decline it.
+   *
+   * `v` goes with them: a selection anchored on a deletion leads to the same
+   * two keys, so offering it here only postpones the decline by a press.
    */
-  it('drops f and e on a row that is no line of this version', async () => {
+  it('drops v, f and e on a row that is no line of this version', async () => {
     const app = mount(seedTwoVersions(), 1, 2, [1, 2], 200);
     await app.ready();
 
@@ -1951,11 +1972,12 @@ describe('the keys, and where they sit', () => {
     }
     expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('10% then 50%');
 
-    const bar = bodyRows(app.stdout.lastFrame).slice(-2).map(inner).join(' · ');
+    const bar = hintBar(bodyRows(app.stdout.lastFrame), 2);
     expect(bar).not.toContain('f add feedback');
     expect(bar).not.toContain('e edit line');
+    expect(bar).not.toContain('v select lines');
     // The keys that work anywhere are still there.
-    expect(bar).toContain('v select lines');
+    expect(bar).toContain('n add note');
     expect(bar).toContain('^c exit');
     app.unmount();
   });

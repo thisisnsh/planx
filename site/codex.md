@@ -39,16 +39,16 @@ planx launches Codex for you. `s` opens the list, and the entry you pick runs th
 line beside it:
 
 ```
-codex fork 01J8XR… "/planx revise guard-clock-regression-a3f9"
+codex resume 01J8XR… "/planx revise guard-clock-regression-a3f9"
 codex "/planx execute guard-clock-regression-a3f9 v3"
 ```
 
-Revising forks the thread rather than continuing it, so the tab you were
-reviewing from is left alone. The flags the thread was started with are replayed
-in front, because a fork restores the conversation and not the terminal it was
-typed into — and the whole command is printed before it runs, so what it was
-granted is on the scrollback.
+Revising resumes the thread that wrote the plan rather than forking it, so the
+revision lands in the thread with the history in it. The flags the thread was
+started with are replayed in front, because resuming restores the conversation
+and not the terminal it was typed into — and the whole command is printed before
+it runs, so what it was granted is on the scrollback.
 
 For that to work, the capture has to have carried `--session-id
-"$CODEX_THREAD_ID"`; the skill does it. Without one there is nothing to fork, so
-the list simply does not offer that entry — see [Executing](/executing).
+"$CODEX_THREAD_ID"`; the skill does it. Without one there is nothing to resume,
+so the list simply does not offer that entry — see [Executing](/executing).

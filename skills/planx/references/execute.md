@@ -14,7 +14,7 @@ ambiguous, ask.
 
 `Execute plan in a new session` starts an agent with none of the planning
 conversation in it, so that read is not optional — do it before anything else.
-Revising forks the session that wrote the plan and already has it; executing
+Revising resumes the session that wrote the plan and already has it; executing
 does not.
 
 ## Read the feedback

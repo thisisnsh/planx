@@ -38,7 +38,7 @@ export const COMMANDS: CommandSpec[] = [
       {
         name: '--session-id',
         arg: 'ID',
-        summary: 'The agent session that wrote this, so planx can fork it.',
+        summary: 'The agent session that wrote this, so planx can resume it.',
       },
     ],
     examples: [

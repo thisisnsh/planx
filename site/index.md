@@ -84,8 +84,8 @@ A version with a predecessor opens as the diff against it: you opened v3 because
 v3 is new, and what is new about it is the diff. `d` shows the plan on its own
 instead, and `←` and `→` walk the history.
 
-You press `s`, and pick what happens next. planx can start the agent itself — a
-fork of the session that wrote the plan — or print the command for you to paste.
+You press `s`, and pick what happens next. planx can start the agent itself —
+resuming the session that wrote the plan — or print the command for you to paste.
 Either way it picks the plan up with your annotations attached to the lines they
 came from, and revises.
 

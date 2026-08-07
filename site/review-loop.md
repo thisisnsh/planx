@@ -131,10 +131,10 @@ not anything is pending, and it opens a list of what happens next to the plan:
 
 ```
   Submit guard-clock-regression-a3f9 v3
-▸ 1. Revise plan in the session that wrote it   claude --resume 01J8XR --fork-session "/planx revise guard-clock-regression-a3f9"
+▸ 1. Revise plan in the session that wrote it   claude --resume 01J8XR "/planx revise guard-clock-regression-a3f9"
   2. Execute plan in a new session              claude "/planx execute guard-clock-regression-a3f9 v3"
-  3. Copy revise command                        claude --resume 01J8XR --fork-session "/planx revise guard-clock-regression-a3f9"
-  4. Copy execute command                       claude "/planx execute guard-clock-regression-a3f9 v3"
+  3. Copy revise command                        claude --resume 01J8XR "/planx revise guard-clock-regression-a3f9"
+  4. Copy execute skill for agent               /planx execute guard-clock-regression-a3f9 v3
 ```
 
 The number picks and fires in one press; `↑ ↓` and `enter` do the same walking

@@ -6,10 +6,10 @@ and it opens one list of what can happen next to the plan:
 
 ```
   Submit guard-clock-regression-a3f9 v3
-▸ 1. Revise plan in the session that wrote it   claude --resume 01J8XR --fork-session "/planx revise guard-clock-regression-a3f9"
+▸ 1. Revise plan in the session that wrote it   claude --resume 01J8XR "/planx revise guard-clock-regression-a3f9"
   2. Execute plan in a new session              claude "/planx execute guard-clock-regression-a3f9 v3"
-  3. Copy revise command                        claude --resume 01J8XR --fork-session "/planx revise guard-clock-regression-a3f9"
-  4. Copy execute command                       claude "/planx execute guard-clock-regression-a3f9 v3"
+  3. Copy revise command                        claude --resume 01J8XR "/planx revise guard-clock-regression-a3f9"
+  4. Copy execute skill for agent               /planx execute guard-clock-regression-a3f9 v3
 ```
 
 Two keys used to end a review. `s` submitted and asked *agent or command?*; `x`
@@ -25,11 +25,14 @@ happens next to this plan. So there is one key, and one list. `x` is unbound.
 | `Revise plan in the session that wrote it` | this version carries a comment or a note, **and** planx recorded a session and an agent for it |
 | `Execute plan in a new session` | planx recorded an agent for this version |
 | `Copy revise command` | the same condition as `Revise` |
-| `Copy execute command` | the same condition as `Execute` |
+| `Copy execute skill for agent` | the same condition as `Execute` |
 | `Copy reopen command` | nothing else can be built, so the list would be empty |
 
-Every command planx can build appears twice: once to run, once to copy. The
-numbers are what you press — `↑↓` and `enter` still work — and they are
+Every command planx can build appears twice: once to run, once to copy — except
+that the execute row copies the **skill**, `/planx execute <id> v<n>`, and not
+the launch line. That one is pasted into an agent that is already running, where
+`claude` and its flags are the wrong half of the command. The numbers are what
+you press — `↑↓` and `enter` still work — and they are
 positional, so `1` is whatever is first on this version rather than always
 `Revise`.
 
@@ -94,9 +97,9 @@ on — which is why it is drawn over the plan rather than added under it.
 
 The question is the block's first line, in planx's own yellow — the same value
 as the frame around it — and the entries start on the very next row. The block's
-one blank row is *above* the question, separating it from the plan; below the
-last entry there is one blank and then the hint bar, on this screen and on every
-other.
+one blank row is *above* the question, separating it from the plan; the last
+entry sits directly on the hint bar. That is the rule everywhere in the review:
+one blank above whatever the page ends on, and nothing below it.
 
 The entries are blue. The highlighted one takes a `▸` and the blue at full
 strength; the rest are grey, as is every command. Inside the command the entry
@@ -105,8 +108,12 @@ editors already use — so which side of the list you are typing on is visible
 without reading a hint.
 
 An armed `ctrl+c` takes the hint bar rather than a row of its own. Nothing is
-reserved for it, on any planx screen, which is what keeps the gap under the list
-one line instead of however many rows this version's summary happens to need.
+reserved for it, on any planx screen.
+
+The rows the list does not need are not left under it: the status row and the
+summary the version would have drawn are counted into the hint bar's own
+padding, so the frame keeps its height, the bottom rule never moves, and the gap
+under the list is nothing at all.
 
 <PlanxSim scenario="executing" :rows="14" />
 
@@ -116,18 +123,18 @@ The version records which agent captured it, which session wrote it, and how tha
 session's terminal was started. So planx can be exact:
 
 ```
-claude --resume 01J8XR… --fork-session "/planx revise guard-clock-regression-a3f9"
+claude --resume 01J8XR… "/planx revise guard-clock-regression-a3f9"
 claude "/planx execute guard-clock-regression-a3f9 v3"
 ```
 
-Revising **forks** the session rather than continuing it. A fork carries every
-message up to now under a new id, so the agent picks up exactly where it left off
-while the tab it came from is left alone — and there is never one transcript with
-two processes writing to it.
+Revising **resumes** the session that wrote the plan rather than forking it. A
+fork would carry the same messages under a new id, which leaves the plan's
+history in a session nobody opens again and the revision in one that has no
+name — you asked for the session that wrote it, and that is the one it opens.
 
-The recorded launch line is replayed in front of all of that, because a fork
+The recorded launch line is replayed in front of all of that, because resuming
 restores the conversation and not the terminal it was typed into: a tab started
-with `--model opus --add-dir ../shared` would otherwise fork into a different
+with `--model opus --add-dir ../shared` would otherwise come back as a different
 agent with the same memory. Replay is verbatim, which means planx re-grants
 whatever the tab was granted — so the whole command is on screen before anything
 runs, and on the scrollback after.
@@ -210,7 +217,7 @@ built nothing.
 
 ## A new session, not a subprocess
 
-Executing starts a **fresh** agent, and revising forks the one that wrote the
+Executing starts a **fresh** agent, and revising resumes the one that wrote the
 plan. Neither is a subprocess of the review — planx hands over the terminal and
 exits with the agent's exit code, so you are talking to it directly, with the
 permissions its launch line carries and nothing wrapped around it.
@@ -221,8 +228,8 @@ to intervene with it.
 
 `Execute in a new session` means what it says: the agent it starts has none of
 the planning conversation, so the execute branch loads the plan with `planx show
-<id> v<n> --plain` before anything else. Revising has no such step — the forked
-session wrote the plan.
+<id> v<n> --plain` before anything else. Revising has no such step — the session
+it resumes wrote the plan.
 
 ## Why there is no model picker
 

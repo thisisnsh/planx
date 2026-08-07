@@ -38,8 +38,8 @@ Press `v` to start a selection, extend it with the arrows, and then:
 
 <PlanxSim scenario="agents" :rows="14" />
 
-`s` opens one list of what happens next: revise in a fork of the session that
-wrote the plan, execute in a fresh one, or print the line to paste yourself. The
+`s` opens one list of what happens next: revise in the session that wrote the
+plan, execute in a fresh one, or copy the line to paste yourself. The
 command each would run is on the row beside it, and `→` edits it before it goes.
 See [Executing](/executing).
 

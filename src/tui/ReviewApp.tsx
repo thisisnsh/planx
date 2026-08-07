@@ -59,7 +59,7 @@ export interface FeedbackBatch {
 
 /**
  * Per version: the launch line for each intent, or null where planx cannot
- * build one — no session recorded to fork, no agent named on the version.
+ * build one — no session recorded to resume, no agent named on the version.
  *
  * The commands themselves rather than a pair of flags, because they are what
  * the list shows, what the reviewer edits and what planx ends up running. A
@@ -113,7 +113,7 @@ export interface ReviewAppProps {
   previous: Feedback[];
   /**
    * The launch line for each intent, per version. Where planx cannot build one
-   * — no session recorded to fork, no agent named on the version — the entry is
+   * — no session recorded to resume, no agent named on the version — the entry is
    * not offered at all rather than being drawn and declining a press.
    */
   commands?: Commands;
@@ -197,15 +197,17 @@ type SpaceAction =
   | { kind: 'section'; heading: number; folded: boolean; inside?: boolean };
 
 /**
- * Top rule, the gaps above and below the body, the status line, the blank
- * above the hint bar, the bottom rule. Six rows — five, plus the one that is
- * now always between whatever the page ends on and the hints, so the bar has
- * air over it whether the version carries a summary or not.
+ * Top rule, the gaps above and below the body, the row kept for the status
+ * line, the bottom rule. Five rows.
+ *
+ * There is no blank under the block any more: what the version has to say sits
+ * directly on the hint bar, and the rows it does not use are given to the bar's
+ * own padding rather than left as a gap above it.
  *
  * The hint bar is added on top of this, because it wraps: how many rows it
  * takes is a function of the terminal's width.
  */
-const CHROME_WITHOUT_HINTS = 6;
+const CHROME_WITHOUT_HINTS = 5;
 const MIN_BODY = 5;
 const MIN_WIDTH = 48;
 /** The cursor arrow and the space after it. */
@@ -771,7 +773,19 @@ export function ReviewApp(props: ReviewAppProps) {
       entries.push(entry('execute', 'Execute plan in a new session', lines.execute));
     }
     if (revise) entries.push(entry('commands', 'Copy revise command', revise));
-    if (lines.execute) entries.push(entry('commands', 'Copy execute command', lines.execute));
+    // The skill, not the launch line: this one is pasted into an agent that is
+    // already running, where `claude` and its flags are the wrong half of the
+    // command. Copying the line planx would have run is for a terminal, and
+    // that is what the row above it is.
+    if (lines.execute) {
+      entries.push(
+        entry(
+          'commands',
+          'Copy execute skill for agent',
+          `/planx execute ${props.planId} v${versionB}`,
+        ),
+      );
+    }
 
     if (!entries.length) {
       entries.push(entry('commands', 'Copy reopen command', `planx ${props.planId} v${versionB}`));
@@ -1115,9 +1129,11 @@ export function ReviewApp(props: ReviewAppProps) {
    *
    * While one is up, the summary block under it is not drawn: what the version
    * holds is a thing to read while you are reading the plan, not an answer to
-   * `Execute this?`. The rows are reserved rather than removed — they still
-   * feed `bodyHeight`, and they render blank — because a document that reflows
-   * under the question would leave `esc` putting you somewhere else in the plan.
+   * `Execute this?`. The rows it gives up are not left blank under the question
+   * — they go to the hint bar's padding, so the question ends the page the way
+   * the summary does — but they still feed `bodyHeight`, because a document
+   * that reflowed under the question would leave `esc` putting you somewhere
+   * else in the plan.
    */
   const asking = mode.kind === 'leave' || mode.kind === 'handoff';
 
@@ -1142,24 +1158,40 @@ export function ReviewApp(props: ReviewAppProps) {
           });
 
   /**
-   * Everything between the top gap and the hint bar: the plan, then the row
-   * for whatever just happened, then what this version holds.
+   * What sits under the plan: the row for whatever just happened, then what
+   * this version holds — and only the rows with something on them. An empty
+   * status line is not a blank row, it is nothing.
    *
-   * One array rather than three groups of rows, because the hand-off list has
-   * to be able to reach into the bottom of it. Drawn only over the body, the
-   * list left the reserved status and summary rows stranded underneath it as
-   * blanks — one, or four, depending on how much feedback the version happened
-   * to carry — so the gap under the question changed size from plan to plan
-   * while the question itself sat flush against the last line of the document.
+   * One blank above the block and none below it, so the gap between the plan
+   * and the hint bar is one line whether the version carries a summary, a
+   * question, or neither.
+   */
+  const tail = [...(message ? [message] : []), ...(asking ? [] : summary)];
+
+  /**
+   * The rows from the top of the body to just above the hint bar.
    *
-   * The height is fixed either way, so the frame is exactly as tall as it was,
-   * the document does not reflow, and `esc` puts you back on the row you were
-   * on. One blank row above and one below, on this screen and on every other:
-   * the block is anchored to the bottom of the page carrying both of them.
+   * Reserved rather than measured: the blank, the status row and the summary
+   * are counted whether or not they are used, and whatever the tail leaves over
+   * becomes padding under the hints. So the frame is exactly as tall on every
+   * screen — a status message arriving and a question opening both cost
+   * nothing — and the bottom rule never moves.
+   */
+  const room = bodyHeight + 2 + summary.length;
+
+  /**
+   * One array rather than groups of rows, because the hand-off list has to be
+   * able to reach into the bottom of it. Drawn only over the body, the list
+   * left the reserved status and summary rows stranded underneath it as blanks
+   * — one, or four, depending on how much feedback the version happened to
+   * carry — so the gap under the question changed size from plan to plan while
+   * the question itself sat flush against the last line of the document.
+   *
+   * The document does not reflow either way, so `esc` puts you back on the row
+   * you were on.
    */
   const frameRows = (() => {
-    const rest = [...body, '', message, ...summary.map((line) => (asking ? '' : line)), ''];
-    if (mode.kind !== 'handoff') return rest;
+    if (mode.kind !== 'handoff') return [...body, '', ...tail];
 
     // On a page too short to hold the whole block the question is what goes:
     // the answers are the part you cannot act without.
@@ -1169,10 +1201,9 @@ export function ReviewApp(props: ReviewAppProps) {
         question: `Submit ${props.planId} v${versionB}`,
         width: inner,
       }),
-      '',
-    ].slice(-rest.length);
-    const room = rest.length - block.length;
-    return [...body.slice(0, room), ...Array(Math.max(0, room - body.length)).fill(''), ...block];
+    ].slice(-room);
+    const above = room - block.length;
+    return [...body.slice(0, above), ...Array(Math.max(0, above - body.length)).fill(''), ...block];
   })();
 
   return (
@@ -1210,7 +1241,11 @@ export function ReviewApp(props: ReviewAppProps) {
               }),
               inner,
             ).map((line) => (line ? dim(line) : '')),
-        reserveRows,
+        // Plus whatever the block under the plan did not use. The rows have to
+        // go somewhere for the frame to keep its height, and under the bar is
+        // the one place they read as the frame's own bottom margin rather than
+        // as a gap between two things.
+        reserveRows + room - frameRows.length,
       ).map((line, i) => (
         <Text key={i}>{frameLine(line, inner)}</Text>
       ))}
@@ -1583,12 +1618,23 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
     // The wording follows what the key would do, because that is the half of it
     // you cannot see: `n` writes the version's one note either way.
     ['n', ctx.hasNote ? 'edit note' : 'add note'],
-    ['v', ctx.selecting ? 'unselect lines' : 'select lines'],
+  ];
+
+  // `v` goes wherever `f` and `e` go. On a deletion or a gap the cursor is on
+  // no line of this version, so a selection anchored there has nothing to
+  // comment on or rewrite — and every range that does contain such a line can
+  // be anchored on the line itself and extended the other way, so offering the
+  // key here only advertises a selection the next press would decline.
+  // It stays on while one is live, because `v` is the press that ends it.
+  if (ctx.selecting || ctx.canAnnotate)
+    hints.push(['v', ctx.selecting ? 'unselect lines' : 'select lines']);
+
+  hints.push(
     ['esc', 'back'],
     // The one key that ends the session, and the only one that used to be
     // nowhere on screen.
     ['^c', 'exit'],
-  ];
+  );
 
   // Space is offered wherever it does something, which the same function the
   // key itself reads has already worked out. What it acts on is under the

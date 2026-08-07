@@ -58,9 +58,9 @@ function readPs(pid: number): string | null {
 /**
  * Which agent planx is running inside, and how that agent was started.
  *
- * Forking a session restores the conversation, not the terminal it was typed
- * into: a tab started with `--model opus --add-dir ../shared` forks without
- * either, which is a different agent with the same memory. So the launch line
+ * Resuming a session restores the conversation, not the terminal it was typed
+ * into: a tab started with `--model opus --add-dir ../shared` comes back with
+ * neither, which is a different agent with the same memory. So the launch line
  * is recorded alongside the session id and replayed verbatim.
  *
  * planx reads this itself rather than taking it as a flag — it is a fact about
@@ -192,11 +192,10 @@ export interface Launch {
 /**
  * The command for one agent and one intent.
  *
- * Revising forks rather than continuing in place: a fork carries every message
- * up to now under a new session id, so the agent picks up where it left off
- * while the tab it came from is left alone. The review runs in a second tab by
- * design, so the original is usually still live — a fork is what makes that a
- * non-event instead of something planx has to warn about.
+ * Revising resumes the session that wrote the plan rather than forking it. A
+ * fork carries the same messages under a new id, which leaves the plan's
+ * history in a session nobody opens again and the revision in a session that
+ * has no name — you asked for the one that wrote it, and this is it.
  *
  * Null when the launch cannot work: reviving a session planx was never told
  * about is not something to attempt with a guess.
@@ -207,10 +206,10 @@ export function launchFor(opts: LaunchOptions): Launch | null {
   if (opts.intent === 'execute') return { bin: opts.agent, args: [...argv, opts.prompt] };
   if (!opts.sessionId) return null;
 
-  // Codex takes `fork` as a subcommand, so its flags go in front of it.
+  // Codex takes `resume` as a subcommand, so its flags go in front of it.
   return opts.agent === 'codex'
-    ? { bin: 'codex', args: [...argv, 'fork', opts.sessionId, opts.prompt] }
-    : { bin: 'claude', args: [...argv, '--resume', opts.sessionId, '--fork-session', opts.prompt] };
+    ? { bin: 'codex', args: [...argv, 'resume', opts.sessionId, opts.prompt] }
+    : { bin: 'claude', args: [...argv, '--resume', opts.sessionId, opts.prompt] };
 }
 
 /** The whole command as one line, for the scrollback above the agent's frame. */
