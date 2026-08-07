@@ -130,16 +130,18 @@ One key ends a review. `s` is offered on every row of every version, whether or
 not anything is pending, and it opens a list of what happens next to the plan:
 
 ```
-  Submit feedback on guard-clock-regression-a3f9 v3 — then what?
-
-▸ Revise in the session that wrote it   claude --resume 01J8XR --fork-session "/planx revise guard-clock-regression-a3f9"
-  Execute in a new session
-  Just give me the command
+  Submit guard-clock-regression-a3f9 v3
+▸ 1. Revise plan in the session that wrote it   claude --resume 01J8XR --fork-session "/planx revise guard-clock-regression-a3f9"
+  2. Execute plan in a new session              claude "/planx execute guard-clock-regression-a3f9 v3"
+  3. Copy revise command                        claude --resume 01J8XR --fork-session "/planx revise guard-clock-regression-a3f9"
+  4. Copy execute command                       claude "/planx execute guard-clock-regression-a3f9 v3"
 ```
 
-`↑ ↓` choose, `enter` goes, `esc` puts you back on the row you were on. `→` moves
-into the command and it becomes editable, so the model, the directory and the
-prompt are yours to change before it runs.
+The number picks and fires in one press; `↑ ↓` and `enter` do the same walking
+it, and `esc` puts you back on the row you were on. `→` moves into the command
+and it becomes editable, so the model, the directory and the prompt are yours to
+change before it runs — on the two entries that run one. A copy entry puts its
+line on the clipboard instead, and will not open it for editing.
 
 Everything pending is submitted whichever entry you pick — including the one that
 builds the plan with its feedback still open, which is supported. A review that

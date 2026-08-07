@@ -67,10 +67,10 @@ export type HandoffAction = 'revise' | 'execute' | 'commands';
 export interface HandoffEntry {
   action: HandoffAction;
   label: string;
-  /** The launch line as it stands, rewritten in place. Null where there is none. */
-  command: string | null;
+  /** The launch line as it stands, rewritten in place. */
+  command: string;
   /** What planx built, so `esc` in the editor can put it back. */
-  original: string | null;
+  original: string;
 }
 
 export interface SimState {
@@ -421,22 +421,6 @@ function browse(state: SimState, key: string, now: number): void {
   }
 }
 
-/**
- * Is there anything for `s` to write?
- *
- * A comment, the note, or a line rewritten in place — and any version touched
- * this session, because emptying the last comment on one leaves nothing to
- * count and still has to be written for the deletion to stick.
- */
-function canSubmit(state: SimState): boolean {
-  return (
-    current(state).length > 0 ||
-    (state.notes[state.versionB] ?? '').trim().length > 0 ||
-    state.edits.size > 0 ||
-    state.touched.size > 0
-  );
-}
-
 /** The session the demo's plan was captured from — src/store/types.ts `session_id`. */
 const SIM_SESSION = '01J8XR';
 
@@ -457,34 +441,33 @@ function handOff(state: SimState): void {
  * change — settled text, already in the version — so there is nothing left to
  * ask an agent for. A comment and the note are requests, and a request needs a
  * round.
+ *
+ * Every command appears twice, once to run and once to copy, which is why the
+ * numbers are positional: `1` is whatever is first here, not always Revise.
  */
 function handoffEntries(state: SimState): HandoffEntry[] {
   const id = state.plan.id;
   const asking = current(state).length > 0 || (state.notes[state.versionB] ?? '').trim().length > 0;
+  const revise = asking
+    ? `claude --resume ${SIM_SESSION} --fork-session "/planx revise ${id}"`
+    : null;
+  const execute = `claude "/planx execute ${id} v${state.versionB}"`;
   const entries: HandoffEntry[] = [];
 
-  if (asking) {
-    entries.push(
-      entry(
-        'revise',
-        'Revise in the session that wrote it',
-        `claude --resume ${SIM_SESSION} --fork-session "/planx revise ${id}"`,
-      ),
-    );
-  }
-  entries.push(
-    entry(
-      'execute',
-      'Execute in a new session',
-      `claude "/planx execute ${id} v${state.versionB}"`,
-    ),
-    entry('commands', 'Just give me the command', null),
-  );
+  if (revise) entries.push(entry('revise', 'Revise plan in the session that wrote it', revise));
+  entries.push(entry('execute', 'Execute plan in a new session', execute));
+  if (revise) entries.push(entry('commands', 'Copy revise command', revise));
+  entries.push(entry('commands', 'Copy execute command', execute));
   return entries;
 }
 
-function entry(action: HandoffAction, label: string, command: string | null): HandoffEntry {
+function entry(action: HandoffAction, label: string, command: string): HandoffEntry {
   return { action, label, command, original: command };
+}
+
+/** A copy row shows its command and will not open it — see the CLI's `editable`. */
+function editable(item: HandoffEntry): boolean {
+  return item.action !== 'commands';
 }
 
 /**
@@ -499,12 +482,16 @@ function handoffKey(state: SimState, key: string): void {
   if (!here) return;
 
   if (!mode.editing) {
+    // The number picks and fires in one press: it is the whole point of
+    // numbering the rows.
+    const picked = /^[1-9]$/.test(key) ? mode.entries[Number(key) - 1] : undefined;
+    if (picked) return finish(state, picked.action, picked.command);
     if (key === 'up') state.mode = { ...mode, index: Math.max(0, mode.index - 1) };
     else if (key === 'down')
       state.mode = { ...mode, index: Math.min(mode.entries.length - 1, mode.index + 1) };
     // Into the line itself, to change the model, add a directory, rewrite the
     // prompt, or replace the command outright.
-    else if (key === 'right' && here.command !== null)
+    else if (key === 'right' && editable(here))
       state.mode = { ...mode, editing: true, caret: here.command.length };
     else if (key === 'enter') finish(state, here.action, here.command);
     // Back to the plan, on the row you were on — not out of planx.
@@ -512,7 +499,7 @@ function handoffKey(state: SimState, key: string): void {
     return;
   }
 
-  const command = here.command ?? '';
+  const command = here.command;
   // The edit survives arrowing away to another entry and back; `esc` is what
   // throws it away, and it puts back the line planx built.
   if (key === 'escape') {
@@ -560,7 +547,7 @@ function handoffKey(state: SimState, key: string): void {
 /** The list with the highlighted entry's command replaced by what was typed. */
 function withCommand(
   mode: Extract<Mode, { kind: 'handoff' }>,
-  command: string | null,
+  command: string,
 ): Extract<Mode, { kind: 'handoff' }> {
   return {
     ...mode,
@@ -1129,8 +1116,8 @@ export function hintsFor(state: SimState): Hint[] {
       ['enter', 'back'],
       ['esc', 'stay'],
     ];
-  // The list is walked, not indexed, so its bar says how to walk it. Inside the
-  // command the keys are the editor's, plus the one that gets back out.
+  // The list is walked *or* indexed, so its bar says both. Inside the command
+  // the keys are the editor's, plus the one that gets back out.
   if (mode.kind === 'handoff') {
     if (mode.editing)
       return [
@@ -1138,9 +1125,12 @@ export function hintsFor(state: SimState): Hint[] {
         ['esc', 'discard'],
         ['↑↓', 'back to the list'],
       ];
+    const here = mode.entries[mode.index];
     const hints: Hint[] = [['↑↓', 'choose']];
-    if (mode.entries[mode.index]?.command !== null) hints.push(['→', 'edit the command']);
-    return [...hints, ['enter', 'go'], ['esc', 'back']];
+    if (mode.entries.length > 1) hints.push([`1-${mode.entries.length}`, 'pick']);
+    if (here && editable(here)) hints.push(['→', 'edit the command']);
+    // What `enter` does on the row you are on: a copy row does not go anywhere.
+    return [...hints, ['enter', here && !editable(here) ? 'copy' : 'go'], ['esc', 'back']];
   }
   if (mode.kind === 'help') return [['any key', 'to close']];
   if (mode.kind === 'done') return [['r', 'review it again']];
@@ -1217,14 +1207,6 @@ export function frame(state: SimState): Line[] {
     state.bodyRows,
   );
 
-  // The list is drawn *over* the last few rows of the plan rather than pushing
-  // anything around: the frame is exactly as tall as it was, the document does
-  // not reflow, and `esc` puts you back on the row you were on.
-  if (state.mode.kind === 'handoff') {
-    const block = handoffLines(state, state.mode, inner).slice(-state.bodyRows);
-    body.splice(state.bodyRows - block.length, block.length, ...block);
-  }
-
   const message =
     state.mode.kind === 'leave'
       ? state.touched.size || state.edits.size
@@ -1244,13 +1226,28 @@ export function frame(state: SimState): Line[] {
   const reserve =
     state.mode.kind === 'browse' ? hintLines(widestHints(state), inner).length : hints.length;
 
+  // Everything between the top gap and the hint bar, as one block — see the
+  // CLI's `frameRows`. The hand-off list is anchored to the bottom of it with
+  // its one blank row on top, rather than drawn over the body alone and left
+  // floating above however many reserved rows this version happens to have.
+  const rest: Line[] = [...body, [], message, ...summary, []];
+  const page = (() => {
+    if (state.mode.kind !== 'handoff') return rest;
+    const block = [[] as Line, ...handoffLines(state, state.mode, inner), [] as Line].slice(
+      -rest.length,
+    );
+    const room = rest.length - block.length;
+    return [
+      ...body.slice(0, room),
+      ...Array.from({ length: Math.max(0, room - body.length) }, (): Line => []),
+      ...block,
+    ];
+  })();
+
   return [
     topRule(width, headerLine(state)),
     frameLine([], inner),
-    ...body.map((line) => frameLine(line, inner)),
-    frameLine([], inner),
-    frameLine(message, inner),
-    ...summary.map((line) => frameLine(line, inner)),
+    ...page.map((line) => frameLine(line, inner)),
     ...pad2(
       hints.map((line) => [p(line, 'dim')] as Line),
       reserve,
@@ -1349,40 +1346,41 @@ function renderRow(
 
 /** Columns between the longest label and the command column. */
 const COMMAND_GAP = 3;
+/** `1. ` — the number every row is answerable by. */
+const NUMBER_WIDTH = 3;
 
 /**
  * The list of what happens next, as rows to draw over the plan.
  *
- * The entries are blue: the highlighted one at full strength with a `▸`, the
- * rest dim. Only the highlighted row draws its command — the whole launch line,
- * flags and all, in a column past the widest label — and inside the command the
- * entry itself goes dim, so which side of the list you are typing on is visible
- * without reading a hint.
+ * The question is the block's first line and the rows start on the next one;
+ * the block's one blank row is above the question, separating it from the plan.
+ *
+ * Every row draws its command — the whole launch line, flags and all, in a
+ * column past the widest label — because a row you can pick by number is a row
+ * you may never highlight, and a copy row that will not show you what it copies
+ * is asking to be trusted. The highlighted entry is blue, the rest grey, and
+ * while the command is being typed the entry goes grey too.
  */
 function handoffLines(
   state: SimState,
   mode: Extract<Mode, { kind: 'handoff' }>,
   width: number,
 ): Line[] {
-  const carrying = canSubmit(state);
-  const question = carrying
-    ? `Submit feedback on ${state.plan.id} v${state.versionB} — then what?`
-    : `${state.plan.id} v${state.versionB} — what next?`;
+  const question = `Submit ${state.plan.id} v${state.versionB}`;
   const labelWidth = Math.max(...mode.entries.map((e) => e.label.length));
-  const room = Math.max(1, width - CURSOR_GUTTER - labelWidth - COMMAND_GAP);
+  const room = Math.max(1, width - CURSOR_GUTTER - NUMBER_WIDTH - labelWidth - COMMAND_GAP);
 
   return [
-    trunc([p(question, 'warn')], width),
-    [],
+    trunc([p(question, 'sig')], width),
     ...mode.entries.map((item, i): Line => {
       const active = i === mode.index;
-      const label = `${active ? '▸' : ' '} ${item.label.padEnd(labelWidth, ' ')}`;
-      const painted = p(label, active && !mode.editing ? 'blue' : 'dim');
-      if (!active || item.command === null) return [painted];
+      const label = `${active ? '▸' : ' '} ${i + 1}. ${item.label.padEnd(labelWidth, ' ')}`;
+      const painted = p(label, active && !mode.editing ? 'blue' : 'gray');
       // The caret is the lit block the note and the line editor already use.
-      const command: Line = mode.editing
-        ? caretLine(item.command, mode.caret, room)
-        : trunc([p(item.command, 'dim')], room);
+      const command: Line =
+        active && mode.editing
+          ? caretLine(item.command, mode.caret, room)
+          : trunc([p(item.command, 'gray')], room);
       return [painted, spaces(COMMAND_GAP), ...command];
     }),
   ];
@@ -1498,6 +1496,13 @@ function doneLines(state: SimState): Line[] {
     out.push([]);
     out.push([p('press r to review it again', 'dim')]);
     return out;
+  }
+
+  // The closing block prints either way: a clipboard that could not be reached
+  // would otherwise leave the reviewer with a promise and no command.
+  if (mode.action === 'commands') {
+    out.push([p('Copied to your clipboard.', 'green')]);
+    out.push([]);
   }
 
   // No blank lines between the entries: four adjacent lines read as one block,

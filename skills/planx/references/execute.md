@@ -12,7 +12,7 @@ Defaults to the latest version, which is the one to build. If the user did not
 name a plan, run `planx list --json` and pick from the titles; if it is
 ambiguous, ask.
 
-`Execute in a new session` starts an agent with none of the planning
+`Execute plan in a new session` starts an agent with none of the planning
 conversation in it, so that read is not optional — do it before anything else.
 Revising forks the session that wrote the plan and already has it; executing
 does not.

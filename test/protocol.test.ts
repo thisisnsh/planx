@@ -5,7 +5,7 @@ import { closingBlock, handOffLine, runInteractiveReview, type Ctx } from '../sr
 import { capture, deriveTitle } from '../src/protocol/capture.js';
 import { carriedOver, presentResume } from '../src/protocol/present.js';
 import { buildAnnotation, submitFeedback } from '../src/protocol/submit.js';
-import { setColorEnabled } from '../src/render/ansi.js';
+import { blue, setColorEnabled, yellow } from '../src/render/ansi.js';
 import { readVersionText } from '../src/store/plans.js';
 import { normalizedLines } from '../src/store/text.js';
 import { listFeedback } from '../src/store/feedback.js';
@@ -358,8 +358,11 @@ describe('the review hand-off', () => {
     const [reopen, revise, execute] = closingBlock('guard-clock-a3f9', 3, true);
     // Grey label, grey command: this is the way back, not the next step.
     expect(reopen).toContain(`\x1b[2mplanx guard-clock-a3f9 v3\x1b[22m`);
-    expect(revise).toContain(`\x1b[33m/planx revise guard-clock-a3f9\x1b[39m`);
-    expect(execute).toContain(`\x1b[34m/planx execute guard-clock-a3f9 v3\x1b[39m`);
+    // Truecolor, not a palette slot: planx has one yellow and one blue, and
+    // they are the same wherever they are drawn.
+    expect(revise).toContain(yellow('/planx revise guard-clock-a3f9'));
+    expect(execute).toContain(blue('/planx execute guard-clock-a3f9 v3'));
+    expect(revise).toContain('\x1b[38;2;255;212;0m');
     // The labels are grey on every line, so the command is what stands out.
     for (const line of [reopen, revise, execute]) expect(line).toContain('\x1b[2m');
     setColorEnabled(false);

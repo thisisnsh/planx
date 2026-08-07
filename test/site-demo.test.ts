@@ -68,11 +68,11 @@ describe('the website demo', () => {
 
     expect(frameText(state)).toContain('Name the function.');
 
-    // `s` opens the list of what happens next; the last entry is the one you
-    // paste yourself.
+    // `s` opens the list of what happens next; the copy entries are the ones
+    // you paste yourself.
     send(state, 's');
-    expect(frameText(state)).toContain('Submit feedback on guard-clock-a3f9 v3 — then what?');
-    send(state, 'down', 'down', 'enter');
+    expect(frameText(state)).toContain('Submit guard-clock-a3f9 v3');
+    send(state, 'down', 'down', 'down', 'enter');
     expect(state.handoff).toContain('## planx — guard-clock-a3f9 v3');
     expect(state.handoff).toContain('**Feedback:** Name the function.');
     expect(state.handoff).toContain('planx capture --plan-id guard-clock-a3f9 --parent v3');
@@ -81,11 +81,11 @@ describe('the website demo', () => {
 
   it('tells the agent to build it when the review asked for nothing', () => {
     const state = open('executing');
-    // Nothing to submit, so the question is shorter and there is no `Revise`
-    // on the list — the plan is fine, and what is left is to build it.
+    // Nothing to submit, so there is no `Revise` pair on the list — the plan
+    // is fine, and what is left is to build it.
     send(state, 's');
-    expect(frameText(state)).toContain('guard-clock-a3f9 v3 — what next?');
-    expect(frameText(state)).not.toContain('Revise in the session');
+    expect(frameText(state)).toContain('Submit guard-clock-a3f9 v3');
+    expect(frameText(state)).not.toContain('Revise plan in the session');
 
     send(state, 'down', 'enter');
     expect(state.handoff).toContain('Reviewed with nothing to change. Implement it as written.');
@@ -96,8 +96,8 @@ describe('the website demo', () => {
   it('starts the agent itself on the entry that runs one, and says what it ran', () => {
     const state = open('executing');
     send(state, 's');
-    expect(frameText(state)).toContain('▸ Execute in a new session');
-    expect(frameText(state)).toContain('Just give me the command');
+    expect(frameText(state)).toContain('▸ 1. Execute plan in a new session');
+    expect(frameText(state)).toContain('2. Copy execute command');
     expect(frameText(state)).toContain('↑↓ choose');
 
     send(state, 'enter');
@@ -119,10 +119,10 @@ describe('the website demo', () => {
   it('takes esc back to the plan rather than out of planx', () => {
     const state = open('executing');
     send(state, 's');
-    expect(frameText(state)).toContain('Just give me the command');
+    expect(frameText(state)).toContain('Copy execute command');
     send(state, 'escape');
     expect(frameText(state)).toContain('s submit');
-    expect(frameText(state)).not.toContain('Just give me the command');
+    expect(frameText(state)).not.toContain('Copy execute command');
   });
 
   it('opens a diff, and puts it away again', () => {

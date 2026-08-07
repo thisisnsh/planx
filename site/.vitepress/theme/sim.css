@@ -120,27 +120,35 @@
   text-underline-offset: 2px;
 }
 
+/* These are the CLI's truecolor values, not approximations of them: planx has
+   one palette, and the simulator is a picture of the terminal. */
 .pnx-screen .code,
 .pnx-screen .green {
-  color: #7fd88f;
+  color: #3dd68c;
 }
 
 .pnx-screen .red {
-  color: #ff6b5a;
+  color: #ff5f56;
 }
 
+/* planx's one yellow, the same value the frame and the docs are built on. */
 .pnx-screen .warn {
-  color: #ffb020;
+  color: var(--pnx-signal);
 }
 
 /* The execute command in the closing block, told apart from revise above it. */
 .pnx-screen .blue {
-  color: #6aa9ff;
+  color: #4da6ff;
+}
+
+/* The grey that is a colour rather than a fade — the command column. */
+.pnx-screen .gray {
+  color: #8a8a94;
 }
 
 /* A removed line: struck through, the way the terminal draws it. */
 .pnx-screen .delline {
-  color: #ff6b5a;
+  color: #ff5f56;
   text-decoration: line-through;
 }
 

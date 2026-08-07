@@ -3,7 +3,7 @@ import { render } from 'ink';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { capture } from '../src/protocol/capture.js';
 import { buildAnnotation, submitFeedback } from '../src/protocol/submit.js';
-import { setColorEnabled, stripAnsi } from '../src/render/ansi.js';
+import { green, red, setColorEnabled, stripAnsi } from '../src/render/ansi.js';
 import { listFeedback } from '../src/store/feedback.js';
 import { readVersionText } from '../src/store/plans.js';
 import type { Feedback } from '../src/store/types.js';
@@ -1228,7 +1228,7 @@ describe('submitting', () => {
     await app.ready();
 
     await app.press('s');
-    await app.frame('Execute in a new session');
+    await app.frame('Execute plan in a new session');
     await app.press(ENTER);
     const result = await app.result;
     expect(result.action).toBe('execute');
@@ -1238,15 +1238,15 @@ describe('submitting', () => {
   });
 
   it('opens the list on s even with nothing to submit', async () => {
-    const app = mount(seed(), null, 1);
+    const id = seed();
+    const app = mount(id, null, 1);
     await app.ready();
 
     await app.press('s');
-    // Not a submit question: there is nothing to submit, and the list still has
-    // to say what happens to the plan.
-    await app.frame('— what next?');
-    expect(app.stdout.lastFrame).not.toContain('Submit feedback on');
-    expect(app.stdout.lastFrame).toContain('Just give me the command');
+    // Nothing to submit and no agent recorded, so the way back in is the whole
+    // list: the question is the same one, and it still has an answer.
+    await app.frame(`Submit ${id} v1`);
+    expect(app.stdout.lastFrame).toContain('Copy reopen command');
     app.unmount();
   });
 
@@ -1259,7 +1259,7 @@ describe('submitting', () => {
     await app.press(ENTER);
     await app.frame('needs work');
     await app.press('s');
-    await app.frame('Just give me the command');
+    await app.frame('Copy reopen command');
     await app.press(ENTER);
 
     const result = await app.result;
@@ -1283,7 +1283,7 @@ describe('submitting', () => {
     await app.frame('one thing');
 
     await app.press('s');
-    await app.frame('Execute in a new session');
+    await app.frame('Execute plan in a new session');
     // Past `Revise`, which a comment has put on the list.
     await app.press(DOWN);
     await app.press(ENTER);
@@ -1345,14 +1345,17 @@ describe('the hand-off list', () => {
     await comment(app);
 
     await app.press('s');
-    await app.frame(`Submit feedback on ${id} v1 — then what?`);
+    await app.frame(`Submit ${id} v1`);
     const frame = app.stdout.lastFrame;
-    expect(frame).toContain('Revise in the session that wrote it');
-    expect(frame).toContain('Execute in a new session');
-    expect(frame).toContain('Just give me the command');
-    // The first entry is highlighted, and draws the command it would run.
+    // Every command planx can build, once to run and once to copy, numbered in
+    // the order they are on the list.
+    expect(frame).toContain('1. Revise plan in the session that wrote it');
+    expect(frame).toContain('2. Execute plan in a new session');
+    expect(frame).toContain('3. Copy revise command');
+    expect(frame).toContain('4. Copy execute command');
     expect(frame).toContain('claude --resume 01J8XR --fork-session');
     expect(frame).toContain('↑↓ choose');
+    expect(frame).toContain('1-4 pick');
     expect(frame).toContain('→ edit the command');
     expect(frame).toContain('enter go');
     expect(frame).toContain('esc back');
@@ -1367,7 +1370,7 @@ describe('the hand-off list', () => {
     const before = bodyRows(app.stdout.lastFrame).length;
 
     await app.press('s');
-    await app.frame('Just give me the command');
+    await app.frame('Copy execute command');
     expect(bodyRows(app.stdout.lastFrame)).toHaveLength(before);
     app.unmount();
   });
@@ -1380,7 +1383,7 @@ describe('the hand-off list', () => {
     const before = app.stdout.lastFrame;
 
     await app.press('s');
-    await app.frame('Just give me the command');
+    await app.frame('Copy execute command');
     await app.press(ESC);
     await app.frame('s submit');
     expect(app.stdout.lastFrame).toBe(before);
@@ -1393,33 +1396,40 @@ describe('the hand-off list', () => {
     await comment(app);
 
     await app.press('s');
-    await app.frame('Revise in the session that wrote it');
-    // Up at the top does nothing: the first entry keeps the command column.
+    await app.frame('Revise plan in the session that wrote it');
+    // Up at the top does nothing: the first entry keeps the highlight.
     await app.press(UP);
-    await app.frame('claude --resume 01J8XR --fork-session');
+    await app.frame('▸ 1. Revise plan in the session that wrote it');
 
     await app.press(DOWN);
-    await app.frame('claude "/planx execute guard v1"');
-    // Down past the last entry stays on it, and it has no command to draw.
+    await app.frame('▸ 2. Execute plan in a new session');
+    // Down past the last entry stays on it.
+    await app.press(DOWN);
     await app.press(DOWN);
     await app.press(DOWN);
     await new Promise((r) => setTimeout(r, 120));
-    expect(app.stdout.lastFrame).toContain('▸ Just give me the command');
-    expect(app.stdout.lastFrame).not.toContain('claude ');
+    expect(app.stdout.lastFrame).toContain('▸ 4. Copy execute command');
     app.unmount();
   });
 
-  it('ignores a number, and does not let an unbound key reach the document', async () => {
+  it('answers to its numbers, and does not let an unbound key reach the document', async () => {
     const app = mount(seed(), null, 1, [1], 100, 30, [], CAN);
     await app.ready();
 
     await app.press('s');
-    await app.frame('Just give me the command');
-    // `1` and `2` used to answer this. `G` would jump to the bottom of the plan.
-    for (const key of ['1', '2', 'G']) await app.press(key);
+    await app.frame('Copy execute command');
+    // `G` would jump to the bottom of the plan, and `9` names no row here.
+    for (const key of ['G', '9']) await app.press(key);
     await new Promise((r) => setTimeout(r, 120));
-    expect(app.stdout.lastFrame).toContain('▸ Execute in a new session');
+    expect(app.stdout.lastFrame).toContain('▸ 1. Execute plan in a new session');
     expect(app.stdout.lastFrame).toContain('# Guard the clock regression');
+
+    // The number picks and fires in one press, without walking to it first.
+    await app.press('2');
+    expect(await app.result).toMatchObject({
+      action: 'commands',
+      command: 'claude "/planx execute guard v1"',
+    });
     app.unmount();
   });
 
@@ -1429,7 +1439,7 @@ describe('the hand-off list', () => {
     await comment(app, 'needs work');
 
     await app.press('s');
-    await app.frame('Revise in the session that wrote it');
+    await app.frame('Revise plan in the session that wrote it');
     await app.press(ENTER);
     expect(await app.result).toMatchObject({
       action: 'revise',
@@ -1438,15 +1448,25 @@ describe('the hand-off list', () => {
     app.unmount();
   });
 
-  it('prints the commands rather than running one', async () => {
+  it('hands back the line to copy rather than running it', async () => {
     const app = mount(seed(), null, 1, [1], 100, 30, [], CAN);
     await app.ready();
 
     await app.press('s');
     await app.press(DOWN);
-    await app.frame('▸ Just give me the command');
+    await app.frame('▸ 2. Copy execute command');
+    // A copy row will not open its command, and says so.
+    expect(app.stdout.lastFrame).toContain('enter copy');
+    expect(app.stdout.lastFrame).not.toContain('→ edit the command');
+    await app.press(RIGHT);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(app.stdout.lastFrame).toContain('enter copy');
+
     await app.press(ENTER);
-    expect(await app.result).toMatchObject({ action: 'commands', command: null });
+    expect(await app.result).toMatchObject({
+      action: 'commands',
+      command: 'claude "/planx execute guard v1"',
+    });
     app.unmount();
   });
 
@@ -1459,8 +1479,8 @@ describe('the hand-off list', () => {
     await app.ready();
 
     await app.press('s');
-    await app.frame('Just give me the command');
-    expect(app.stdout.lastFrame).not.toContain('Revise in the session');
+    await app.frame('Copy execute command');
+    expect(app.stdout.lastFrame).not.toContain('Revise plan in the session');
     await app.press(ESC);
 
     await app.press('e');
@@ -1468,15 +1488,15 @@ describe('the hand-off list', () => {
     await app.press(ENTER);
     await app.frame('1 line edited on this version.');
     await app.press('s');
-    await app.frame('Just give me the command');
-    expect(app.stdout.lastFrame).not.toContain('Revise in the session');
+    await app.frame('Copy execute command');
+    expect(app.stdout.lastFrame).not.toContain('Revise plan in the session');
     await app.press(ESC);
 
     await app.press('n');
     await app.press('one note about the whole plan');
     await app.press(ENTER);
     await app.press('s');
-    await app.frame('Revise in the session that wrote it');
+    await app.frame('Revise plan in the session that wrote it');
     app.unmount();
   });
 
@@ -1492,23 +1512,28 @@ describe('the hand-off list', () => {
     await app.ready();
 
     await app.press('s');
-    await app.frame('Execute in a new session');
-    expect(app.stdout.lastFrame).not.toContain('Revise in the session');
+    await app.frame('Execute plan in a new session');
+    expect(app.stdout.lastFrame).not.toContain('Revise plan in the session');
     app.unmount();
   });
 
-  it('leaves the command as the whole list where nothing can be started', async () => {
-    const app = mount(seed(), null, 1, [1], 100, 30, [], { 1: { revise: null, execute: null } });
+  it('offers the way back in where nothing can be started', async () => {
+    const id = seed();
+    const app = mount(id, null, 1, [1], 100, 30, [], { 1: { revise: null, execute: null } });
     await app.ready();
 
     await app.press('s');
-    await app.frame('▸ Just give me the command');
-    expect(app.stdout.lastFrame).not.toContain('Execute in a new session');
-    // Nothing to edit on the only entry, so the bar does not offer it.
+    await app.frame('▸ 1. Copy reopen command');
+    expect(app.stdout.lastFrame).not.toContain('Execute plan in a new session');
+    // One entry, so there is no number range to offer and nothing to edit.
+    expect(app.stdout.lastFrame).not.toContain('pick');
     expect(app.stdout.lastFrame).not.toContain('→ edit the command');
 
     await app.press(ENTER);
-    expect(await app.result).toMatchObject({ action: 'commands', command: null });
+    expect(await app.result).toMatchObject({
+      action: 'commands',
+      command: `planx ${id} v1`,
+    });
     app.unmount();
   });
 });
@@ -1561,7 +1586,7 @@ describe('editing the command', () => {
     // the list rather than back on the plan.
     await app.press(ESC);
     await app.frame('↑↓ choose');
-    expect(app.stdout.lastFrame).toContain('Revise in the session that wrote it');
+    expect(app.stdout.lastFrame).toContain('Revise plan in the session that wrote it');
 
     await app.press(RIGHT);
     await app.frame('/planx revise guard"');
@@ -1602,7 +1627,11 @@ describe('editing the command', () => {
     app.unmount();
   });
 
-  /** Only the highlighted entry draws a command — the others are labels alone. */
+  /**
+   * Every entry draws its own command, in one column past the widest label. A
+   * row you can pick by number is a row you may never highlight, and a copy row
+   * that will not show you what it copies is asking to be trusted.
+   */
   it('draws the command against the entry it belongs to', async () => {
     const app = mount(seed(), null, 1, [1], 100, 30, [], CAN);
     await app.ready();
@@ -1611,10 +1640,14 @@ describe('editing the command', () => {
     await app.press('s');
     await app.frame('claude --resume 01J8XR --fork-session');
     const rows = bodyRows(app.stdout.lastFrame).map(inner);
-    const revise = rows.find((row) => row.includes('Revise in the session'))!;
-    const execute = rows.find((row) => row.includes('Execute in a new session'))!;
+    const revise = rows.find((row) => row.includes('Revise plan in the session'))!;
+    const execute = rows.find((row) => row.includes('Execute plan in a new session'))!;
+    const copy = rows.find((row) => row.includes('Copy revise command'))!;
     expect(revise).toContain('claude --resume');
-    expect(execute.trim()).toBe('Execute in a new session');
+    expect(execute).toContain('claude "/planx execute guard v1"');
+    // The copy row carries the same line as the row that would run it.
+    expect(copy).toContain('claude --resume');
+    expect(copy.slice(copy.indexOf('claude'))).toBe(revise.slice(revise.indexOf('claude')));
     app.unmount();
   });
 
@@ -1703,13 +1736,15 @@ describe('ctrl+c, twice', () => {
 
     await app.press(CTRL_C);
     await app.frame('Press ctrl+c again to exit.');
-    // The question stands alone while it is up.
-    expect(app.stdout.lastFrame).not.toContain('This version has 1 feedback.');
+    // It takes the hint bar rather than a row of the page, so what the version
+    // holds is still there underneath it — nothing moved to make room.
+    expect(app.stdout.lastFrame).toContain('This version has 1 feedback.');
+    expect(app.stdout.lastFrame).not.toContain('s submit');
 
     await waitFor(() => !app.stdout.lastFrame.includes('Press ctrl+c again'));
-    expect(app.stdout.lastFrame).not.toContain('Press ctrl+c again');
-    // And what the version holds is back underneath.
     expect(app.stdout.lastFrame).toContain('This version has 1 feedback.');
+    // And the hints are back on the bar the prompt was borrowing.
+    expect(app.stdout.lastFrame).toContain('s submit');
 
     // Past the window, so this is a first press again rather than a second.
     await app.press(CTRL_C);
@@ -1743,6 +1778,13 @@ function noteBox(frame: string): string[] {
   const top = rows.findIndex((row) => row.includes('├'));
   const bottom = rows.findIndex((row) => row.includes('╯'));
   return top === -1 || bottom === -1 ? [] : rows.slice(top, bottom + 1);
+}
+
+/** A paint function's opening escape, escaped for a regexp. */
+function opening(paint: (text: string) => string): string {
+  return paint('x')
+    .split('x')[0]!
+    .replace(/[\\^$.*+?()[\]{}|]/g, '\\$&');
 }
 
 function inner(row: string): string {
@@ -2067,7 +2109,7 @@ describe('what the version has to say about itself', () => {
     const height = bodyRows(app.stdout.lastFrame).length;
 
     for (const [key, question] of [
-      ['s', `Submit feedback on ${id} v1 — then what?`],
+      ['s', `Submit ${id} v1`],
       [ESC, 'Back to the list?'],
     ] as const) {
       await app.press(key);
@@ -2121,11 +2163,13 @@ describe('the plan, the diff and the versions', () => {
     await app.ready();
 
     // The raw frame, escapes intact. The digits have to be inside the coloured
-    // run, not merely next to a coloured sign: `\x1b[32m+12\x1b[39m` passes,
-    // and the old `\x1b[32m+\x1b[39m\x1b[2m12\x1b[22m` does not.
+    // run, not merely next to a coloured sign: `<green>+12<off>` passes, and the
+    // old `<green>+<off><dim>12<off>` does not. The opening sequence is taken
+    // from the palette itself rather than written out, so a colour that moves
+    // does not take a test with it.
     const raw = app.stdout.frames.join('');
-    expect(raw).toMatch(/\x1b\[32m\+\s*\d+\x1b\[39m/);
-    expect(raw).toMatch(/\x1b\[31m-\s*\d+\x1b\[39m/);
+    expect(raw).toMatch(new RegExp(`${opening(green)}\\+\\s*\\d+\\x1b\\[39m`));
+    expect(raw).toMatch(new RegExp(`${opening(red)}-\\s*\\d+\\x1b\\[39m`));
     // A context line is still dim — the colour is the signal, so it has to
     // mean something.
     expect(raw).toMatch(/\x1b\[2m\s*\d+\x1b\[22m/);
@@ -2785,7 +2829,7 @@ describe('the picker says what was built', () => {
     // The highlighted row is inverse *and* green — `signal` over it would paint
     // the executed row the same yellow as every other.
     const raw = app.stdout.frames.join('');
-    expect(raw).toMatch(/\x1b\[7m\x1b\[32m/);
+    expect(raw).toMatch(new RegExp(`\\x1b\\[7m${opening(green)}`));
     setColorEnabled(false);
     app.unmount();
   });

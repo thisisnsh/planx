@@ -164,12 +164,12 @@ export function Picker<T>({
 
   const here = rows[cursor];
 
-  // Two rows between the list and the hint bar: a blank one, then the red line
-  // an armed ctrl+c draws. Both are always there, so the frame does not change
-  // height the moment you press one — and the red line has air above it rather
-  // than sitting flush against the last row of the list, the way the review's
-  // own prompt does.
-  const messageRows = ['', leaving ? `  ${red(EXIT_PROMPT)}` : ''];
+  // One row between the list and the hint bar, and one only. The armed ctrl+c
+  // line used to have a row of its own down here, reserved on every frame and
+  // empty on almost all of them; it takes the hint bar instead, the same way
+  // the review's does, so the frame does not change height when you press it
+  // and there is a single blank above the bar on every screen planx draws.
+  const messageRows = [''];
 
   // The frame costs four rows of chrome above the list and three below it, plus
   // the message row.
@@ -313,19 +313,24 @@ export function Picker<T>({
     }),
     ...(rows.length ? [] : [dim('  no matches')]),
     ...messageRows,
-    ...hintLines(
-      confirming === null
-        ? hints
-        : // `enter delete` appears the moment the word does. The bar says what
-          // the gate wants, and then says it has it.
-          confirmed(confirming)
-          ? ([
-              ['enter', 'delete'],
-              ['esc', 'cancel'],
-            ] satisfies Hint[])
-          : ([['esc', 'cancel']] satisfies Hint[]),
-      inner - 2,
-    ).map((line) => dim(`  ${line}`)),
+    // An armed ctrl+c takes the bar. It is the only thing that ends the
+    // session, so it outranks both the hints and the delete confirmation's own
+    // — `esc cancel` can wait for the two seconds this takes to lapse.
+    ...(leaving
+      ? [`  ${red(EXIT_PROMPT)}`]
+      : hintLines(
+          confirming === null
+            ? hints
+            : // `enter delete` appears the moment the word does. The bar says what
+              // the gate wants, and then says it has it.
+              confirmed(confirming)
+              ? ([
+                  ['enter', 'delete'],
+                  ['esc', 'cancel'],
+                ] satisfies Hint[])
+              : ([['esc', 'cancel']] satisfies Hint[]),
+          inner - 2,
+        ).map((line) => dim(`  ${line}`))),
   ];
 
   return (

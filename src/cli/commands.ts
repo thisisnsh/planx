@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { diffVersions, rowsForSingleVersion } from '../diff/lines.js';
+import { copyToClipboard } from '../exec/clipboard.js';
 import {
   agentProcess,
   isAgent,
@@ -457,6 +458,21 @@ export async function runInteractiveReview(
 
   if (result.action === 'revise' || result.action === 'execute') {
     return handOffToAgent(ctx, id, result);
+  }
+
+  // Here rather than in the review: `pbcopy` and its equivalents want a stdin
+  // of their own, and Ink is holding the terminal until it has unmounted.
+  //
+  // The closing block prints either way. A clipboard that could not be reached
+  // — no `xclip`, a terminal that declines OSC 52 — would otherwise leave the
+  // reviewer with a promise and no command, and the block is where the command
+  // was already going to be.
+  if (result.action === 'commands' && result.command) {
+    ctx.out(
+      copyToClipboard(result.command)
+        ? green('Copied to your clipboard.')
+        : yellow('Nothing here to copy with — the command is below.'),
+    );
   }
 
   for (const line of closingBlock(id, result.version, carried)) ctx.out(line);

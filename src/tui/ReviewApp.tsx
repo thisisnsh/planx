@@ -5,6 +5,7 @@ import {
   blue,
   bold,
   dim,
+  gray,
   inverse,
   padEnd,
   red,
@@ -162,12 +163,25 @@ type HandoffMode = Extract<Mode, { kind: 'handoff' }>;
 
 /** One thing that can happen next, and the line that would make it happen. */
 interface HandoffEntry {
+  /** `commands` copies its line to the clipboard instead of running it. */
   action: 'revise' | 'execute' | 'commands';
   label: string;
-  /** The launch line as it stands, rewritten in place. Null where there is none. */
-  command: string | null;
+  /** The launch line as it stands, rewritten in place. */
+  command: string;
   /** What planx built, so `esc` in the editor can put it back. */
-  original: string | null;
+  original: string;
+}
+
+/**
+ * A copy row shows its command and will not open it.
+ *
+ * Editing a line you are about to put on the clipboard and not run is editing
+ * the wrong copy of it — the one you paste is the one you would then have to
+ * fix again in the shell. `→` is not offered there, and the hint bar says
+ * `enter copy` rather than `enter go`.
+ */
+function editable(entry: HandoffEntry): boolean {
+  return entry.action !== 'commands';
 }
 
 /**
@@ -183,15 +197,15 @@ type SpaceAction =
   | { kind: 'section'; heading: number; folded: boolean; inside?: boolean };
 
 /**
- * Top rule, the gaps above and below the body, the status line, the bottom
- * rule. Five rows, not the seven the old constant claimed — and the extra row
- * it reserved is why the frame stopped one line short of the terminal and Ink
- * added a newline under the bottom border.
+ * Top rule, the gaps above and below the body, the status line, the blank
+ * above the hint bar, the bottom rule. Six rows — five, plus the one that is
+ * now always between whatever the page ends on and the hints, so the bar has
+ * air over it whether the version carries a summary or not.
  *
  * The hint bar is added on top of this, because it wraps: how many rows it
  * takes is a function of the terminal's width.
  */
-const CHROME_WITHOUT_HINTS = 5;
+const CHROME_WITHOUT_HINTS = 6;
 const MIN_BODY = 5;
 const MIN_WIDTH = 48;
 /** The cursor arrow and the space after it. */
@@ -254,15 +268,6 @@ export function ReviewApp(props: ReviewAppProps) {
   /** The one version an edit can land on — rewriting v2 rewrites what v3 was built from. */
   const latest = props.versions[props.versions.length - 1] ?? versionB;
   const shownEdits = versionB === latest ? edits : NO_EDITS;
-  /**
-   * Is there anything for `s` to write?
-   *
-   * A comment, the note, or a line rewritten in place — and any version touched
-   * this session, because emptying the last comment on one leaves nothing to
-   * count and still has to be written for the deletion to stick.
-   */
-  const canSubmit =
-    annotations.length > 0 || general.trim().length > 0 || edits.size > 0 || touched.size > 0;
   const draftId = mode.kind === 'editing' ? mode.annotationId : null;
   const draftText = mode.kind === 'editing' ? mode.draft : '';
   const draftCaret = mode.kind === 'editing' ? mode.caret : 0;
@@ -746,21 +751,31 @@ export function ReviewApp(props: ReviewAppProps) {
    *
    * Where planx cannot start something it is not offered: a version captured
    * before planx recorded sessions shows `Execute` and the command, one that
-   * names no agent shows the command alone. Nothing greyed out, nothing that
-   * declines a press after advertising itself.
+   * names no agent shows neither. Nothing greyed out, nothing that declines a
+   * press after advertising itself — which is why the numbers are positional
+   * and not fixed: `1` is whatever is first here, not always Revise.
+   *
+   * Every command planx can build appears twice, once to run and once to copy.
+   * A version with nothing to start still has one row, because the way back
+   * into the review is a command too and a list you cannot answer is not a
+   * question.
    */
   function handoffEntries(): HandoffEntry[] {
     const lines = props.commands?.[versionB] ?? { revise: null, execute: null };
     const asking = annotations.length > 0 || general.trim().length > 0;
+    const revise = asking ? lines.revise : null;
     const entries: HandoffEntry[] = [];
 
-    if (asking && lines.revise) {
-      entries.push(entry('revise', 'Revise in the session that wrote it', lines.revise));
-    }
+    if (revise) entries.push(entry('revise', 'Revise plan in the session that wrote it', revise));
     if (lines.execute) {
-      entries.push(entry('execute', 'Execute in a new session', lines.execute));
+      entries.push(entry('execute', 'Execute plan in a new session', lines.execute));
     }
-    entries.push(entry('commands', 'Just give me the command', null));
+    if (revise) entries.push(entry('commands', 'Copy revise command', revise));
+    if (lines.execute) entries.push(entry('commands', 'Copy execute command', lines.execute));
+
+    if (!entries.length) {
+      entries.push(entry('commands', 'Copy reopen command', `planx ${props.planId} v${versionB}`));
+    }
     return entries;
   }
 
@@ -955,7 +970,9 @@ export function ReviewApp(props: ReviewAppProps) {
    * The hand-off list, and the command editor inside it.
    *
    * Anything unbound is ignored rather than falling through to the document
-   * underneath, and there are no numbers: the list is walked, not indexed.
+   * underneath. The rows are numbered, so the numbers answer: a list that
+   * prints `1.` beside a row and then only moves for `↑↓` is teaching a key
+   * that does not exist.
    */
   useInput(
     (input, key) => {
@@ -968,9 +985,14 @@ export function ReviewApp(props: ReviewAppProps) {
         if (key.downArrow) {
           return setMode({ ...mode, index: Math.min(mode.entries.length - 1, mode.index + 1) });
         }
+        // The number picks and fires in one press: it is the whole point of
+        // numbering the rows, and walking to a row you can already name is
+        // work the list invented for itself.
+        const picked = /^[1-9]$/.test(input) ? mode.entries[Number(input) - 1] : undefined;
+        if (picked) return finish(picked.action, picked.command);
         // Into the line itself, to change the model, add a directory, rewrite
         // the prompt, or replace the command outright.
-        if (key.rightArrow && here.command !== null) {
+        if (key.rightArrow && editable(here)) {
           return setMode({ ...mode, editing: true, caret: here.command.length });
         }
         if (key.return) return finish(here.action, here.command);
@@ -979,7 +1001,7 @@ export function ReviewApp(props: ReviewAppProps) {
         return;
       }
 
-      const command = here.command ?? '';
+      const command = here.command;
       // The edit survives arrowing away to another entry and back; `esc` is what
       // throws it away, and it puts back the line planx built.
       if (key.escape) {
@@ -1088,21 +1110,6 @@ export function ReviewApp(props: ReviewAppProps) {
     bodyHeight,
   );
 
-  // The list is drawn *over* the last few rows of the plan rather than pushing
-  // anything around: the frame is exactly as tall as it was, the document does
-  // not reflow, and `esc` puts you back on the row you were on.
-  if (mode.kind === 'handoff') {
-    // On a body too short to hold the whole block the question is what goes:
-    // the answers are the part you cannot act without.
-    const block = handoffLines(mode, {
-      question: canSubmit
-        ? `Submit feedback on ${props.planId} v${versionB} — then what?`
-        : `${props.planId} v${versionB} — what next?`,
-      width: inner,
-    }).slice(-bodyHeight);
-    body.splice(bodyHeight - block.length, block.length, ...block);
-  }
-
   /**
    * A question stands alone.
    *
@@ -1112,14 +1119,13 @@ export function ReviewApp(props: ReviewAppProps) {
    * feed `bodyHeight`, and they render blank — because a document that reflows
    * under the question would leave `esc` putting you somewhere else in the plan.
    */
-  const asking = leaving || mode.kind === 'leave' || mode.kind === 'handoff';
+  const asking = mode.kind === 'leave' || mode.kind === 'handoff';
 
   // Never bold. Colour carries the weight — red for what destroys something,
   // yellow for everything else — and a bold row inside a frame reads as a
   // heading, which a question is not.
-  const message = leaving
-    ? red(EXIT_PROMPT)
-    : mode.kind === 'leave'
+  const message =
+    mode.kind === 'leave'
       ? touched.size || edits.size
         ? red(leaveWarning(touched.size > 0, edits.size))
         : yellow('Back to the list?')
@@ -1135,56 +1141,90 @@ export function ReviewApp(props: ReviewAppProps) {
             width: inner,
           });
 
+  /**
+   * Everything between the top gap and the hint bar: the plan, then the row
+   * for whatever just happened, then what this version holds.
+   *
+   * One array rather than three groups of rows, because the hand-off list has
+   * to be able to reach into the bottom of it. Drawn only over the body, the
+   * list left the reserved status and summary rows stranded underneath it as
+   * blanks — one, or four, depending on how much feedback the version happened
+   * to carry — so the gap under the question changed size from plan to plan
+   * while the question itself sat flush against the last line of the document.
+   *
+   * The height is fixed either way, so the frame is exactly as tall as it was,
+   * the document does not reflow, and `esc` puts you back on the row you were
+   * on. One blank row above and one below, on this screen and on every other:
+   * the block is anchored to the bottom of the page carrying both of them.
+   */
+  const frameRows = (() => {
+    const rest = [...body, '', message, ...summary.map((line) => (asking ? '' : line)), ''];
+    if (mode.kind !== 'handoff') return rest;
+
+    // On a page too short to hold the whole block the question is what goes:
+    // the answers are the part you cannot act without.
+    const block = [
+      '',
+      ...handoffLines(mode, {
+        question: `Submit ${props.planId} v${versionB}`,
+        width: inner,
+      }),
+      '',
+    ].slice(-rest.length);
+    const room = rest.length - block.length;
+    return [...body.slice(0, room), ...Array(Math.max(0, room - body.length)).fill(''), ...block];
+  })();
+
   return (
     <Box flexDirection="column">
       <Text>{topRule(frameWidth, headerText(props, versionA, versionB))}</Text>
       <Text>{frameLine('', inner)}</Text>
-      {body.map((line, i) => (
+      {frameRows.map((line, i) => (
         <Text key={i}>{frameLine(line, inner)}</Text>
       ))}
-      <Text>{frameLine('', inner)}</Text>
-      <Text>{frameLine(message, inner)}</Text>
-      {summary.map((line, i) => (
-        <Text key={i}>{frameLine(asking ? '' : line, inner)}</Text>
-      ))}
+      {/*
+        An armed ctrl+c takes the hint bar rather than a row of its own. The
+        row it used to have was reserved on every frame and empty on almost all
+        of them, which is a line of the plan spent on a question nobody has
+        asked yet — and the hints are the one thing on screen it is safe to
+        interrupt, because `^c exit` is what they were saying anyway.
+      */}
       {fit(
-        hintLines(
-          hintsFor(mode, rows[selection.cursor], {
-            anyFeedback: annotations.length > 0,
-            space,
-            // Where `e` cannot work it is not offered: a key that declines one
-            // press after being advertised teaches the wrong thing.
-            canEdit: versionB === latest,
-            canAnnotate: spanAtCursor(rows, selection) !== null,
-            annotated: Boolean(annotationAtCursor()),
-            hasNote: general.trim().length > 0,
-            selecting: selection.active,
-            plural: spanSize(rows, selection) > 1,
-            diffing: versionA !== null,
-            canDiff: previousVersion !== null,
-            manyVersions: props.versions.length > 1,
-          }),
-          inner,
-        ),
+        leaving
+          ? [red(EXIT_PROMPT)]
+          : hintLines(
+              hintsFor(mode, rows[selection.cursor], {
+                anyFeedback: annotations.length > 0,
+                space,
+                // Where `e` cannot work it is not offered: a key that declines one
+                // press after being advertised teaches the wrong thing.
+                canEdit: versionB === latest,
+                canAnnotate: spanAtCursor(rows, selection) !== null,
+                annotated: Boolean(annotationAtCursor()),
+                hasNote: general.trim().length > 0,
+                selecting: selection.active,
+                plural: spanSize(rows, selection) > 1,
+                diffing: versionA !== null,
+                canDiff: previousVersion !== null,
+                manyVersions: props.versions.length > 1,
+              }),
+              inner,
+            ).map((line) => (line ? dim(line) : '')),
         reserveRows,
       ).map((line, i) => (
-        <Text key={i}>{frameLine(line ? dim(line) : '', inner)}</Text>
+        <Text key={i}>{frameLine(line, inner)}</Text>
       ))}
       <Text>{bottomRule(frameWidth, ` ★ ${REPO} `)}</Text>
     </Box>
   );
 }
 
-function entry(
-  action: HandoffEntry['action'],
-  label: string,
-  command: string | null,
-): HandoffEntry {
+function entry(action: HandoffEntry['action'], label: string, command: string): HandoffEntry {
   return { action, label, command, original: command };
 }
 
 /** The list with the highlighted entry's command replaced by what was typed. */
-function withCommand(mode: HandoffMode, command: string | null): HandoffMode {
+function withCommand(mode: HandoffMode, command: string): HandoffMode {
   return {
     ...mode,
     entries: mode.entries.map((e, i) => (i === mode.index ? { ...e, command } : e)),
@@ -1342,6 +1382,8 @@ function caretLine(draft: string, caret: number, width: number): string {
 
 /** Columns between the longest label and the command column. */
 const COMMAND_GAP = 3;
+/** `1. ` — the number every row is answerable by. */
+const NUMBER_WIDTH = 3;
 
 interface HandoffOptions {
   /** The block's first line, in the yellow every planx question is already in. */
@@ -1352,28 +1394,33 @@ interface HandoffOptions {
 /**
  * The list of what happens next, as rows to draw over the plan.
  *
- * The entries are blue: the highlighted one at full strength with a `▸`, the
- * rest dim. Only the highlighted row draws its command — the whole launch line,
- * flags and all, in a column past the widest label — and inside the command the
- * entry itself goes dim, so which side of the list you are typing on is visible
- * without reading a hint.
+ * The question is the block's first line and the rows start on the next one:
+ * the air used to sit between the two things that belong together, while the
+ * list itself floated above a stack of reserved rows. The block's one blank is
+ * above the question, separating it from the plan.
+ *
+ * Every row draws its command — the whole launch line, flags and all, in a
+ * column past the widest label — because a row you can pick by number is a row
+ * you may never highlight, and a copy row that will not show you what it copies
+ * is asking to be trusted. The highlighted entry is blue, the rest grey, and
+ * while the command is being typed the entry goes grey too, so which side of
+ * the list you are on is visible without reading a hint.
  */
 function handoffLines(mode: HandoffMode, opts: HandoffOptions): string[] {
   const labelWidth = Math.max(...mode.entries.map((e) => e.label.length));
-  const room = Math.max(1, opts.width - CURSOR_GUTTER - labelWidth - COMMAND_GAP);
+  const room = Math.max(1, opts.width - CURSOR_GUTTER - NUMBER_WIDTH - labelWidth - COMMAND_GAP);
 
   return [
-    yellow(truncate(opts.question, opts.width)),
-    '',
+    signal(truncate(opts.question, opts.width)),
     ...mode.entries.map((item, i) => {
       const active = i === mode.index;
-      const label = `${active ? '▸' : ' '} ${padEnd(item.label, labelWidth)}`;
-      const painted = active && !mode.editing ? blue(label) : dim(label);
-      if (!active || item.command === null) return painted;
+      const label = `${active ? '▸' : ' '} ${i + 1}. ${padEnd(item.label, labelWidth)}`;
+      const painted = active && !mode.editing ? blue(label) : gray(label);
       // The caret is the lit block the note and the line editor already use.
-      const command = mode.editing
-        ? caretLine(item.command, mode.caret, room)
-        : dim(truncate(item.command, room));
+      const command =
+        active && mode.editing
+          ? caretLine(item.command, mode.caret, room)
+          : gray(truncate(item.command, room));
       return `${painted}${' '.repeat(COMMAND_GAP)}${command}`;
     }),
   ];
@@ -1514,8 +1561,8 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
       ['enter', 'back'],
       ['esc', 'stay'],
     ];
-  // The list is walked, not indexed, so its bar says how to walk it. Inside the
-  // command the keys are the editor's, plus the one that gets back out.
+  // The list is walked *or* indexed, so its bar says both. Inside the command
+  // the keys are the editor's, plus the one that gets back out.
   if (mode.kind === 'handoff') {
     if (mode.editing)
       return [
@@ -1523,9 +1570,12 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
         ['esc', 'discard'],
         ['↑↓', 'back to the list'],
       ];
+    const here = mode.entries[mode.index];
     const hints: Hint[] = [['↑↓', 'choose']];
-    if (mode.entries[mode.index]?.command !== null) hints.push(['→', 'edit the command']);
-    return [...hints, ['enter', 'go'], ['esc', 'back']];
+    if (mode.entries.length > 1) hints.push([`1-${mode.entries.length}`, 'pick']);
+    if (here && editable(here)) hints.push(['→', 'edit the command']);
+    // What `enter` does on the row you are on: a copy row does not go anywhere.
+    return [...hints, ['enter', here && !editable(here) ? 'copy' : 'go'], ['esc', 'back']];
   }
   if (mode.kind === 'help') return [['any key', 'to close']];
 

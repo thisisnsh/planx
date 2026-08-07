@@ -30,31 +30,51 @@ export const underline = style(4, 24);
 export const inverse = style(7, 27);
 export const strikethrough = style(9, 29);
 
-export const red = style(31, 39);
-export const green = style(32, 39);
-export const yellow = style(33, 39);
-export const blue = style(34, 39);
-export const magenta = style(35, 39);
-export const cyan = style(36, 39);
-export const gray = style(90, 39);
+/**
+ * Every colour planx draws is truecolor, and none of them are the sixteen.
+ *
+ * SGR 31–36 name *slots*, not colours: what comes out is whatever the user's
+ * theme put in ANSI 1–6, which in every default theme is the dark half of the
+ * palette — a mustard yellow, a navy blue, a brick red. The frame has always
+ * been truecolor, so the old palette put a `#ffd400` border two columns away
+ * from a `#a68a00` question and the question read as broken rather than
+ * merely darker. One system, not two: these are the colours, everywhere.
+ *
+ * Terminals without truecolor fall back to their nearest colour rather than
+ * dropping the sequence, so nothing is lost on the ones that cannot.
+ */
+function rgb(r: number, g: number, b: number) {
+  return (text: string): string =>
+    colorEnabled() ? `\x1b[38;2;${r};${g};${b}m${text}\x1b[39m` : text;
+}
 
-export const bgRed = style(41, 49);
-export const bgGreen = style(42, 49);
+function bgRgb(r: number, g: number, b: number) {
+  return (text: string): string =>
+    colorEnabled() ? `\x1b[48;2;${r};${g};${b}m${text}\x1b[49m` : text;
+}
 
 /**
  * The one accent colour, matching the yellow the docs are built on (#ffd400).
  *
- * Truecolor rather than one of the sixteen: the palette yellow is whatever the
- * user's theme decided it is, and the whole point of an accent is that it is the
- * same yellow here as on the website. Terminals without truecolor fall back to
- * their nearest colour rather than dropping the sequence, so nothing is lost.
+ * `yellow` is the same value: planx has one yellow, and a question drawn in it
+ * is drawn in the colour of the frame around it.
  */
 export const SIGNAL_RGB = [255, 212, 0] as const;
 
-export function signal(text: string): string {
-  const [r, g, b] = SIGNAL_RGB;
-  return colorEnabled() ? `\x1b[38;2;${r};${g};${b}m${text}\x1b[39m` : text;
-}
+export const signal = rgb(...SIGNAL_RGB);
+
+export const yellow = rgb(...SIGNAL_RGB);
+export const red = rgb(255, 95, 86);
+export const green = rgb(61, 214, 140);
+export const blue = rgb(77, 166, 255);
+export const magenta = rgb(255, 122, 198);
+export const cyan = rgb(77, 225, 232);
+/** The grey that is a colour, not an alpha — `dim` over a dark row is mud. */
+export const gray = rgb(138, 138, 148);
+
+// Dark enough that the text laid over them stays readable.
+export const bgRed = bgRgb(122, 38, 32);
+export const bgGreen = bgRgb(31, 92, 61);
 
 const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
 

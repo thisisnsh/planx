@@ -5,11 +5,11 @@ is offered on every row of every version, whether or not anything is pending,
 and it opens one list of what can happen next to the plan:
 
 ```
-  Submit feedback on guard-clock-regression-a3f9 v3 — then what?
-
-▸ Revise in the session that wrote it   claude --resume 01J8XR --fork-session "/planx revise guard-clock-regression-a3f9"
-  Execute in a new session
-  Just give me the command
+  Submit guard-clock-regression-a3f9 v3
+▸ 1. Revise plan in the session that wrote it   claude --resume 01J8XR --fork-session "/planx revise guard-clock-regression-a3f9"
+  2. Execute plan in a new session              claude "/planx execute guard-clock-regression-a3f9 v3"
+  3. Copy revise command                        claude --resume 01J8XR --fork-session "/planx revise guard-clock-regression-a3f9"
+  4. Copy execute command                       claude "/planx execute guard-clock-regression-a3f9 v3"
 ```
 
 Two keys used to end a review. `s` submitted and asked *agent or command?*; `x`
@@ -22,22 +22,32 @@ happens next to this plan. So there is one key, and one list. `x` is unbound.
 
 | Entry | Shown when |
 | --- | --- |
-| `Revise in the session that wrote it` | this version carries a comment or a note, **and** planx recorded a session and an agent for it |
-| `Execute in a new session` | planx recorded an agent for this version |
-| `Just give me the command` | always |
+| `Revise plan in the session that wrote it` | this version carries a comment or a note, **and** planx recorded a session and an agent for it |
+| `Execute plan in a new session` | planx recorded an agent for this version |
+| `Copy revise command` | the same condition as `Revise` |
+| `Copy execute command` | the same condition as `Execute` |
+| `Copy reopen command` | nothing else can be built, so the list would be empty |
+
+Every command planx can build appears twice: once to run, once to copy. The
+numbers are what you press — `↑↓` and `enter` still work — and they are
+positional, so `1` is whatever is first on this version rather than always
+`Revise`.
 
 **A line you rewrote with `e` does not bring `Revise` back.** The edit *is* the
 change — settled text, already in the version — so there is nothing left to ask
 an agent for. A comment and the note are requests, and a request needs a round.
 
 Where planx cannot start something it is not offered. A version captured before
-planx recorded sessions shows `Execute` and the command; one that names no agent
-shows the command alone, a list of one. Nothing greyed out, nothing that declines
-a press after advertising itself.
+planx recorded sessions shows the execute pair only; one that names no agent
+shows `Copy reopen command`, a list of one, because a list you cannot answer is
+not a question. Nothing greyed out, nothing that declines a press after
+advertising itself.
 
 **Whatever you pick, everything pending is submitted first** — the comments, the
-note, the rewritten lines. `Just give me the command` submits too, and then
-prints the closing block.
+note, the rewritten lines. A copy entry submits too, then puts its line on the
+clipboard and prints the closing block. `→` does not open a copy entry's
+command: editing a line you are about to paste rather than run is editing the
+wrong copy of it.
 
 Handing a plan on with its feedback still open is supported: the execute branch
 works those comments into the build rather than bouncing them back for another
@@ -77,23 +87,26 @@ with.
 
 ## How it is drawn
 
-The list is a block at the bottom of the body, drawn over the last few rows of
+The list is a block at the bottom of the frame, drawn over the last few rows of
 the plan rather than pushing anything around. The frame is exactly as tall as it
 was, the document does not reflow, and `esc` puts you back on the row you were
 on — which is why it is drawn over the plan rather than added under it.
 
-The question is the block's first line, in the yellow every planx question is
-already in. On a version carrying nothing to submit it is shorter, because there
-is nothing to submit:
-
-```
-  guard-clock-regression-a3f9 v3 — what next?
-```
+The question is the block's first line, in planx's own yellow — the same value
+as the frame around it — and the entries start on the very next row. The block's
+one blank row is *above* the question, separating it from the plan; below the
+last entry there is one blank and then the hint bar, on this screen and on every
+other.
 
 The entries are blue. The highlighted one takes a `▸` and the blue at full
-strength; the rest are dim. Inside the command the entry keeps its arrow and goes
-dim, and the caret is the lit block the note and line editors already use — so
-which side of the list you are typing on is visible without reading a hint.
+strength; the rest are grey, as is every command. Inside the command the entry
+keeps its arrow and goes grey, and the caret is the lit block the note and line
+editors already use — so which side of the list you are typing on is visible
+without reading a hint.
+
+An armed `ctrl+c` takes the hint bar rather than a row of its own. Nothing is
+reserved for it, on any planx screen, which is what keeps the gap under the list
+one line instead of however many rows this version's summary happens to need.
 
 <PlanxSim scenario="executing" :rows="14" />
 
@@ -123,9 +136,20 @@ planx runs in the plan's own directory, falling back to the current one with a
 line saying so when that path is gone. It then exits with the agent's exit code:
 the review tab becomes the agent tab.
 
-## What `Just give me the command` prints
+## What a copy entry does
+
+The line goes on the clipboard — `pbcopy`, `wl-copy`, `xclip` or `xsel`
+depending on the machine, and OSC 52 through the terminal itself when none of
+them are there, which is what makes it work over ssh. The copy happens once the
+review has unmounted, because those programs want a stdin of their own and Ink
+is holding the terminal until then.
+
+The closing block prints either way, so a clipboard that could not be reached
+leaves you with the command rather than with a promise:
 
 ```
+Copied to your clipboard.
+
 Reopen it in your terminal:  planx guard-clock-regression-a3f9 v3
 Execute this plan in your agent:  /planx execute guard-clock-regression-a3f9 v3
 ```
