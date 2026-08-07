@@ -18,7 +18,7 @@ import {
   type ReviewModel,
   type ViewRow,
 } from './model.js';
-import { fit, len, p, plain, repaint, spaces, type Line } from './text.js';
+import { fit, len, p, plain, repaint, spaces, trunc, type Line } from './text.js';
 
 export interface LineSpan {
   /** 1-based, inclusive. */
@@ -53,12 +53,25 @@ export type Mode =
   | { kind: 'line'; line: number; draft: string; caret: number; queue: number[] }
   | { kind: 'leave' }
   /**
-   * `s` and `x` asking which way the command goes: into an agent planx starts,
-   * or onto the terminal for you to paste. Two rows the frame already has.
+   * `s` asking what happens next to this plan: one vertical list, drawn over the
+   * last rows of the plan. `editing` is which side of it the keyboard is on —
+   * the entries, or the command the highlighted one would run.
    */
-  | { kind: 'handoff'; intent: 'revise' | 'execute' }
+  | { kind: 'handoff'; entries: HandoffEntry[]; index: number; editing: boolean; caret: number }
   | { kind: 'help' }
-  | { kind: 'done'; action: 'submit' | 'execute' | 'back'; handoff: 'agent' | 'command' };
+  | { kind: 'done'; action: HandoffAction | 'back'; command: string | null };
+
+export type HandoffAction = 'revise' | 'execute' | 'commands';
+
+/** One thing that can happen next, and the line that would make it happen. */
+export interface HandoffEntry {
+  action: HandoffAction;
+  label: string;
+  /** The launch line as it stands, rewritten in place. Null where there is none. */
+  command: string | null;
+  /** What planx built, so `esc` in the editor can put it back. */
+  original: string | null;
+}
 
 export interface SimState {
   plan: SimPlan;
@@ -331,18 +344,11 @@ export function press(state: SimState, key: string, now: number = Date.now()): v
       state.mode = { kind: 'browse' };
       return;
     case 'leave':
-      if (key === 'enter') return finish(state, 'back');
+      if (key === 'enter') return finish(state, 'back', null);
       if (key === 'escape' || key === 'n') state.mode = { kind: 'browse' };
       return;
-    case 'handoff': {
-      const action = state.mode.intent === 'revise' ? 'submit' : 'execute';
-      if (key === '1') return finish(state, action, 'agent');
-      if (key === '2') return finish(state, action, 'command');
-      // Back to the plan, not out of planx: `x` is easy to hit, and the way
-      // back from it has to be free. Every other key is ignored.
-      if (key === 'escape') state.mode = { kind: 'browse' };
-      return;
-    }
+    case 'handoff':
+      return handoffKey(state, key);
     case 'done':
       if (key === 'r' || key === 'enter') restart(state);
       return;
@@ -403,16 +409,16 @@ function browse(state: SimState, key: string, now: number): void {
     state.mode = { kind: 'note', draft: note, caret: note.length };
     return;
   }
-  if (key === 's') return canSubmit(state) ? handOff(state, 'revise') : undefined;
+  // The one way out with anything to say, on every row. Whatever is pending is
+  // submitted whichever entry the list ends on — including with feedback still
+  // open on a plan you are about to build, which is supported: the execute
+  // branch works the comments into the build.
+  if (key === 's') return handOff(state);
   if (key === '?') {
     state.mode = { kind: 'help' };
     state.did.add('help');
     return;
   }
-  // Executing with feedback still on screen submits it first: a plan being
-  // built with comments on it is a supported thing, and the execute skill works
-  // them into the build.
-  if (key === 'x') return handOff(state, 'execute');
 }
 
 /**
@@ -431,8 +437,135 @@ function canSubmit(state: SimState): boolean {
   );
 }
 
-function handOff(state: SimState, intent: 'revise' | 'execute'): void {
-  state.mode = { kind: 'handoff', intent };
+/** The session the demo's plan was captured from — src/store/types.ts `session_id`. */
+const SIM_SESSION = '01J8XR';
+
+function handOff(state: SimState): void {
+  state.mode = {
+    kind: 'handoff',
+    entries: handoffEntries(state),
+    index: 0,
+    editing: false,
+    caret: 0,
+  };
+}
+
+/**
+ * What can happen next, in order, each dropped where it cannot work.
+ *
+ * A line rewritten with `e` does not bring `Revise` back. The edit *is* the
+ * change — settled text, already in the version — so there is nothing left to
+ * ask an agent for. A comment and the note are requests, and a request needs a
+ * round.
+ */
+function handoffEntries(state: SimState): HandoffEntry[] {
+  const id = state.plan.id;
+  const asking = current(state).length > 0 || (state.notes[state.versionB] ?? '').trim().length > 0;
+  const entries: HandoffEntry[] = [];
+
+  if (asking) {
+    entries.push(
+      entry(
+        'revise',
+        'Revise in the session that wrote it',
+        `claude --resume ${SIM_SESSION} --fork-session "/planx revise ${id}"`,
+      ),
+    );
+  }
+  entries.push(
+    entry(
+      'execute',
+      'Execute in a new session',
+      `claude "/planx execute ${id} v${state.versionB}"`,
+    ),
+    entry('commands', 'Just give me the command', null),
+  );
+  return entries;
+}
+
+function entry(action: HandoffAction, label: string, command: string | null): HandoffEntry {
+  return { action, label, command, original: command };
+}
+
+/**
+ * The list, and the command editor inside it.
+ *
+ * Anything unbound is ignored rather than falling through to the document
+ * underneath, and there are no numbers: the list is walked, not indexed.
+ */
+function handoffKey(state: SimState, key: string): void {
+  const mode = state.mode as Extract<Mode, { kind: 'handoff' }>;
+  const here = mode.entries[mode.index];
+  if (!here) return;
+
+  if (!mode.editing) {
+    if (key === 'up') state.mode = { ...mode, index: Math.max(0, mode.index - 1) };
+    else if (key === 'down')
+      state.mode = { ...mode, index: Math.min(mode.entries.length - 1, mode.index + 1) };
+    // Into the line itself, to change the model, add a directory, rewrite the
+    // prompt, or replace the command outright.
+    else if (key === 'right' && here.command !== null)
+      state.mode = { ...mode, editing: true, caret: here.command.length };
+    else if (key === 'enter') finish(state, here.action, here.command);
+    // Back to the plan, on the row you were on — not out of planx.
+    else if (key === 'escape') state.mode = { kind: 'browse' };
+    return;
+  }
+
+  const command = here.command ?? '';
+  // The edit survives arrowing away to another entry and back; `esc` is what
+  // throws it away, and it puts back the line planx built.
+  if (key === 'escape') {
+    state.mode = { ...withCommand(mode, here.original), editing: false, caret: 0 };
+    return;
+  }
+  if (key === 'up' || key === 'down') {
+    state.mode = { ...mode, editing: false };
+    return;
+  }
+  // Nothing to run, so nothing happens. The list is still there.
+  if (key === 'enter') {
+    if (command.trim()) finish(state, here.action, command);
+    return;
+  }
+  // `←` at the start of the line is the way back out of it, which is the same
+  // key that got you here, reversed.
+  if (key === 'left' && mode.caret === 0) {
+    state.mode = { ...mode, editing: false };
+    return;
+  }
+
+  const moved = caretKey(command, mode.caret, key);
+  if (moved !== null) {
+    state.mode = { ...mode, caret: moved };
+    return;
+  }
+  if (key === 'backspace') {
+    if (mode.caret === 0) return;
+    state.mode = {
+      ...withCommand(mode, `${command.slice(0, mode.caret - 1)}${command.slice(mode.caret)}`),
+      caret: mode.caret - 1,
+    };
+    return;
+  }
+  const char = printable(key);
+  if (char) {
+    state.mode = {
+      ...withCommand(mode, `${command.slice(0, mode.caret)}${char}${command.slice(mode.caret)}`),
+      caret: mode.caret + char.length,
+    };
+  }
+}
+
+/** The list with the highlighted entry's command replaced by what was typed. */
+function withCommand(
+  mode: Extract<Mode, { kind: 'handoff' }>,
+  command: string | null,
+): Extract<Mode, { kind: 'handoff' }> {
+  return {
+    ...mode,
+    entries: mode.entries.map((e, i) => (i === mode.index ? { ...e, command } : e)),
+  };
 }
 
 function move(state: SimState, delta: number): void {
@@ -871,14 +1004,14 @@ function toggleDiff(state: SimState): void {
 
 /* -------------------------------------------------------------- finishing */
 
-function finish(
-  state: SimState,
-  action: 'submit' | 'execute' | 'back',
-  handoff: 'agent' | 'command' = 'command',
-): void {
-  state.handoff = action === 'back' ? null : handoffText(state);
+function finish(state: SimState, action: HandoffAction | 'back', command: string | null): void {
+  // The agent that is about to build the plan reads the same feedback with a
+  // different last line — `planx revise --executing`.
+  state.handoff = action === 'back' ? null : handoffText(state, action === 'execute');
+  // One key opens the list, so one task is ticked whichever entry answers it.
+  if (action !== 'back') state.did.add('submit');
   state.did.add(action);
-  state.mode = { kind: 'done', action, handoff };
+  state.mode = { kind: 'done', action, command };
 }
 
 function restart(state: SimState): void {
@@ -898,7 +1031,7 @@ function restart(state: SimState): void {
  * the quoted lines each comment is anchored to, which is the only thing that
  * makes a line number mean anything after a revision has moved it.
  */
-export function handoffText(state: SimState): string {
+export function handoffText(state: SimState, executing = false): string {
   const docLines = state.model.docLines;
   const out: string[] = [`## planx — ${state.plan.id} v${state.versionB}`, ''];
 
@@ -947,6 +1080,18 @@ export function handoffText(state: SimState): string {
   }
 
   out.push('---');
+  // The reader is about to build it, not revise it, so the closing says so and
+  // never names `planx capture`.
+  if (executing) {
+    out.push(
+      'Build the plan, addressing every comment as you go. Do not capture a new',
+      'version: the plan is what was reviewed, and the comments are instructions on',
+      'top of it for this build.',
+      '',
+    );
+    return out.join('\n');
+  }
+
   const lead = asked.length
     ? 'Revise the plan addressing every comment.'
     : 'Revise the plan, keeping every edited line exactly as it now reads.';
@@ -984,12 +1129,19 @@ export function hintsFor(state: SimState): Hint[] {
       ['enter', 'back'],
       ['esc', 'stay'],
     ];
-  if (mode.kind === 'handoff')
-    return [
-      ['1', mode.intent === 'revise' ? 'revise in the agent' : 'execute in a new agent'],
-      ['2', 'give me the command'],
-      ['esc', 'back'],
-    ];
+  // The list is walked, not indexed, so its bar says how to walk it. Inside the
+  // command the keys are the editor's, plus the one that gets back out.
+  if (mode.kind === 'handoff') {
+    if (mode.editing)
+      return [
+        ['enter', 'run'],
+        ['esc', 'discard'],
+        ['↑↓', 'back to the list'],
+      ];
+    const hints: Hint[] = [['↑↓', 'choose']];
+    if (mode.entries[mode.index]?.command !== null) hints.push(['→', 'edit the command']);
+    return [...hints, ['enter', 'go'], ['esc', 'back']];
+  }
   if (mode.kind === 'help') return [['any key', 'to close']];
   if (mode.kind === 'done') return [['r', 'review it again']];
 
@@ -998,7 +1150,6 @@ export function hintsFor(state: SimState): Hint[] {
   const hints: Hint[] = [
     ['n', (state.notes[state.versionB] ?? '').trim() ? 'edit note' : 'add note'],
     ['v', state.selection.active ? 'unselect lines' : 'select lines'],
-    ['x', 'execute'],
     ['esc', 'back'],
     ['^c', 'exit'],
   ];
@@ -1022,10 +1173,9 @@ export function hintsFor(state: SimState): Hint[] {
   if (previousVersion(state) !== null)
     hints.push(['d', state.versionA !== null ? 'hide diff' : 'show diff']);
   if (state.versions.length > 1) hints.push(['←→', 'version']);
-  // Submitting is offered where there is something to submit. An empty submit
-  // used to be how you said the plan was fine; `x` is that now.
-  if (canSubmit(state)) hints.push(['s', 'submit']);
-  hints.push(['?', 'help']);
+  // Unconditional: `s` is the one way out with anything to say, and on a version
+  // carrying nothing it still opens the list that says what happens next.
+  hints.push(['s', 'submit'], ['?', 'help']);
   return hints;
 }
 
@@ -1033,7 +1183,6 @@ export function hintsFor(state: SimState): Hint[] {
 function widestHints(state: SimState): Hint[] {
   const hints: Hint[] = [
     ['n', 'edit note'],
-    ['x', 'execute'],
     ['esc', 'back'],
     ['^c', 'exit'],
     ['space', 'collapse'],
@@ -1057,31 +1206,34 @@ export function frame(state: SimState): Line[] {
   const model = state.model;
   const textWidth = inner - CURSOR_GUTTER - model.gutterWidth;
 
-  const body =
+  const body = pad2(
     state.mode.kind === 'help'
       ? helpLines(inner, previousVersion(state) !== null)
       : state.mode.kind === 'done'
         ? doneLines(state)
         : model.rows
             .slice(state.offset, state.offset + state.bodyRows)
-            .map((row, i) => renderRow(state, row, state.offset + i, textWidth, model.railColumn));
+            .map((row, i) => renderRow(state, row, state.offset + i, textWidth, model.railColumn)),
+    state.bodyRows,
+  );
+
+  // The list is drawn *over* the last few rows of the plan rather than pushing
+  // anything around: the frame is exactly as tall as it was, the document does
+  // not reflow, and `esc` puts you back on the row you were on.
+  if (state.mode.kind === 'handoff') {
+    const block = handoffLines(state, state.mode, inner).slice(-state.bodyRows);
+    body.splice(state.bodyRows - block.length, block.length, ...block);
+  }
 
   const message =
     state.mode.kind === 'leave'
       ? state.touched.size || state.edits.size
         ? [p(leaveWarning(state), 'red')]
         : [p('Back to the list?', 'warn')]
-      : // Yellow, the colour the review already uses for a question. Not red:
-        // nothing here destroys anything.
+      : // The hand-off list carries its own question, on its own first line, so
+        // this row stays empty while the list is up.
         state.mode.kind === 'handoff'
-        ? [
-            p(
-              state.mode.intent === 'revise'
-                ? `Submit feedback for ${state.plan.id} v${state.versionB}?`
-                : `Execute ${state.plan.id} v${state.versionB}?`,
-              'warn',
-            ),
-          ]
+        ? []
         : statusLine(state, inner);
 
   // A question stands alone: while a prompt is up, what the version holds is
@@ -1095,7 +1247,7 @@ export function frame(state: SimState): Line[] {
   return [
     topRule(width, headerLine(state)),
     frameLine([], inner),
-    ...pad2(body, state.bodyRows).map((line) => frameLine(line, inner)),
+    ...body.map((line) => frameLine(line, inner)),
     frameLine([], inner),
     frameLine(message, inner),
     ...summary.map((line) => frameLine(line, inner)),
@@ -1195,6 +1347,47 @@ function renderRow(
   return [...lead, ...gutter, ...rail, p(' '), ...text];
 }
 
+/** Columns between the longest label and the command column. */
+const COMMAND_GAP = 3;
+
+/**
+ * The list of what happens next, as rows to draw over the plan.
+ *
+ * The entries are blue: the highlighted one at full strength with a `▸`, the
+ * rest dim. Only the highlighted row draws its command — the whole launch line,
+ * flags and all, in a column past the widest label — and inside the command the
+ * entry itself goes dim, so which side of the list you are typing on is visible
+ * without reading a hint.
+ */
+function handoffLines(
+  state: SimState,
+  mode: Extract<Mode, { kind: 'handoff' }>,
+  width: number,
+): Line[] {
+  const carrying = canSubmit(state);
+  const question = carrying
+    ? `Submit feedback on ${state.plan.id} v${state.versionB} — then what?`
+    : `${state.plan.id} v${state.versionB} — what next?`;
+  const labelWidth = Math.max(...mode.entries.map((e) => e.label.length));
+  const room = Math.max(1, width - CURSOR_GUTTER - labelWidth - COMMAND_GAP);
+
+  return [
+    trunc([p(question, 'warn')], width),
+    [],
+    ...mode.entries.map((item, i): Line => {
+      const active = i === mode.index;
+      const label = `${active ? '▸' : ' '} ${item.label.padEnd(labelWidth, ' ')}`;
+      const painted = p(label, active && !mode.editing ? 'blue' : 'dim');
+      if (!active || item.command === null) return [painted];
+      // The caret is the lit block the note and the line editor already use.
+      const command: Line = mode.editing
+        ? caretLine(item.command, mode.caret, room)
+        : trunc([p(item.command, 'dim')], room);
+      return [painted, spaces(COMMAND_GAP), ...command];
+    }),
+  ];
+}
+
 /**
  * A row of the note box with the caret drawn on it.
  *
@@ -1285,8 +1478,6 @@ function doneLines(state: SimState): Line[] {
   const version = state.versionB;
   const out: Line[] = [];
   const carried = current(state).length > 0 || (state.notes[version] ?? '').trim().length > 0;
-  const command =
-    mode.action === 'execute' ? `/planx execute ${id} v${version}` : `/planx revise ${id}`;
 
   if (mode.action !== 'back') {
     const count = current(state).length;
@@ -1300,18 +1491,10 @@ function doneLines(state: SimState): Line[] {
     out.push([]);
   }
 
-  // `1` on the prompt: planx runs the command itself, in the session that wrote
-  // the version, and prints what it ran on the way.
-  if (mode.action !== 'back' && mode.handoff === 'agent') {
-    out.push([
-      p('Running  '),
-      p(
-        mode.action === 'execute'
-          ? `claude "${command}"`
-          : `claude --resume 01J8… --fork-session "${command}"`,
-        'warn',
-      ),
-    ]);
+  // An entry that starts something: planx runs the line the reviewer left, and
+  // prints what it ran on the way.
+  if (mode.action === 'revise' || mode.action === 'execute') {
+    out.push([p('Running  '), p(mode.command ?? '', 'warn')]);
     out.push([]);
     out.push([p('press r to review it again', 'dim')]);
     return out;
@@ -1321,7 +1504,7 @@ function doneLines(state: SimState): Line[] {
   // which is what they are. The way back is grey throughout — it is not the
   // next step — and the two next steps carry a colour each.
   out.push([p('Reopen it in your terminal:  ', 'dim'), p(`planx ${id} v${version}`, 'dim')]);
-  if (mode.action === 'submit') {
+  if (mode.action === 'commands') {
     if (carried) {
       out.push([p('Revise this plan in your agent:  ', 'dim'), p(`/planx revise ${id}`, 'warn')]);
       out.push([
@@ -1334,9 +1517,6 @@ function doneLines(state: SimState): Line[] {
         p(`/planx execute ${id} v${version}`, 'blue'),
       ]);
     }
-  }
-  if (mode.action === 'execute') {
-    out.push([p('Execute this plan in your agent:  ', 'dim'), p(command, 'blue')]);
   }
   out.push([]);
   out.push([p('press r to review it again', 'dim')]);
@@ -1359,10 +1539,9 @@ const HELP: Array<[Hint, 'always' | 'versioned']> = [
   [['h', 'fold or unfold every note at once'], 'always'],
   [['j', 'the next feedback on this version, wrapping at the end'], 'always'],
   [['n', 'add or edit the note about the whole plan'], 'always'],
-  [['s', 'submit everything at once'], 'always'],
+  [['s', 'submit everything at once, then pick what happens to the plan next'], 'always'],
   [['space', 'collapse the section you are in, or the note — or expand what is hidden'], 'always'],
   [['v', 'start or end a selection, then ↑ ↓ to extend'], 'always'],
-  [['x', 'execute this plan, in a new agent or as a command'], 'always'],
   [['esc', 'back to the list'], 'always'],
   [['?', 'this list'], 'always'],
 ];

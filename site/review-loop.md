@@ -124,17 +124,30 @@ asked, as settled text rather than a request:
   - now: `Extend the guard on the R2 write path`
 ```
 
-## `s` submits, `x` executes
+## `s` hands the plan on
 
-`s` is offered whenever the version carries something to submit — a comment, the
-note, or a line you rewrote — and asks whether to hand the work back to the
-agent itself or print the command for you. On a version carrying nothing there
-is no `s` at all: there would be nothing for it to write.
+One key ends a review. `s` is offered on every row of every version, whether or
+not anything is pending, and it opens a list of what happens next to the plan:
 
-`x` executes the plan on screen, from any row of any version. A review that
-asked for nothing ends there, and `planx revise` reports the version as
-*reviewed with nothing to change*. Pressing `x` with feedback still on screen
-submits it first and builds anyway — see [Executing](/executing).
+```
+  Submit feedback on guard-clock-regression-a3f9 v3 — then what?
+
+▸ Revise in the session that wrote it   claude --resume 01J8XR --fork-session "/planx revise guard-clock-regression-a3f9"
+  Execute in a new session
+  Just give me the command
+```
+
+`↑ ↓` choose, `enter` goes, `esc` puts you back on the row you were on. `→` moves
+into the command and it becomes editable, so the model, the directory and the
+prompt are yours to change before it runs.
+
+Everything pending is submitted whichever entry you pick — including the one that
+builds the plan with its feedback still open, which is supported. A review that
+asked for nothing submits nothing, and `planx revise` reports the version as
+*reviewed with nothing to change*. See [Executing](/executing).
+
+There is no `x`. Two keys used to end a review and both asked the same follow-up
+question, which is one key more than the review has decisions to make.
 
 Leaving planx is **ctrl+c, twice**. The first press says so in red on the row
 under the plan; any other key disarms it, and so does two seconds passing — the

@@ -79,8 +79,7 @@ Accepted anywhere a version is named:
 | `e` | Rewrite the line, or every line of the selection, in place |
 | `h` | Fold or unfold every note at once |
 | `n` | A note about the whole plan |
-| `s` | Submit everything at once |
-| `x` | Leave without submitting |
+| `s` | Submit everything at once, then pick what happens to the plan next |
 | `?` | Help |
 
 The hints along the bottom offer only what the row under the cursor can do. `e`

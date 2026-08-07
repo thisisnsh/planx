@@ -33,15 +33,15 @@ Press `v` to start a selection, extend it with the arrows, and then:
 | `e` | Rewrite the line yourself, in place |
 | `n` | A note about the whole plan |
 | `d` `←` `→` | The diff against the previous version, and the history |
-| `s` | Submit everything at once |
-| `x` | Execute the plan on screen |
+| `s` | Submit everything at once, then pick what happens to the plan next |
 | `?` | Every key |
 
 <PlanxSim scenario="agents" :rows="14" />
 
-`s` and `x` both ask which way the work goes: `1` starts the agent — a fork of
-the session that wrote the plan for a revise, a fresh one for an execute — and
-`2` prints the line to paste yourself. See [Executing](/executing).
+`s` opens one list of what happens next: revise in a fork of the session that
+wrote the plan, execute in a fresh one, or print the line to paste yourself. The
+command each would run is on the row beside it, and `→` edits it before it goes.
+See [Executing](/executing).
 
 ## Nothing blocks, so nothing has to be resumed
 

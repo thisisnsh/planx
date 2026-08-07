@@ -41,7 +41,7 @@ Every page on this site carries one of these beside the feature it explains.
 | `j` `h` | Walk the feedback; fold every note at once. | [Review Loop](/review-loop) |
 | `d` `←` `→` | The diff against the previous version, and the history. | [Diffing](/diffing) |
 | `n` | One note about the whole plan. | [Review Loop](/review-loop) |
-| `s` | Submit everything at once, and print the command to paste back. Submitting nothing is how you say the plan is fine. | [Executing](/executing) |
+| `s` | Submit everything at once, then pick what happens to the plan next: revise it, build it, or take the command. | [Executing](/executing) |
 | `?` | Every key, in the same order the hint bar puts them. | — |
 
 The hint bar along the bottom of the frame only ever offers keys that work on
@@ -73,7 +73,8 @@ work on the text directly:
   you type is what the plan says — no round trip through an agent that has to
   guess which word you meant.
 - **Say it is fine by saying nothing.** Press `s` on a version you have left no
-  feedback on, and the review prints the one command that builds it.
+  feedback on, and the list it opens offers the two ways to build it and nothing
+  about revising it.
 
 A note hangs off a rail that runs down the lines it is about, between the line
 number and the text, so it is never a comment floating near a passage — it is
@@ -83,9 +84,10 @@ A version with a predecessor opens as the diff against it: you opened v3 because
 v3 is new, and what is new about it is the diff. `d` shows the plan on its own
 instead, and `←` and `→` walk the history.
 
-You press `s`. It prints a command to paste back to your agent, which picks the
-plan up with your annotations attached to the lines they came from, and it
-revises.
+You press `s`, and pick what happens next. planx can start the agent itself — a
+fork of the session that wrote the plan — or print the command for you to paste.
+Either way it picks the plan up with your annotations attached to the lines they
+came from, and revises.
 
 ## Every plan you have, in one list
 

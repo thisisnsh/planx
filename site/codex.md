@@ -27,16 +27,16 @@ Exactly as everywhere else, in a second terminal tab:
 planx <plan-id>
 ```
 
-Leave a comment, press `s`, and answer the prompt — `1` hands the work straight
-back to the session that wrote the plan, `2` prints the line to paste yourself:
+Leave a comment, press `s`, and pick off the list — the first entry hands the
+work straight back to the thread that wrote the plan, the last prints the line to
+paste yourself:
 
 <PlanxSim scenario="agents" :rows="14" />
 
 ## Executing
 
-planx launches Codex for you. `s` on a review that asked for something and `x`
-on one that is ready to build both ask which way the command goes, and `1` runs
-it:
+planx launches Codex for you. `s` opens the list, and the entry you pick runs the
+line beside it:
 
 ```
 codex fork 01J8XR… "/planx revise guard-clock-regression-a3f9"
@@ -50,5 +50,5 @@ typed into — and the whole command is printed before it runs, so what it was
 granted is on the scrollback.
 
 For that to work, the capture has to have carried `--session-id
-"$CODEX_THREAD_ID"`; the skill does it. Without one, the prompt still appears
-and offers the command alone, as `1` — see [Executing](/executing).
+"$CODEX_THREAD_ID"`; the skill does it. Without one there is nothing to fork, so
+the list simply does not offer that entry — see [Executing](/executing).

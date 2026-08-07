@@ -68,10 +68,11 @@ describe('the website demo', () => {
 
     expect(frameText(state)).toContain('Name the function.');
 
-    // `s` asks which way the command goes; `2` is the one you paste yourself.
+    // `s` opens the list of what happens next; the last entry is the one you
+    // paste yourself.
     send(state, 's');
-    expect(frameText(state)).toContain('Submit feedback for guard-clock-a3f9 v3?');
-    send(state, '2');
+    expect(frameText(state)).toContain('Submit feedback on guard-clock-a3f9 v3 — then what?');
+    send(state, 'down', 'down', 'enter');
     expect(state.handoff).toContain('## planx — guard-clock-a3f9 v3');
     expect(state.handoff).toContain('**Feedback:** Name the function.');
     expect(state.handoff).toContain('planx capture --plan-id guard-clock-a3f9 --parent v3');
@@ -80,34 +81,48 @@ describe('the website demo', () => {
 
   it('tells the agent to build it when the review asked for nothing', () => {
     const state = open('executing');
-    // Nothing to submit, so there is no `s` — `x` is how a review that asked
-    // for nothing ends.
-    expect(frameText(state)).not.toContain('s submit');
-    send(state, 'x', '2');
+    // Nothing to submit, so the question is shorter and there is no `Revise`
+    // on the list — the plan is fine, and what is left is to build it.
+    send(state, 's');
+    expect(frameText(state)).toContain('guard-clock-a3f9 v3 — what next?');
+    expect(frameText(state)).not.toContain('Revise in the session');
+
+    send(state, 'down', 'enter');
     expect(state.handoff).toContain('Reviewed with nothing to change. Implement it as written.');
     expect(frameText(state)).toContain('/planx execute guard-clock-a3f9 v3');
     expect(frameText(state)).not.toContain('/planx revise');
   });
 
-  it('starts the agent itself when 1 is pressed, and says what it ran', () => {
+  it('starts the agent itself on the entry that runs one, and says what it ran', () => {
     const state = open('executing');
-    send(state, 'x');
-    expect(frameText(state)).toContain('Execute guard-clock-a3f9 v3?');
-    expect(frameText(state)).toContain('1 execute in a new agent');
-    expect(frameText(state)).toContain('2 give me the command');
+    send(state, 's');
+    expect(frameText(state)).toContain('▸ Execute in a new session');
+    expect(frameText(state)).toContain('Just give me the command');
+    expect(frameText(state)).toContain('↑↓ choose');
 
-    send(state, '1');
+    send(state, 'enter');
     expect(frameText(state)).toContain('Running');
     expect(frameText(state)).toContain('claude "/planx execute guard-clock-a3f9 v3"');
   });
 
+  it('opens the command with → and runs what was typed into it', () => {
+    const state = open('executing');
+    send(state, 's', 'right');
+    expect(frameText(state)).toContain('enter run');
+    expect(frameText(state)).toContain('↑↓ back to the list');
+
+    type(state, ' --extra');
+    send(state, 'enter');
+    expect(frameText(state)).toContain('claude "/planx execute guard-clock-a3f9 v3" --extra');
+  });
+
   it('takes esc back to the plan rather than out of planx', () => {
     const state = open('executing');
-    send(state, 'x');
-    expect(frameText(state)).toContain('give me the command');
+    send(state, 's');
+    expect(frameText(state)).toContain('Just give me the command');
     send(state, 'escape');
-    expect(frameText(state)).toContain('x execute');
-    expect(frameText(state)).not.toContain('give me the command');
+    expect(frameText(state)).toContain('s submit');
+    expect(frameText(state)).not.toContain('Just give me the command');
   });
 
   it('opens a diff, and puts it away again', () => {
@@ -127,7 +142,7 @@ describe('the website demo', () => {
     const state = open('review');
     send(state, 'down', 'down', 'f');
     type(state, 'one thing');
-    send(state, 'enter', 's', '2');
+    send(state, 'enter', 's', 'down', 'down', 'enter');
 
     const lines = frameText(state)
       .split('\n')
@@ -166,7 +181,9 @@ describe('the website demo', () => {
     send(state, 'down', 'down', 'e');
     send(state, 'ctrl+e');
     type(state, ' (v2)');
-    send(state, 'enter', 's', '2');
+    // A rewritten line is settled text, so `Revise` is not on the list: the
+    // command entry is the second of two.
+    send(state, 'enter', 's', 'down', 'enter');
     expect(state.handoff).toContain('### Edited by the reviewer');
     expect(state.handoff).toContain('(v2)');
   });
