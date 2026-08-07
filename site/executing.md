@@ -150,18 +150,18 @@ review has unmounted, because those programs want a stdin of their own and Ink
 is holding the terminal until then.
 
 The closing block prints either way, so a clipboard that could not be reached
-leaves you with the command rather than with a promise. The copied command is
+leaves you with the command rather than with a promise. The clipboard status is
 always the final line and uses the terminal's white:
 
 ```
-Copied to your clipboard.
-
 Reopen it in your terminal:  planx guard-clock-regression-a3f9 v3
-Execute it in your agent:  /planx execute guard-clock-regression-a3f9 v3
 Revise this plan in your agent:  /planx revise guard-clock-regression-a3f9
+Execute it in your agent:  /planx execute guard-clock-regression-a3f9 v3
+Copied to your clipboard.
 ```
 
-Paste the final line to an agent and the `/planx` skill takes the selected branch.
+Paste the command now on the clipboard to an agent and the `/planx` skill takes
+the selected branch.
 
 **Every line says where its command runs.** A slash command and a bare command
 look alike enough on a terminal that a lead like `Paste to your agent:` was the
@@ -179,8 +179,8 @@ Execute it in your agent:  /planx execute guard-clock-regression-a3f9 v3
 
 The execute line carries no qualifier about the feedback. Colour tells the three
 apart — terminal commands are white, revise is yellow, and execute is blue — and
-the labels stay grey on every line, so the command is what the eye lands on. A
-copied command becomes white when it moves to the end.
+the labels stay grey on every line, so the command is what the eye lands on. The
+final clipboard status is white.
 
 Going back to the list gets the reopen line alone, which is what every block opens
 on — it is the one entry that is true of every ending:

@@ -467,16 +467,16 @@ export async function runInteractiveReview(
   // — no `xclip`, a terminal that declines OSC 52 — would otherwise leave the
   // reviewer with a promise and no command, and the block is where the command
   // was already going to be.
+  let clipboardStatus: string | null = null;
   if (result.action === 'commands' && result.command) {
-    ctx.out(
-      copyToClipboard(result.command)
-        ? green('Copied to your clipboard.')
-        : yellow('Nothing here to copy with — the command is below.'),
-    );
+    clipboardStatus = copyToClipboard(result.command)
+      ? 'Copied to your clipboard.'
+      : yellow('Nothing here to copy with — the command is above.');
   }
 
-  const copied = result.action === 'commands' ? (result.command ?? undefined) : undefined;
-  for (const line of closingBlock(id, result.version, carried, copied)) ctx.out(line);
+  for (const line of closingBlock(id, result.version, carried, clipboardStatus ?? undefined)) {
+    ctx.out(line);
+  }
   return 0;
 }
 
@@ -582,9 +582,9 @@ export function handOffLine(
 /**
  * How a review signs off: how to get back in, and what to do next.
  *
- * Reopening comes first, on every exit including a plain quit. When a command
- * was copied, that entry moves to the end and uses the terminal's white so the
- * clipboard's contents are the last thing the reviewer sees.
+ * Reopening comes first, on every exit including a plain quit. It is the one
+ * line that is true of every ending — a review that finished successfully
+ * should not leave you without a way back to what you were just looking at.
  *
  * What follows depends on what the submit carried. Feedback has to be answered
  * before the plan can be built, so it takes two commands; a submit that carried
@@ -593,52 +593,32 @@ export function handOffLine(
  *
  * No blank lines between the entries. The air was there to give each command
  * room; four adjacent lines read as one block, which is what they are.
+ * A clipboard status follows those entries in terminal white, so the result of
+ * the copy is the final visible line.
  *
- * `Execute it in your agent` carries no qualifier. The normal order puts revise
- * first; a copied command moves after the other choices so it is easiest to find.
+ * `Execute it in your agent` carries no qualifier: the order already says the
+ * feedback comes first, because revise is the line above it.
  */
 export function closingBlock(
   planId: string,
   version: number,
   carried?: boolean,
-  copiedCommand?: string,
+  clipboardStatus?: string,
 ): string[] {
-  const plain = (text: string) => text;
-  const entries: Array<{ label: string; command: string; tone: (text: string) => string }> = [
-    {
-      label: 'Reopen it in your terminal',
-      command: `planx ${planId} v${version}`,
-      tone: plain,
-    },
-  ];
+  const lines = [handOffLine('Reopen it in your terminal', `planx ${planId} v${version}`)];
 
   if (carried === true) {
-    entries.push(
-      { label: 'Revise this plan in your agent', command: `/planx revise ${planId}`, tone: yellow },
-      {
-        label: 'Execute it in your agent',
-        command: `/planx execute ${planId} v${version}`,
-        tone: blue,
-      },
+    lines.push(
+      handOffLine('Revise this plan in your agent', `/planx revise ${planId}`, yellow),
+      handOffLine('Execute it in your agent', `/planx execute ${planId} v${version}`, blue),
     );
   } else if (carried === false) {
-    entries.push({
-      label: 'Execute this plan in your agent',
-      command: `/planx execute ${planId} v${version}`,
-      tone: blue,
-    });
+    lines.push(
+      handOffLine('Execute this plan in your agent', `/planx execute ${planId} v${version}`, blue),
+    );
   }
 
-  const copiedIndex = entries.findIndex(({ command }) => command === copiedCommand);
-  if (copiedIndex >= 0) {
-    const copied = entries[copiedIndex];
-    if (copied) {
-      entries.splice(copiedIndex, 1);
-      entries.push({ ...copied, tone: plain });
-    }
-  }
-
-  const lines = entries.map(({ label, command, tone }) => handOffLine(label, command, tone));
+  if (clipboardStatus) lines.push(clipboardStatus);
   lines.push('');
   return lines;
 }

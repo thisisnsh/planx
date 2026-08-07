@@ -1483,57 +1483,26 @@ function doneLines(state: SimState): Line[] {
     return out;
   }
 
-  // The closing block prints either way: a clipboard that could not be reached
-  // would otherwise leave the reviewer with a promise and no command.
-  if (mode.action === 'commands') {
-    out.push([p('Copied to your clipboard.', 'green')]);
-    out.push([]);
-  }
-
   // No blank lines between the entries: four adjacent lines read as one block,
   // which is what they are. Terminal commands are white, and the two agent
-  // steps carry a colour each unless that command was copied.
-  const entries: Array<{ command: string; line: Line }> = [
-    {
-      command: `planx ${id} v${version}`,
-      line: [p('Reopen it in your terminal:  ', 'dim'), p(`planx ${id} v${version}`)],
-    },
-  ];
+  // steps carry their usual colours.
+  out.push([p('Reopen it in your terminal:  ', 'dim'), p(`planx ${id} v${version}`)]);
   if (mode.action === 'commands') {
     if (carried) {
-      entries.push(
-        {
-          command: `/planx revise ${id}`,
-          line: [p('Revise this plan in your agent:  ', 'dim'), p(`/planx revise ${id}`, 'warn')],
-        },
-        {
-          command: `/planx execute ${id} v${version}`,
-          line: [
-            p('Execute it in your agent:  ', 'dim'),
-            p(`/planx execute ${id} v${version}`, 'blue'),
-          ],
-        },
-      );
+      out.push([p('Revise this plan in your agent:  ', 'dim'), p(`/planx revise ${id}`, 'warn')]);
+      out.push([
+        p('Execute it in your agent:  ', 'dim'),
+        p(`/planx execute ${id} v${version}`, 'blue'),
+      ]);
     } else {
-      entries.push({
-        command: `/planx execute ${id} v${version}`,
-        line: [
-          p('Execute this plan in your agent:  ', 'dim'),
-          p(`/planx execute ${id} v${version}`, 'blue'),
-        ],
-      });
+      out.push([
+        p('Execute this plan in your agent:  ', 'dim'),
+        p(`/planx execute ${id} v${version}`, 'blue'),
+      ]);
     }
+    // The literal clipboard status, not the copied command, is last and white.
+    out.push([p('Copied to your clipboard.')]);
   }
-  const copiedIndex = entries.findIndex(({ command }) => command === mode.command);
-  if (copiedIndex >= 0) {
-    const copied = entries[copiedIndex];
-    if (copied) {
-      entries.splice(copiedIndex, 1);
-      copied.line[copied.line.length - 1] = p(copied.command);
-      entries.push(copied);
-    }
-  }
-  out.push(...entries.map(({ line }) => line));
   out.push([]);
   out.push([p('press r to review it again', 'dim')]);
   return out;

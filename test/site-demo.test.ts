@@ -144,15 +144,19 @@ describe('the website demo', () => {
     type(state, 'one thing');
     send(state, 'enter', 's', 'down', 'down', 'enter');
 
-    const lines = frameText(state)
+    const screen = frameText(state);
+    const lines = screen
       .split('\n')
       .map((line) => line.replace(/^│\s?/, '').replace(/\s*│$/, '').trimEnd())
       .filter((line) => line.includes(':  '));
     expect(lines).toEqual([
       'Reopen it in your terminal:  planx guard-clock-a3f9 v3',
-      'Execute it in your agent:  /planx execute guard-clock-a3f9 v3',
       'Revise this plan in your agent:  /planx revise guard-clock-a3f9',
+      'Execute it in your agent:  /planx execute guard-clock-a3f9 v3',
     ]);
+    expect(screen.indexOf('Copied to your clipboard.')).toBeGreaterThan(
+      screen.indexOf('Execute it in your agent:'),
+    );
   });
 
   it('offers the same bar the CLI does, with ^c on the end of it', () => {

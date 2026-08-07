@@ -341,12 +341,13 @@ describe('the review hand-off', () => {
     ]);
   });
 
-  it('puts the copied command last', () => {
+  it('puts the clipboard status last', () => {
     setColorEnabled(false);
-    expect(closingBlock('guard-clock-a3f9', 3, true, '/planx revise guard-clock-a3f9')).toEqual([
+    expect(closingBlock('guard-clock-a3f9', 3, true, 'Copied to your clipboard.')).toEqual([
       'Reopen it in your terminal:  planx guard-clock-a3f9 v3',
-      'Execute it in your agent:  /planx execute guard-clock-a3f9 v3',
       'Revise this plan in your agent:  /planx revise guard-clock-a3f9',
+      'Execute it in your agent:  /planx execute guard-clock-a3f9 v3',
+      'Copied to your clipboard.',
       '',
     ]);
   });
@@ -379,12 +380,10 @@ describe('the review hand-off', () => {
     setColorEnabled(false);
   });
 
-  it('paints the copied command white as well as putting it last', () => {
+  it('leaves the final clipboard status white', () => {
     setColorEnabled(true);
-    const copied = '/planx revise guard-clock-a3f9';
-    const block = closingBlock('guard-clock-a3f9', 3, true, copied);
-    expect(block.at(-2)).toContain(`\x1b[22m  ${copied}`);
-    expect(block.at(-2)).not.toContain(yellow(copied));
+    const block = closingBlock('guard-clock-a3f9', 3, true, 'Copied to your clipboard.');
+    expect(block.at(-2)).toBe('Copied to your clipboard.');
     setColorEnabled(false);
   });
 });
