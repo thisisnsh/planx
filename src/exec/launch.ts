@@ -222,6 +222,71 @@ function quote(arg: string): string {
   return /[\s"'$`\\]/.test(arg) ? `"${arg.replace(/(["\\$`])/g, '\\$1')}"` : arg;
 }
 
+/**
+ * A launch line back into argv — `launchLine`'s inverse.
+ *
+ * The reviewer can rewrite the line before pressing enter, so what planx runs is
+ * a string rather than the argv it built. It is **split**, not handed to a
+ * shell: planx spawns the binary directly, as it already does, so `&&`, `|` and
+ * `$(…)` in an edited line reach the agent as text rather than being
+ * interpreted. What is honoured is the quoting — `"`, `'` and `\` — because that
+ * is what the line planx printed is quoted with.
+ *
+ * An unbalanced quote takes the rest of the line as one argument rather than
+ * throwing. The reviewer is mid-edit, not writing a shell script.
+ */
+export function splitCommandLine(line: string): string[] {
+  const out: string[] = [];
+  let current = '';
+  /** Whether anything at all has been read into `current` — `""` is an argument. */
+  let started = false;
+  let quoted: '"' | "'" | null = null;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i]!;
+
+    if (quoted === "'") {
+      // Single quotes are literal all the way through, backslash included.
+      if (char === "'") quoted = null;
+      else current += char;
+      continue;
+    }
+    if (quoted === '"') {
+      if (char === '"') {
+        quoted = null;
+        continue;
+      }
+      // Inside double quotes a backslash only escapes what it can: everything
+      // else keeps it, the way a shell does.
+      if (char === '\\' && /["\\$`]/.test(line[i + 1] ?? '')) current += line[++i]!;
+      else current += char;
+      continue;
+    }
+
+    if (char === '\\' && i + 1 < line.length) {
+      current += line[++i]!;
+      started = true;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quoted = char;
+      started = true;
+      continue;
+    }
+    if (/\s/.test(char)) {
+      if (started) out.push(current);
+      current = '';
+      started = false;
+      continue;
+    }
+    current += char;
+    started = true;
+  }
+
+  if (started) out.push(current);
+  return out;
+}
+
 export interface RunOptions {
   /** The plan's recorded directory. Falls back to this process's own. */
   cwd?: string | null;

@@ -14,6 +14,7 @@ import {
   launchLine,
   replayableArgv,
   runAgent,
+  splitCommandLine,
 } from '../src/exec/launch.js';
 
 const PID = process.ppid;
@@ -101,6 +102,58 @@ describe('replaying the recorded launch line', () => {
       '--sandbox',
       'workspace-write',
     ]);
+  });
+});
+
+/**
+ * The reviewer can rewrite the line before pressing enter, so what planx runs is
+ * a string. `splitCommandLine` is what turns it back into argv.
+ */
+describe('splitting a launch line back into arguments', () => {
+  it('round-trips everything launchLine quotes', () => {
+    for (const args of [
+      ['/planx execute guard-clock-a3f9 v3'],
+      ['--add-dir', '../a shared dir', 'say "hello"'],
+      ['a\\backslash', "it's", '$HOME', '`tick`'],
+      ['--model=opus'],
+    ]) {
+      expect(splitCommandLine(launchLine({ bin: 'claude', args }))).toEqual(['claude', ...args]);
+    }
+  });
+
+  it('honours single quotes, and the escapes inside double ones', () => {
+    expect(splitCommandLine(`claude --model 'gpt 5' "a \\"quoted\\" word"`)).toEqual([
+      'claude',
+      '--model',
+      'gpt 5',
+      'a "quoted" word',
+    ]);
+    // Single quotes are literal all the way through, backslash included.
+    expect(splitCommandLine(`claude 'a\\b'`)).toEqual(['claude', 'a\\b']);
+  });
+
+  /**
+   * Split, not shelled: planx spawns the binary directly, so an operator in an
+   * edited line reaches the agent as text rather than being interpreted.
+   */
+  it('passes shell operators through as arguments', () => {
+    expect(splitCommandLine('claude "/planx execute x" && rm -rf /')).toEqual([
+      'claude',
+      '/planx execute x',
+      '&&',
+      'rm',
+      '-rf',
+      '/',
+    ]);
+  });
+
+  it('takes the rest of the line as one argument on an unbalanced quote', () => {
+    // The reviewer is mid-edit, not writing a shell script.
+    expect(splitCommandLine('claude "/planx revise guard')).toEqual([
+      'claude',
+      '/planx revise guard',
+    ]);
+    expect(splitCommandLine('   ')).toEqual([]);
   });
 });
 
