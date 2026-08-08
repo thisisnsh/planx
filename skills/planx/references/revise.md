@@ -59,56 +59,10 @@ captured plan only, not conversation in chat. Preserve indentation, headings,
 fences and list structure; prefer vertical lists to wide tables; split a command
 or a code line only where its syntax stays valid.
 
-## 3. Capture it as a patch
+## 3. Capture it
 
-`planx revise` printed the exact command. Add `--patch` and send a unified diff
-against the parent instead of the whole plan:
-
-```bash
-planx capture --plan-id <plan-id> --parent v<n> --patch --stdin \
-  --source claude --session-id "$CLAUDE_CODE_SESSION_ID" <<'PATCH'
-@@ -12,4 +12,4 @@
- ## Capture
- Capture through stdin, as the agent that wrote the plan.
--Send the whole plan every round.
-+Send only the hunks that changed.
- Keep the plan id and version it prints.
-PATCH
-```
-
-This is the format `planx diff --plain` prints, read the other way round. A
-revision that changes three lines of a two-hundred-line plan costs three lines
-of output rather than two hundred, and it costs that every single round. planx
-stores the whole document either way.
-
-**Patch against the stored parent, byte for byte** — which is what `planx show
-<plan-id> --plain` prints, not the plan as you last wrote it. A line under
-`### Edited by the reviewer` is *already in that text*: the review rewrote it in
-place on the version it was on. That section tells you what they changed and
-that it is settled; it is not work to do. **Do not write a hunk that puts a
-reviewer's wording back** — there is nothing to put back, and the `-` line you
-would quote is your old wording, which is no longer there, so the hunk will not
-match. Leave those lines out of the patch entirely unless a comment asks you to
-change them again.
-
-**Give every hunk at least three lines of context.** PlanX derives both hunk
-counts from the body. It also searches outward from the line offsets, so
-offsets and counts may drift. Context may not: every context and removed line
-must match the stored parent exactly.
-
-planx answers with what it applied — `Applied 3 hunks: +12 −4.` — and that is
-your only sight of the document you just wrote. If those numbers are not the
-change you meant, say so instead of moving on.
-
-### When a patch will not do
-
-**A hunk that does not match writes nothing**, and planx says which one. Do what
-it tells you: re-read the parent with `planx show <plan-id> --plain`, then
-capture the full text.
-
-Skip the patch and capture full text from the start when the revision rewrites
-most of the plan anyway — a diff of a document against its replacement is bigger
-than the replacement.
+`planx revise` printed the exact command. Keep `--stdin`, and supply the whole
+revised plan with a heredoc, without a temporary file:
 
 ```bash
 planx capture --plan-id <plan-id> --parent v<n> --stdin \
@@ -117,10 +71,18 @@ planx capture --plan-id <plan-id> --parent v<n> --stdin \
 PLAN
 ```
 
+**Reproduce every reviewer-edited line exactly.** A line under the
+`### Edited by the reviewer` heading is already in the stored parent: the review
+rewrote it in place on the version it was on. That section tells you what they
+changed and that it is settled; it is not work to do, and it is not wording to
+put back.
+
+Executing a plan never captures a revision.
+
 ### Which agent you are
 
 The session id is what lets the review start you again on the other side of it.
-Pass whichever row is yours, on either form of the command:
+Pass whichever row is yours:
 
 | agent | pass |
 | --- | --- |

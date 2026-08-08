@@ -49,13 +49,6 @@ A version after v1 opens as its diff against the previous version. Use `←` and
 `→` to walk versions and `d` to switch between the diff and the complete plan.
 See [Compare versions](/diffing) for printed and plain output.
 
-## Revise with a patch
-
-Agents send revisions back as unified-diff hunks. Hunk offsets and declared
-counts may drift: PlanX searches from the offsets and derives both counts from
-each hunk body. Context and removed lines stay exact assertions about the stored
-parent. If either does not match, PlanX writes no version.
-
 ## Submit and continue
 
 Press `s` to submit the review and choose the next action. Feedback or a global

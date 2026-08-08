@@ -12,11 +12,10 @@ const revise = readFileSync(join(SKILL_DIR, 'references', 'revise.md'), 'utf8');
 const handoff = 'Plan created. Exit the agent, then run `planx <plan-id> v<n>`.';
 
 // There is no size budget here on purpose. File size was the wrong proxy for
-// prompt cost: the repeating cost of a revision is the plan re-emitted on every
-// capture, which `--patch` addresses, and a word ceiling on the skill fails the
-// moment someone restores a sentence an agent needed. What is asserted instead
-// is that each invocation loads exactly one reference, and that the contracts
-// whose failure costs a whole review round are actually written down.
+// prompt cost, and a word ceiling on the skill fails the moment someone
+// restores a sentence an agent needed. What is asserted instead is that each
+// invocation loads exactly one reference, and that the contracts whose failure
+// costs a whole review round are actually written down.
 
 function route(invocation: string): string {
   const row = router.split('\n').find((line) => line.startsWith(`| \`${invocation}\``));
@@ -130,17 +129,10 @@ describe('the shipped planx skill', () => {
     }
   });
 
-  it('makes the patch round the default way to capture a revision', () => {
-    expect(revise).toContain('--parent v<n> --patch --stdin');
-    expect(revise).toContain('planx diff --plain');
-    // The stored parent is the base. Reviewer edits are annotations until an
-    // agent captures them, and revise.md used to claim the opposite.
+  // Reviewer edits are written into the stored version in place, so the whole
+  // plan a revision sends back has to carry them forward unchanged.
+  it('tells the revision to reproduce reviewer-edited lines', () => {
     expect(revise).toContain('### Edited by the reviewer');
-    expect(revise).toContain('byte for byte');
-    expect(revise).toContain('three lines of context');
-    expect(revise).toContain('derives both hunk');
-    expect(revise).toContain('counts from the body');
-    expect(revise).toContain('offsets and counts may drift');
-    expect(revise).toContain('match the stored parent exactly');
+    expect(revise).toContain('Reproduce every reviewer-edited line exactly');
   });
 });

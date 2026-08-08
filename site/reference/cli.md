@@ -23,10 +23,10 @@ Generated from planx 0.6.0.
 Store a version of a plan.
 
 ```
-planx capture [--plan-id ID] [--title T] [--stdin|--file F] [--parent VER] [--patch]
+planx capture [--plan-id ID] [--title T] [--stdin|--file F] [--parent VER]
 ```
 
-Reads the plan from stdin or a file and appends it as a new version. Capturing content identical to the current latest is a no-op, so skills can call it defensively. With --patch the payload is a unified diff against --parent instead of the whole plan — the same format `planx diff --plain` prints — so a revision that touches three lines costs three lines. Hunk offsets and counts may drift: PlanX preserves the offsets, derives the counts from each body, and still requires every context and removed line to match the stored parent exactly. The version stored is still the whole document. A hunk whose context does not match fails, writes nothing, and says to re-read the parent and capture full text.
+Reads the plan from stdin or a file and appends it as a new version. Capturing content identical to the current latest is a no-op, so skills can call it defensively.
 
 | Flag | Meaning |
 | --- | --- |
@@ -36,7 +36,6 @@ Reads the plan from stdin or a file and appends it as a new version. Capturing c
 | `--stdin` | Read the plan from stdin. Implied when stdin is a pipe. |
 | `--file <F>` | Read the plan from a file. |
 | `--parent <VER>` | Version this revises. Defaults to the latest. |
-| `--patch` | A unified diff against --parent; body lines determine hunk counts. |
 | `--source <NAME>` | Which agent produced this (claude, codex, …). |
 | `--note <N>` | One line about what changed in this version. |
 | `--agent <NAME>` | Agent identifier recorded on the version. |
@@ -45,7 +44,6 @@ Reads the plan from stdin or a file and appends it as a new version. Capturing c
 ```bash
 planx capture --stdin --title "Guard the clock regression" < plan.md
 planx capture --plan-id guard-clock-a3f9 --parent v2 --stdin
-planx capture --plan-id guard-clock-a3f9 --parent v2 --patch --stdin < change.diff
 ```
 
 ## `planx revise`
