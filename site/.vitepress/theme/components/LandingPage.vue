@@ -1,16 +1,158 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import FeatureTerminal from './FeatureTerminal.vue';
 
 const menuOpen = ref(false);
 const copied = ref(false);
 const installCommand = 'npm install --global @thisisnsh/planx';
 
+const faq = [
+  {
+    question: 'What is PlanX?',
+    answer:
+      "PlanX is an open-source planning skill and terminal review interface for AI coding agents. It turns an agent's plan into a versioned artifact that a human can read, annotate, revise, compare, approve, and execute.",
+  },
+  {
+    question: 'Why use PlanX instead of asking an AI agent to plan in chat?',
+    answer:
+      'A plan buried in chat is easy to skim and approve without understanding it. PlanX separates planning from execution, gives the plan a review interface, and makes approval refer to an exact version. The goal is not to make agents produce more planning text. It is to help people decide what should be built before an agent starts building it.',
+  },
+  {
+    question: 'Does PlanX work with Codex?',
+    answer:
+      'Yes. PlanX installs a skill for Codex. Start a new Codex session and use $planx <task> to create a reviewable plan. After review, PlanX can return a revision to the session that researched the repository or open the approved version for execution in a fresh session.',
+  },
+  {
+    question: 'Does PlanX work with Claude Code?',
+    answer:
+      'Yes. PlanX installs a skill for Claude Code. Start a new Claude Code session and use /planx <task>. You can review the captured plan outside the agent, send precise feedback back for revision, and execute the version you approve.',
+  },
+  {
+    question: 'Can PlanX work with other AI agents?',
+    answer:
+      'Yes. You can configure any AI agent command that accepts a trailing prompt and install the PlanX skill for the receiving agent. Planning, revision, and execution do not have to happen in the same agent.',
+  },
+  {
+    question: 'What can I review in a PlanX plan?',
+    answer:
+      'You can select exact lines or line ranges, attach feedback beside the relevant text, add a note for the whole plan, edit lines directly, collapse sections for readability, and compare revisions with word-level diffs. Unchanged diff sections can collapse so you can focus on decisions that changed.',
+  },
+  {
+    question: "How do I review an AI agent's plan with PlanX?",
+    answer:
+      'Run planx to open the plan picker, or run planx <plan-id> to open a specific plan. Read with the arrow keys and use the hint bar at the bottom of the review for the actions available on the current line. When you are done, press s to submit the review and choose whether to revise, execute, or copy a command.',
+  },
+  {
+    question: 'How do I see every PlanX keyboard shortcut?',
+    answer:
+      'While browsing a plan, press ? to open the full shortcut list. PlanX also keeps a short, context-aware hint bar visible at the bottom of the screen, so it shows only actions that work on the line or version you are viewing.',
+  },
+  {
+    question: 'How do I select lines and leave feedback on a plan?',
+    answer:
+      'Move to the first line and press v to start a selection. Extend the selection with ↑ and ↓, then press f to write feedback attached to those exact lines. Press enter to save the comment. Use j to jump through feedback on the current version.',
+  },
+  {
+    question: 'How do I edit a line in an AI-generated plan?',
+    answer:
+      'Move to a line in the latest version and press e. Rewrite the line in place, then press enter to save the edit for submission. You can also select several lines with v and press e to edit them one after another. Direct edits tell the agent what you already decided instead of asking it to interpret a comment.',
+  },
+  {
+    question: 'How do I add feedback about the whole plan?',
+    answer:
+      'Press n to add or edit a plan-wide note. Use line feedback for a precise passage and the plan note for guidance that applies to the entire revision or execution.',
+  },
+  {
+    question: "How do I compare two versions of an AI agent's plan?",
+    answer:
+      'Open a revised plan and PlanX shows its diff against the previous version. Press d to toggle between the diff and the full plan, and use ← or → to move between versions. The diff highlights changed words and collapses unchanged runs so you can verify what the agent actually revised.',
+  },
+  {
+    question: 'Can I print a plan diff without opening the interactive review?',
+    answer:
+      'Yes. Use planx diff <plan-id> v1 v2 --print for rendered output, add --plain for a raw unified diff, or use --stat for only the change summary.',
+  },
+  {
+    question: 'How do I make a long AI plan easier to read?',
+    answer:
+      'Press space to collapse or expand the section, feedback box, or unchanged diff run under the cursor. Press h to fold or unfold every feedback box at once. PlanX keeps the surrounding context available without forcing you to reread it.',
+  },
+  {
+    question: 'How do I send plan feedback back to Codex or Claude Code?',
+    answer:
+      'Press s after reviewing and choose a revision hand-off. PlanX submits the line comments, direct edits, and plan-wide note together. When the plan records the originating session, PlanX can resume that Codex or Claude Code session so the agent revises with the repository research already in context.',
+  },
+  {
+    question: "How do I approve and execute an AI agent's plan?",
+    answer:
+      'Press s and choose the execution hand-off for the exact version on screen. PlanX starts execution in a fresh agent session from that stored version instead of a summary remembered from chat.',
+  },
+  {
+    question: 'What does an empty PlanX review mean?',
+    answer:
+      'Submitting without comments, edits, or a plan-wide note means the version was reviewed with nothing to change. PlanX does not create a pointless identical revision; that version is ready for execution.',
+  },
+  {
+    question: 'How do I find a plan or an older plan version?',
+    answer:
+      'Run planx to browse stored plans or planx list to list them newest first. Open a plan and use ← and → to inspect its versions. You can also open one directly with planx <plan-id> v<n>.',
+  },
+  {
+    question: 'Does PlanX support versioned plans and plan diffs?',
+    answer:
+      'Yes. Every captured revision becomes a version of the same plan. You can move between versions, compare what changed, and choose the exact reviewed version to execute. Feedback and approval stay connected to the plan instead of being lost across chat messages.',
+  },
+  {
+    question: 'Can I plan with one agent and revise or execute with another?',
+    answer:
+      'Yes. PlanX supports cross-agent workflows. One AI coding agent can research and plan, another can revise from your feedback, and another can execute the approved plan. Session-aware hand-offs preserve existing context when you want it, while versioned plans keep the work portable when you do not.',
+  },
+  {
+    question: 'What is the best planning skill for Codex?',
+    answer:
+      'PlanX is designed for developers who want human review before implementation. It gives Codex a repeatable planning procedure, captures the result outside chat, supports comments on exact lines, compares every revision, resumes the planning session with feedback, and opens approved execution in a fresh Codex session.',
+  },
+  {
+    question: 'What is the best planning skill for Claude Code?',
+    answer:
+      "PlanX is designed for Claude Code workflows that need more than a one-time approve-or-reject step. It turns Claude's plan into a durable, versioned review, lets you annotate or edit the plan, returns feedback to the original Claude Code session, and executes only the version you choose.",
+  },
+  {
+    question: 'What is the best skill for planning with AI coding agents?',
+    answer:
+      'A useful planning skill should let you understand and change the plan, not just ask an agent to generate a longer one. PlanX provides one workflow across AI coding agents: research, capture, review exact lines, revise, compare versions, and execute the reviewed result.',
+  },
+  {
+    question: 'How is PlanX different from Codex or Claude Code plan mode?',
+    answer:
+      'Agent plan modes help an agent think before it codes, but their plan often remains a transient message inside one conversation. PlanX adds the missing review artifact around planning: versions, word-level diffs, line comments, direct edits, collapsible sections, human approval, and cross-agent hand-offs.',
+  },
+  {
+    question: 'How do I stop an AI coding agent from executing a bad plan?',
+    answer:
+      'Use PlanX to separate planning from execution. Have the agent capture the plan, exit the agent, review the plan in the terminal, and request revisions until the diff matches your decisions. Execute only the exact version you approve.',
+  },
+  {
+    question: 'Can PlanX help prevent scope creep in AI-generated code?',
+    answer:
+      'PlanX makes scope changes visible before code is written. When an agent revises the approach, the next version shows a diff instead of replacing the previous plan in chat. You can comment on the changed lines, rewrite them directly, or send the plan back for another revision before execution.',
+  },
+  {
+    question: 'Is PlanX the best way to plan with AI coding agents?',
+    answer:
+      'If your priority is to review the work instead of blindly sending an unreadable plan back to an agent, PlanX is built for that job: plan, review exact lines, compare every revision, and execute only what you approve. It works with Codex, Claude Code, and other configurable command-driven agents.',
+  },
+  {
+    question: 'Is PlanX open source?',
+    answer:
+      'Yes. PlanX is an MIT-licensed open-source project. The CLI is published as @thisisnsh/planx on npm, and the source is available on GitHub.',
+  },
+];
+
 async function copyInstall(): Promise<void> {
   try {
     await navigator.clipboard.writeText(installCommand);
     copied.value = true;
-    window.setTimeout(() => (copied.value = false), 1800);
+    window.setTimeout(() => (copied.value = false), 1600);
   } catch {
     copied.value = false;
   }
@@ -27,8 +169,8 @@ function closeMenu(): void {
 
     <header class="site-header">
       <a class="brand" href="#top" aria-label="PlanX home" @click="closeMenu">
-        <span class="brand-cursor" aria-hidden="true"></span>
-        <span>PLANX</span>
+        <span class="brand-bracket" aria-hidden="true">⌜</span>
+        <span>planx</span>
       </a>
 
       <button
@@ -43,318 +185,298 @@ function closeMenu(): void {
       </button>
 
       <nav id="site-nav" :class="{ open: menuOpen }" aria-label="Primary navigation">
-        <a href="#why" @click="closeMenu">Why PlanX</a>
         <a href="#workflow" @click="closeMenu">Workflow</a>
         <a href="#features" @click="closeMenu">Features</a>
-        <a href="https://github.com/thisisnsh/planx">GitHub <span aria-hidden="true">↗</span></a>
-        <a class="nav-cta" href="#install" @click="closeMenu">Install</a>
+        <a href="#install" @click="closeMenu">Install</a>
+        <a href="#faq" @click="closeMenu">FAQ</a>
+        <a class="github-link" href="https://github.com/thisisnsh/planx">
+          GitHub <span aria-hidden="true">↗</span>
+        </a>
       </nav>
     </header>
 
     <main id="main">
-      <section id="top" class="hero">
-        <div class="hero-grid" aria-hidden="true"></div>
+      <section id="top" class="hero section-shell">
         <div class="hero-copy">
-          <p class="eyebrow">
-            <span class="status-dot"></span> Reviewable planning for coding agents
-          </p>
-          <h1>Stop feeding agents <span>unreadable plans.</span></h1>
+          <p class="kicker"><span></span> Open source · Codex · Claude Code · any agent</p>
+          <h1>Build plans<br />worth <em>executing.</em></h1>
           <p class="hero-lede">
-            PlanX is a skill and terminal review interface. Turn an agent's plan into a versioned
-            artifact, challenge it line by line, and execute only the version you approve.
+            A skill for coding agents and a terminal interface for reviewing plans before you
+            execute them.
+          </p>
+          <p class="hero-detail">
+            Turn the giant blob of text you read once and lose in chat into a versioned artifact you
+            can actually review.
           </p>
           <div class="hero-actions">
-            <a class="button button-primary" href="#install"
-              >Get PlanX <span aria-hidden="true">↓</span></a
-            >
-            <a class="button button-secondary" href="https://github.com/thisisnsh/planx">
-              View source <span aria-hidden="true">↗</span>
+            <a class="button button-primary" href="#install">Install PlanX</a>
+            <a class="button button-quiet" href="https://github.com/thisisnsh/planx">
+              View on GitHub <span aria-hidden="true">↗</span>
             </a>
           </div>
-          <p class="hero-command" aria-label="Install command">
-            <code><span>$</span> {{ installCommand }}</code>
-          </p>
         </div>
 
-        <div class="hero-proof">
-          <div class="terminal-window">
-            <div class="window-chrome" aria-hidden="true">
-              <span></span><span></span><span></span>
-              <p>planx — review</p>
-            </div>
+        <div class="hero-art">
+          <div class="signal-line" aria-hidden="true"><b>planx</b><span>v0.7.0</span></div>
+          <figure class="screen screen-hero">
             <img
-              src="https://raw.githubusercontent.com/thisisnsh/planx/main/assets/planx-review.png"
-              alt="PlanX comparing plan revisions with exact-line feedback, a direct edit, and collapsed context"
+              src="/images/planx-view.png"
+              width="1340"
+              height="556"
+              alt="PlanX terminal plan picker showing saved plans and their versions"
+              fetchpriority="high"
             />
+            <figcaption>Pick a plan. Review an exact version.</figcaption>
+          </figure>
+        </div>
+
+        <div class="hero-principles" aria-label="PlanX capabilities">
+          <span>Compare every revision.</span>
+          <span>Comment on exact lines.</span>
+          <span>Edit what is decided.</span>
+          <span>Execute only what you approve.</span>
+        </div>
+      </section>
+
+      <section class="manifesto">
+        <div class="section-shell manifesto-grid">
+          <p class="section-label">Why PlanX</p>
+          <div>
+            <h2>Planning is not a ritual you perform to make an agent feel prepared.</h2>
+            <p>It is the moment you decide what will be built.</p>
           </div>
-          <p>
-            <span aria-hidden="true">↗</span> Real PlanX review: diff, edit, feedback, and collapsed
-            context.
-          </p>
-        </div>
-      </section>
-
-      <section class="agent-strip" aria-label="Supported coding agents">
-        <p>One review loop. Your choice of agent.</p>
-        <div class="agent-list">
-          <span>CODEX SKILL</span><i></i><span>CLAUDE CODE SKILL</span><i></i
-          ><span>OTHER AGENT CLIs</span>
-        </div>
-      </section>
-
-      <section id="why" class="manifesto section-shell">
-        <p class="section-index">01 / THE POINT</p>
-        <div>
-          <h2>A plan is not a prompt.<br /><em>It is a decision.</em></h2>
-          <p>
-            Agents can generate plausible steps faster than you can read them. That does not make
-            the plan correct—or even readable. PlanX gives planning back to the person responsible
-            for the outcome: read it, compare it, question it, change it, then approve it.
-          </p>
         </div>
       </section>
 
       <section id="workflow" class="workflow section-shell">
-        <div class="section-heading">
+        <div class="section-intro">
           <div>
-            <p class="section-index">02 / THE LOOP</p>
-            <h2>Plan. Review. Revise. Execute.</h2>
+            <p class="section-label">The workflow</p>
+            <h2>Plan → Review → Revise → Execute</h2>
           </div>
           <p>
-            The plan leaves chat long enough to become something you can inspect. Every hand-off
-            names the plan and exact version.
+            The plan leaves chat long enough to become something you can inspect. Every revision
+            stays attached to the same artifact.
           </p>
         </div>
 
-        <div class="workflow-track">
-          <div class="workflow-line" aria-hidden="true"></div>
-          <article>
-            <span class="step-dot step-square">01</span>
-            <h3>Plan</h3>
-            <p>An agent researches the repository and captures the first version.</p>
-          </article>
-          <article>
-            <span class="step-dot">02</span>
-            <h3>Review</h3>
-            <p>You compare, select lines, leave feedback, add notes, and edit text.</p>
-          </article>
-          <article>
-            <span class="step-dot">03</span>
-            <h3>Revise</h3>
-            <p>The same agent—or another one—answers the review in a new version.</p>
-          </article>
-          <article>
-            <span class="step-dot step-ring">04</span>
-            <h3>Execute</h3>
-            <p>An agent builds the exact reviewed version you chose.</p>
-          </article>
-        </div>
+        <ol class="workflow-list">
+          <li>
+            <span>01</span>
+            <h3>Plan in an agent.</h3>
+            <p>
+              The agent researches the work and captures a version instead of burying it in chat.
+            </p>
+          </li>
+          <li>
+            <span>02</span>
+            <h3>Review outside the agent.</h3>
+            <p>Read, collapse sections, select exact lines, leave feedback, or edit directly.</p>
+          </li>
+          <li>
+            <span>03</span>
+            <h3>Revise with context.</h3>
+            <p>Return the review to the same session or hand it to another agent.</p>
+          </li>
+          <li>
+            <span>04</span>
+            <h3>Execute what you approved.</h3>
+            <p>Choose an exact reviewed version—not a fuzzy recollection of the conversation.</p>
+          </li>
+        </ol>
       </section>
 
-      <section id="features" class="features section-shell">
-        <div class="section-heading">
-          <div>
-            <p class="section-index">03 / REVIEW TOOLS</p>
-            <h2>Less plan theatre. More actual review.</h2>
-          </div>
-          <p>
-            Everything important stays in the main loop. Maintenance and configuration stay out of
-            the way until you need them.
-          </p>
-        </div>
-
-        <div class="feature-grid">
-          <article class="feature feature-wide">
-            <div class="feature-copy">
-              <span class="feature-number">01</span>
-              <h3>Versioned plans with readable diffs</h3>
-              <p>
-                Keep every revision, move through history, and compare exact word-level changes.
-                Unchanged runs collapse so the decision stays visible.
-              </p>
-            </div>
-            <div class="version-visual" aria-hidden="true">
-              <div class="plan-version muted"><span>v1</span><i></i><i></i><i></i></div>
-              <div class="plan-arrow">→</div>
-              <div class="plan-version active">
-                <span>v3 ← v2</span><i></i><i></i><i></i><b>review</b>
-              </div>
-            </div>
-          </article>
-
-          <article class="feature">
-            <span class="feature-number">02</span>
-            <div class="line-visual" aria-hidden="true">
-              <span>11 │ rollout at 10%</span>
-              <span>12 │ measure errors</span>
-              <b>↳ add a rollback gate</b>
-            </div>
-            <h3>Feedback on exact lines</h3>
-            <p>
-              Select one line or a range. Comments stay visibly anchored to the text they address.
-            </p>
-          </article>
-
-          <article class="feature feature-yellow">
-            <span class="feature-number">03</span>
-            <div class="edit-visual" aria-hidden="true">
-              <span><i>−</i> global request limit</span>
-              <span><i>+</i> per-user rate limit</span>
-            </div>
-            <h3>Edit lines. Add a plan-wide note.</h3>
-            <p>
-              Settle obvious wording yourself and keep broad constraints separate from local
-              feedback.
-            </p>
-          </article>
-
-          <article class="feature">
-            <span class="feature-number">04</span>
-            <div class="collapse-visual" aria-hidden="true">
-              <span>## Approach</span>
-              <b>⋯ 18 lines · 2 feedback</b>
-              <span>## Validation</span>
-            </div>
-            <h3>Long plans stay readable</h3>
-            <p>
-              Collapse sections, feedback, and unchanged diff runs without throwing context away.
-            </p>
-          </article>
-
-          <article class="feature feature-wide handoff-feature">
-            <div class="feature-copy">
-              <span class="feature-number">05</span>
-              <h3>Revise and execute in any agent</h3>
-              <p>
-                Resume the agent that wrote the plan, choose another agent through a custom
-                hand-off, or copy the exact command yourself. Cross-agent workflows are a feature,
-                not a workaround.
-              </p>
-            </div>
-            <div class="handoff-visual" aria-hidden="true">
-              <span>CODEX</span><i>plan</i><b>→</b><span>CLAUDE</span><i>revise</i><b>→</b
-              ><span>YOUR AGENT</span><i>execute</i>
-            </div>
-          </article>
-        </div>
-      </section>
-
-      <section class="proof-section">
+      <section id="features" class="features">
         <div class="section-shell">
-          <div class="section-heading">
+          <div class="section-intro feature-intro">
             <div>
-              <p class="section-index">04 / SEE THE REVIEW</p>
-              <h2>Every claim has a screen.</h2>
+              <p class="section-label">What changes</p>
+              <h2>Review the plan.<br />Not the agent.</h2>
             </div>
+            <p>Every image below is the real PlanX terminal interface.</p>
+          </div>
+
+          <article class="feature-row">
+            <div class="feature-copy">
+              <p class="feature-index">01 / Versions</p>
+              <h3>Compare without rereading</h3>
+              <p>
+                Every revision stays attached to the plan. Word-level diffs show what moved, and
+                unchanged sections collapse so your attention goes to the new decisions.
+              </p>
+            </div>
+            <figure class="screen">
+              <img
+                src="/images/planx-diff.png"
+                width="1324"
+                height="458"
+                alt="PlanX word-level diff showing removed text in red and revised text in green"
+                loading="lazy"
+              />
+              <figcaption>Word-level changes. Unchanged context collapsed.</figcaption>
+            </figure>
+          </article>
+
+          <article class="feature-row feature-row-reverse">
+            <div class="feature-copy">
+              <p class="feature-index">02 / Feedback</p>
+              <h3>Give precise feedback</h3>
+              <p>
+                Select one line or a range and comment beside the exact text. Add a note for the
+                whole plan, or edit a line directly when the right wording is already obvious.
+              </p>
+            </div>
+            <figure class="screen">
+              <img
+                src="/images/planx-feedback.png"
+                width="1296"
+                height="302"
+                alt="PlanX feedback editor attached to an exact selected line in a plan"
+                loading="lazy"
+              />
+              <figcaption>Feedback stays attached to the line it is about.</figcaption>
+            </figure>
+          </article>
+
+          <article class="feature-row">
+            <div class="feature-copy">
+              <p class="feature-index">03 / Focus</p>
+              <h3>Keep the plan readable</h3>
+              <p>
+                Collapse sections, feedback boxes, and unchanged diff runs without deleting their
+                context. Long plans stay navigable from the first proposal to the settled version.
+              </p>
+            </div>
+            <figure class="screen">
+              <img
+                src="/images/planx-collapse.png"
+                width="1304"
+                height="276"
+                alt="PlanX review with plan sections and unchanged diff runs collapsed"
+                loading="lazy"
+              />
+              <figcaption>Less scrolling. No lost context.</figcaption>
+            </figure>
+          </article>
+
+          <article class="feature-row feature-row-reverse">
+            <div class="feature-copy">
+              <p class="feature-index">04 / Handoff</p>
+              <h3>Revise without losing context</h3>
+              <p>
+                PlanX records the session that created a version, so revision can return to the
+                agent that already researched the repository. Execution opens from the reviewed
+                version in a fresh session.
+              </p>
+            </div>
+            <figure class="screen">
+              <img
+                src="/images/planx-custom.png"
+                width="1540"
+                height="326"
+                alt="PlanX submit menu offering session-aware revision and execution commands"
+                loading="lazy"
+              />
+              <figcaption>One review. The right hand-off.</figcaption>
+            </figure>
+          </article>
+
+          <article class="feature-row">
+            <div class="feature-copy">
+              <p class="feature-index">05 / Your agents</p>
+              <h3>Use the agent you want</h3>
+              <p>
+                Configure any agent command that accepts a trailing prompt. One agent can plan,
+                another can revise, and a third can execute.
+              </p>
+              <code class="inline-command">planx defaults</code>
+            </div>
+            <figure class="screen screen-narrow">
+              <img
+                src="/images/planx-defaults.png"
+                width="1004"
+                height="418"
+                alt="PlanX custom agent configuration for revise and execute commands"
+                loading="lazy"
+              />
+              <figcaption>Your commands. Your defaults.</figcaption>
+            </figure>
+          </article>
+        </div>
+      </section>
+
+      <section id="install" class="install">
+        <div class="section-shell install-grid">
+          <div>
+            <p class="section-label">Install</p>
+            <h2>Make the next plan worth executing.</h2>
             <p>
-              These are static views of the terminal UI. The two labeled slots are ready for the
-              final screenshots when they are available.
+              PlanX installs its skill into existing Codex and Claude Code installations. Start a
+              new agent session after installing.
             </p>
           </div>
 
-          <div class="proof-group">
-            <div class="proof-copy">
-              <span>01</span>
-              <h3>Point at the text. Say what is wrong.</h3>
-              <p>
-                Exact-range feedback and direct edits remove the ambiguity from revision prompts.
-              </p>
+          <div class="install-panel">
+            <div class="command" aria-label="Install command">
+              <code><span>$</span> {{ installCommand }}</code>
+              <button type="button" @click="copyInstall">
+                {{ copied ? 'Copied!' : 'Copy' }}
+              </button>
             </div>
-            <div class="proof-screens two-up">
-              <FeatureTerminal example="feedback" />
-              <FeatureTerminal example="editing" />
+            <div class="start-commands">
+              <p><span>Codex</span><code>$planx &lt;task&gt;</code></p>
+              <p><span>Claude Code</span><code>/planx &lt;task&gt;</code></p>
             </div>
-          </div>
-
-          <div class="proof-group">
-            <div class="proof-copy">
-              <span>02</span>
-              <h3>Compare versions without rereading everything.</h3>
-              <p>
-                History, word-level changes, and collapsed context keep each review round focused.
-              </p>
-            </div>
-            <div class="proof-screens three-up">
-              <FeatureTerminal example="diff" />
-              <FeatureTerminal example="versions" />
-              <FeatureTerminal example="readability" />
-            </div>
-            <div class="screenshot-placeholder">
-              <span>SCREENSHOT PLACEHOLDER / VERSION HISTORY + COMPARE</span>
-              <strong>Plan picker with several versions beside the v3 ← v2 review</strong>
-              <p>Use this slot for the final version-navigation screenshot.</p>
-            </div>
-          </div>
-
-          <div class="proof-group">
-            <div class="proof-copy">
-              <span>03</span>
-              <h3>Hand the settled version to the right agent.</h3>
-              <p>
-                Revision and execution stay tied to an ID and version, even across agent boundaries.
-              </p>
-            </div>
-            <div class="proof-screens one-up">
-              <FeatureTerminal example="handoff" />
-            </div>
-            <div class="screenshot-placeholder">
-              <span>SCREENSHOT PLACEHOLDER / CROSS-AGENT HAND-OFF</span>
-              <strong>Submit menu with resume, execute, copy, and custom-agent rows</strong>
-              <p>Use this slot for the final hand-off screenshot.</p>
-            </div>
+            <p class="requirement">Node.js 20.19+ · MIT licensed · open source</p>
           </div>
         </div>
       </section>
 
-      <section id="install" class="install section-shell">
-        <div class="install-mark" aria-hidden="true"><span>PX</span></div>
-        <div class="install-copy">
-          <p class="section-index">05 / GET STARTED</p>
-          <h2>Make the next plan worth executing.</h2>
+      <section class="commands section-shell" aria-labelledby="other-commands">
+        <div>
+          <p class="section-label">Keep it current</p>
+          <h2 id="other-commands">Other commands</h2>
+        </div>
+        <div class="command-list">
+          <p><span>Update PlanX and installed skills</span><code>planx update</code></p>
+          <p><span>Add skills for every agent</span><code>planx add-skills</code></p>
+          <p><span>Add the Codex skill only</span><code>planx add-skills --agent codex</code></p>
           <p>
-            Install the CLI and skill, start a new Codex or Claude Code session, and ask for a
-            reviewable plan. Other agent CLIs can join through the packaged skill and custom
-            hand-offs.
+            <span>Add the Claude Code skill only</span><code>planx add-skills --agent claude</code>
           </p>
+          <p><span>Remove installed skills</span><code>planx remove-skills</code></p>
+        </div>
+      </section>
 
-          <div class="command" aria-label="Install command">
-            <code><span>$</span> {{ installCommand }}</code>
-            <button
-              type="button"
-              :aria-label="copied ? 'Install command copied' : 'Copy install command'"
-              @click="copyInstall"
-            >
-              <span>{{ copied ? 'Copied' : 'Copy' }}</span>
-            </button>
-          </div>
-
-          <div class="agent-commands">
-            <p><strong>Codex</strong><code>$planx &lt;task&gt;</code></p>
-            <p><strong>Claude Code</strong><code>/planx &lt;task&gt;</code></p>
-          </div>
-
-          <p class="install-note">Requires Node.js 20.19 or newer.</p>
-          <a
-            class="text-link"
-            href="https://github.com/thisisnsh/planx#installation-and-agent-setup"
-          >
-            Installation, custom agents, and configuration <span aria-hidden="true">→</span>
-          </a>
+      <section id="faq" class="faq section-shell" aria-labelledby="faq-title">
+        <div class="faq-heading">
+          <p class="section-label">PlanX FAQ</p>
+          <h2 id="faq-title">Planning with AI coding agents</h2>
+          <p>Details for people, agents, and search engines.</p>
+        </div>
+        <div class="faq-list">
+          <details v-for="item in faq" :key="item.question">
+            <summary>{{ item.question }}</summary>
+            <p>{{ item.answer }}</p>
+          </details>
         </div>
       </section>
     </main>
 
     <footer>
-      <div class="footer-brand">
-        <strong>PLANX</strong><span>Review the plan. Not the agent.</span>
+      <div class="footer-main section-shell">
+        <a class="brand footer-brand" href="#top"><span class="brand-bracket">⌜</span>planx</a>
+        <p>Build plans worth executing.</p>
+        <nav aria-label="Footer navigation">
+          <a href="https://www.npmjs.com/package/@thisisnsh/planx">npm</a>
+          <a href="https://github.com/thisisnsh/planx/blob/main/CONTRIBUTING.md">Contribute</a>
+          <a href="https://github.com/thisisnsh/planx">GitHub</a>
+        </nav>
       </div>
-      <div class="footer-links">
-        <a href="#install">Install</a>
-        <a href="https://www.npmjs.com/package/@thisisnsh/planx">npm</a>
-        <a href="https://github.com/thisisnsh/planx/blob/main/CONTRIBUTING.md">Contribute</a>
-        <a href="https://github.com/thisisnsh/planx">GitHub</a>
+      <div class="footer-meta section-shell">
+        <span>MIT licensed</span>
+        <span>Built by <a href="https://github.com/thisisnsh">Nishant Hada</a></span>
       </div>
-      <p>MIT licensed · Built by <a href="https://github.com/thisisnsh">Nishant Hada</a></p>
     </footer>
   </div>
 </template>

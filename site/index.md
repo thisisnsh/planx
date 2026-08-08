@@ -1,8 +1,8 @@
 ---
 layout: false
-title: PlanX — review agent plans before they become code
+title: PlanX — build AI coding agent plans worth executing
 titleTemplate: false
-description: PlanX is a skill and terminal review interface for versioning, annotating, revising, and executing coding-agent plans.
+description: PlanX is an open-source skill and terminal review interface for versioning, annotating, revising, comparing, approving, and executing AI coding-agent plans.
 ---
 
 <LandingPage />

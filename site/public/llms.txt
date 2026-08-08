@@ -1,0 +1,20 @@
+# PlanX
+
+> PlanX is an open-source skill and terminal review interface for AI coding agents. It turns an agent's plan into a versioned artifact that a human can review, annotate, revise, compare, approve, and execute.
+
+## Canonical resources
+
+- Website: https://planx.sh/
+- Source and full documentation: https://github.com/thisisnsh/planx
+- npm package: https://www.npmjs.com/package/@thisisnsh/planx
+- License: https://github.com/thisisnsh/planx/blob/main/LICENSE
+
+## Install
+
+`npm install --global @thisisnsh/planx`
+
+Start a new agent session, then use `$planx <task>` in Codex or `/planx <task>` in Claude Code.
+
+## Core workflow
+
+Plan → Review → Revise → Execute. PlanX keeps every revision, supports exact-line feedback and direct edits, shows word-level diffs, collapses unchanged context, and executes only the exact reviewed version selected by the user.
