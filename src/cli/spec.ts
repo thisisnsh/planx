@@ -16,11 +16,15 @@ export const COMMANDS: CommandSpec[] = [
   {
     name: 'capture',
     group: 'agent',
-    usage: 'planx capture [--plan-id ID] [--title T] [--stdin|--file F] [--parent VER]',
+    usage: 'planx capture [--plan-id ID] [--title T] [--stdin|--file F] [--parent VER] [--patch]',
     summary: 'Store a version of a plan.',
     description:
       'Reads the plan from stdin or a file and appends it as a new version. Capturing content ' +
-      'identical to the current latest is a no-op, so skills can call it defensively.',
+      'identical to the current latest is a no-op, so skills can call it defensively. With ' +
+      '--patch the payload is a unified diff against --parent instead of the whole plan — the ' +
+      'same format `planx diff --plain` prints — so a revision that touches three lines costs ' +
+      'three lines. The version stored is still the whole document. A hunk whose context does ' +
+      'not match fails, writes nothing, and says to re-read the parent and capture full text.',
     flags: [
       { name: '--plan-id', arg: 'ID', summary: 'Append to this plan. Omit to create a new one.' },
       { name: '--title', arg: 'T', summary: 'Plan title. Defaults to the H1 of the plan text.' },
@@ -32,6 +36,10 @@ export const COMMANDS: CommandSpec[] = [
       { name: '--stdin', summary: 'Read the plan from stdin. Implied when stdin is a pipe.' },
       { name: '--file', arg: 'F', summary: 'Read the plan from a file.' },
       { name: '--parent', arg: 'VER', summary: 'Version this revises. Defaults to the latest.' },
+      {
+        name: '--patch',
+        summary: 'The payload is a unified diff against --parent. Needs --plan-id.',
+      },
       { name: '--source', arg: 'NAME', summary: 'Which agent produced this (claude, codex, …).' },
       { name: '--note', arg: 'N', summary: 'One line about what changed in this version.' },
       { name: '--agent', arg: 'NAME', summary: 'Agent identifier recorded on the version.' },
@@ -44,6 +52,7 @@ export const COMMANDS: CommandSpec[] = [
     examples: [
       'planx capture --stdin --title "Guard the clock regression" < plan.md',
       'planx capture --plan-id guard-clock-a3f9 --parent v2 --stdin',
+      'planx capture --plan-id guard-clock-a3f9 --parent v2 --patch --stdin < change.diff',
     ],
   },
   {

@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { applyUnifiedPatch, type ApplyOk } from '../diff/apply.js';
 import { diffVersions, rowsForSingleVersion } from '../diff/lines.js';
 import { copyToClipboard } from '../exec/clipboard.js';
 import {
@@ -180,9 +181,43 @@ function requireVersionText(id: string, version: number): string {
 
 /* ------------------------------------------------------------- capture */
 
+/**
+ * Resolve `--patch` into the full text of the next version.
+ *
+ * The base is the stored parent byte for byte — which includes any line the
+ * reviewer rewrote with `e`. `rewriteVersion` writes those into `v<n>.md` in
+ * place rather than holding them aside, so what a patch has to match is exactly
+ * what `planx show` prints, edits and all.
+ *
+ * Nothing below the CLI layer knows about any of this: what reaches `capture()`
+ * is a whole document, exactly as a full-text capture would give it.
+ */
+function patchedText(ctx: Ctx, patch: string): { text: string; applied: ApplyOk } {
+  const planId = one(ctx.args, '--plan-id');
+  if (!planId) {
+    throw new Error('planx: --patch needs --plan-id — a first capture has nothing to patch.');
+  }
+
+  const id = resolvePlanRef(planId);
+  const parent = resolveVersionRef(id, one(ctx.args, '--parent'));
+  const result = applyUnifiedPatch(requireVersionText(id, parent), patch);
+
+  if (!result.ok) {
+    const what =
+      result.hunk === null ? result.reason : `hunk ${result.hunk} does not match ${id} v${parent}`;
+    throw new Error(
+      `planx: ${what}. Re-read it with \`planx show ${id} v${parent} --plain\` ` +
+        'and capture the full text.',
+    );
+  }
+  return { text: result.text, applied: result };
+}
+
 export function cmdCapture(ctx: Ctx): number {
   ensureStore();
-  const text = readPlanText(ctx.args);
+  const payload = readPlanText(ctx.args);
+  const patched = has(ctx.args, '--patch') ? patchedText(ctx, payload) : null;
+  const text = patched?.text ?? payload;
   const source = one(ctx.args, '--source') ?? 'unknown';
   // How this tab was started, read off planx's own process tree rather than
   // taken as a flag: it is a fact about planx's parents, not something the
@@ -205,7 +240,7 @@ export function cmdCapture(ctx: Ctx): number {
   });
 
   if (ctx.json) {
-    ctx.out(JSON.stringify(result, null, 2));
+    ctx.out(JSON.stringify(patched ? { ...result, applied: patched.applied } : result, null, 2));
     return 0;
   }
 
@@ -214,6 +249,13 @@ export function cmdCapture(ctx: Ctx): number {
       ? green(`Captured ${bold(result.planId)} v${result.version}.`)
       : dim(`${result.planId} v${result.version} unchanged — nothing written.`),
   );
+  // The agent sent a diff and never saw the document it produced, so this count
+  // is its only confirmation that the patch did what it meant. It also makes a
+  // hunk that landed in the wrong place visible on the spot.
+  if (patched) {
+    const { hunks, added, removed } = patched.applied;
+    ctx.out(dim(`Applied ${hunks} hunk${hunks === 1 ? '' : 's'}: +${added} −${removed}.`));
+  }
   if (result.closedFeedback) {
     ctx.out(dim(`Closed ${result.closedFeedback} feedback record(s).`));
   }

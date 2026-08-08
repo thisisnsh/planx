@@ -275,6 +275,55 @@ Revise the plan addressing every comment. Then run:
 Every comment carries its verbatim quote, and the last line is the exact command
 to run next.
 
+## Capturing the revision as a patch
+
+That command is the full-text form, and adding `--patch` to it is the normal way
+to answer a review. The payload on stdin then is a unified diff against
+`--parent` rather than the whole plan:
+
+```bash
+planx capture --plan-id guard-clock-regression-a3f9 --parent v2 --patch --stdin <<'PATCH'
+@@ -40,4 +40,4 @@
+ ## Approach
+ The guard runs on every snapshot read.
+-Extend the existing snapshot-regression guard in poller.ts.
++Extend the guard in the R2 write path, not the poller.
+PATCH
+```
+
+This is the format [`planx diff --plain`](#the-feedback-payload) prints, read
+the other way round — the read and write sides of a revision speak the same
+language. A revision that changes three lines of a two-hundred-line plan costs
+three lines of agent output instead of two hundred, and it costs that on every
+round, which is where the real expense of the loop was.
+
+**What gets stored is unchanged.** planx applies the patch to the stored parent
+and writes the resulting document, so versions stay complete files on disk and
+history, diffing, feedback anchoring and the byte-identical no-op all behave
+exactly as they do for a full-text capture.
+
+**The base is the stored parent, byte for byte** — including every line you
+rewrote with `e`. Those are written into the version in place, so `planx show`
+returns them and a patch has to be built against them. An agent that tries to
+"restore" your wording writes a hunk quoting text that is no longer there, and
+the hunk is refused; the lines you settled are simply left out of the patch.
+
+**A stale `@@` offset is fine; a wrong context line is not.** planx searches
+outward from the line number in the header, which absorbs the miscounting agents
+do constantly. It never falls back to a fuzzy context match — the one failure
+mode a patch capture must not have is applying cleanly to the wrong place. When
+a hunk cannot be placed, planx writes nothing, names the hunk, and says to
+re-read the parent and capture the full text:
+
+```
+planx: hunk 2 does not match guard-clock-a3f9 v2. Re-read it with
+`planx show guard-clock-a3f9 v2 --plain` and capture the full text.
+```
+
+On success it reports what it applied — `Applied 3 hunks: +12 −4.` — because the
+agent sent a diff and never saw the document that came out of it. Full-text
+capture keeps working unchanged and stays the fallback.
+
 **It does not return the plan.** It used to emit the whole thing as a fenced
 skeleton on every call, which for a plan of any size dwarfed the feedback it
 exists to deliver — and the agent that wrote the plan already has it. The quoted

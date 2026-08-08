@@ -1,67 +1,65 @@
 # planx planning
 
-Create a reviewable plan, capture it once, then stop.
+Write the plan, capture it once, hand it over, and stop.
 
-## Leave plan mode
+## 0. If this session is in plan mode, leave it first
 
-If this session is in plan mode, leave it immediately. Its accept/reject gate
-is incompatible with creating a planx artifact. Give it only this one-line
-stub, not the plan:
+Plan mode's accept/reject gate is incompatible with this loop: the plan does not
+exist as an artifact until `ExitPlanMode` is accepted, and accepting it ends the
+planning phase.
+
+So if you are in plan mode, call `ExitPlanMode` **immediately**, with a one-line
+stub and *not* with a plan:
 
 > switching to planx mode — the plan will be written to planx for review
 
-If there is no tool for leaving plan mode, print the following and stop until
-the user answers:
+If you have no such tool, print this and stop until the user answers:
 
 > press shift+tab to leave plan mode, then say "go"
 
-## Clarify once
+Do not skip this. Do not write the plan into `ExitPlanMode`.
 
-Before research, ask every material scope, approach, and trade-off question in
-one interaction. End that same interaction with:
+## 1. Clarify, then check
+
+Two steps before any research, both mandatory, both ending in a wait.
+
+**First, ask what is ambiguous.** Scope, approach, the trade-offs that decide
+what actually gets built. Use the question tool, and wait for the answers.
+
+**Then ask, in the chat:**
 
 > Anything else before I write it?
 
-Then wait once. If nothing material is ambiguous, ask only that catch-all and
-wait once. Use a structured question tool when it improves concrete choices;
-otherwise ask in chat. Do not make a separate call just to use a tool.
+and wait again.
 
-The user owns scope. If a boundary or decision is unsettled, ask instead of
-putting an assumption, an out-of-scope section, or an answer in the plan.
-During research, batch genuinely new decisions into one additional interaction
-before capture. Answer review questions in chat; a plan contains only work.
+The second question is the one that catches what the first did not think to ask
+about. Skipping it is how a plan arrives missing a requirement the user assumed
+was obvious — and a missing requirement costs a whole review round, because the
+only way to tell you about it is to annotate a plan built without it.
 
-## Research and write
+## 2. Research and write it
 
-Search relevant files and symbols first, read narrow ranges, batch independent
-reads when supported, and reuse facts already in context. Stop when the
-implementation decisions and verification path are supported. Do not repeat
-repository-wide discovery after finding the relevant surface.
+Now do the actual work: read the code, understand the problem, make the
+decisions. Write the plan as markdown with an H1 title.
 
-Write compact, self-contained Markdown for a fresh execution agent. Use an H1
-title and `##` sections. Include concrete behavior, affected files or symbols,
-compatibility constraints, and verification. Omit research transcripts,
-review-question answers, rejected alternatives, and repeated explanations. A
-request for a different plan creates a new plan, not a revision of an old one.
+**Use `##`, `###` and `####`, liberally, and nothing deeper.** Those three are
+exactly what the review can fold: a `##` folds and takes its subsections with
+it, a `####` folds on its own, and a `#####` does not fold at all. A plan of
+long flat `##` sections is all-or-nothing to fold, in the one tool built for
+folding it. The heading is also the label a comment comes back under, so a plan
+divided finely enough comes back with feedback you can place.
 
-Before capture, hard-wrap the generated plan Markdown to at most 80 physical
-characters per line. This applies to the captured plan only, not conversation
-in chat. Preserve indentation, headings, fences, and list structure. Prefer
-vertical lists to wide tables. Split commands or code only where syntax stays
-valid; replace an unnecessary long literal with a short label or reference.
-Do not mirror the plan into another planning artifact or a temporary file.
+**Hard-wrap the plan to 80 physical characters per line.** This applies to the
+captured plan only, not conversation in chat: the review draws the plan in a
+terminal, and a line that overruns is one the reader has to scroll sideways for.
+Preserve indentation, headings, fences and list structure. Prefer vertical lists
+to wide tables, and split a command or a code line only where its syntax stays
+valid.
 
-## Capture
+If the user already has a plan and is asking for a different one, this is a new
+plan. Do not revise the old one.
 
-Capture through stdin using the current agent and session identity. Use the
-matching source and variable:
-
-| agent | source | session variable |
-| --- | --- | --- |
-| Claude Code | `claude` | `$CLAUDE_CODE_SESSION_ID` |
-| Codex | `codex` | `$CODEX_THREAD_ID` |
-
-For example, for Claude Code:
+## 3. Capture it
 
 ```bash
 planx capture --stdin --source claude \
@@ -73,18 +71,72 @@ planx capture --stdin --source claude \
 PLAN
 ```
 
-Add `--name "<their name>"` if the user named the plan. Keep the printed plan
-id and version. Never edit files under `~/.planx`; use the CLI.
+This prints the plan id and version. Keep both. If the user named the plan, add
+`--name "<their name>"`.
 
-## Hand off and stop
+The session id is what lets the review start you again on the other side of it,
+with everything you already know still in context. Pass whichever row is yours:
 
-If the user declined something, say so in one short chat line. Then print this
-verbatim, with nothing after it:
+| agent | pass |
+| --- | --- |
+| Claude Code | `--source claude --session-id "$CLAUDE_CODE_SESSION_ID"` |
+| Codex | `--source codex --session-id "$CODEX_THREAD_ID"` |
+| neither variable is set | `--source <your agent>`, and no `--session-id` |
+
+Whichever variable is set is the agent you are, and its value is the id.
+
+**If neither is set, take the third row rather than the first.** `--agent`
+defaults to `--source`, so borrowing `claude` files the plan under an agent that
+is not you and can point a resume at the wrong binary. Naming yourself and
+leaving `--session-id` off costs only this: the review cannot restart you, so it
+hands the user a command to paste back instead. That is a normal way in.
+
+The heredoc is the point: the plan goes in on stdin and never touches a temp
+file on its way. Do not write it out and pass `--file` — that is a hand-off
+buffer, read once and never referenced again, and it leaves a copy of the plan
+somewhere nothing is going to clean up.
+
+## 4. Hand it over, then stop
+
+If the user declined something, say so here in one short line — in the chat, not
+in the plan. Then, verbatim, with nothing after it:
 
 > Plan created. Open `planx <plan-id> v<n>` in new tab.
 
-End the turn. Do not poll, revise, recapture, or ask if review is done.
+**Then stop and end your turn.** Nothing blocks and nothing polls. They review
+it, and the reviewer prints a command they paste back to you — usually
+`/planx revise <plan-id>`. That is what starts the next round.
 
-After capture, classify a follow-up before acting: revise the current plan,
-start a different plan, or execute the reviewed plan. Ask when it is unclear.
-Never silently create another plan or begin implementation.
+Do not revise, do not re-capture, and do not ask whether they are done. There is
+nothing to act on until they come back.
+
+## A question is answered where it was asked
+
+When a review comment asks something — *what does `doctor` do?*, *why can't I
+type two spaces?* — the answer goes in your **chat reply**, not into the plan.
+And when revising turns up a decision the comments do not settle, ask in the
+chat before capturing. Do not capture a version that guesses and then explains
+the guess.
+
+A plan is what will be built. An answer to a question is not part of what will
+be built, so putting it there both bloats the plan and buries the reply where it
+has to be read as a diff.
+
+### A boundary you drew is a question you did not ask
+
+Scope is the user's to set. If you are about to narrow, widen or split what
+they asked for — anything you would write as *not in scope*, *I read X as Y*,
+*assuming*, or any line the request did not draw — stop and ask. Batch every
+such question into one call, and ask **before** capturing.
+
+Stating the assumption in the plan and flagging it in chat is not asking. It
+puts a decision the user never made into a document that says what will be
+built, and the only way to undo it is a whole review round.
+
+**A plan never contains an out-of-scope section.** The plan is what will be
+built; a list of what will not be built is not part of it. Anything the user
+declined goes in the **chat**, immediately before the hand-off line — see §4.
+
+That is about where the answer is recorded. It is not a licence to decide the
+boundary yourself and then mention it: the rule above still stands, and a
+boundary you are about to draw is a question to ask before capturing.

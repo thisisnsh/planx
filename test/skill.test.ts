@@ -10,21 +10,12 @@ const router = readFileSync(join(SKILL_DIR, 'SKILL.md'), 'utf8');
 const plan = readFileSync(join(SKILL_DIR, 'references', 'plan.md'), 'utf8');
 const revise = readFileSync(join(SKILL_DIR, 'references', 'revise.md'), 'utf8');
 
-// Before the router split, SKILL.md + revise.md cost 1,806 words and 9,805
-// UTF-8 bytes on every revision. These dependency-free proxies keep the
-// revision path at no more than half that baseline.
-const BASELINE_REVISION_WORDS = 1_806;
-const BASELINE_REVISION_BYTES = 9_805;
-const ROUTER_MAX_WORDS = 220;
-const ROUTER_MAX_BYTES = 1_400;
-
-function words(text: string): number {
-  return text.trim().split(/\s+/u).length;
-}
-
-function bytes(text: string): number {
-  return Buffer.byteLength(text, 'utf8');
-}
+// There is no size budget here on purpose. File size was the wrong proxy for
+// prompt cost: the repeating cost of a revision is the plan re-emitted on every
+// capture, which `--patch` addresses, and a word ceiling on the skill fails the
+// moment someone restores a sentence an agent needed. What is asserted instead
+// is that each invocation loads exactly one reference, and that the contracts
+// whose failure costs a whole review round are actually written down.
 
 function route(invocation: string): string {
   const row = router.split('\n').find((line) => line.startsWith(`| \`${invocation}\``));
@@ -35,15 +26,6 @@ function route(invocation: string): string {
 }
 
 describe('the shipped planx skill', () => {
-  it('keeps the router and revision prompt within their budgets', () => {
-    expect(words(router)).toBeLessThanOrEqual(ROUTER_MAX_WORDS);
-    expect(bytes(router)).toBeLessThanOrEqual(ROUTER_MAX_BYTES);
-
-    const revisionBundle = router + revise;
-    expect(words(revisionBundle)).toBeLessThanOrEqual(Math.floor(BASELINE_REVISION_WORDS / 2));
-    expect(bytes(revisionBundle)).toBeLessThanOrEqual(Math.floor(BASELINE_REVISION_BYTES / 2));
-  });
-
   it('routes each non-bare invocation to exactly one reference', () => {
     expect(route('/planx <anything else>')).toBe('references/plan.md');
     expect(route('/planx revise <id>')).toBe('references/revise.md');
@@ -55,6 +37,16 @@ describe('the shipped planx skill', () => {
     expect(router).not.toContain('planx capture');
     expect(router).not.toContain('Anything else before I write it?');
     expect(router).not.toContain('CLAUDE_CODE_SESSION_ID');
+  });
+
+  // Global before the split and global still. Putting these in plan.md hid them
+  // from exactly the sessions — revise and execute — where the mistakes they
+  // prevent are live.
+  it('keeps the rules that are true on every branch in the router', () => {
+    expect(router).toContain('~/.planx');
+    expect(router).toContain('One capture per revision');
+    expect(router).toContain('Never silently start a second plan');
+    expect(router).toContain('an instruction to build it');
   });
 
   it('hard-wraps every shipped skill Markdown source line', () => {
@@ -73,6 +65,7 @@ describe('the shipped planx skill', () => {
   });
 
   it('keeps the initial planning and capture contracts', () => {
+    expect(plan).toContain('ExitPlanMode');
     expect(plan).toContain('Anything else before I write it?');
     expect(plan).toContain('captured plan only, not conversation');
     expect(plan).toContain('80 physical');
@@ -80,6 +73,16 @@ describe('the shipped planx skill', () => {
     expect(plan).toContain('$CLAUDE_CODE_SESSION_ID');
     expect(plan).toContain('$CODEX_THREAD_ID');
     expect(plan.match(/Plan created\. Open/gu)).toHaveLength(1);
+  });
+
+  // The abstract rule does not fire on its own — an agent pattern-matches on
+  // the words it is about to write, so the tells are the rule.
+  it('keeps the tells in the scope-boundary rule', () => {
+    for (const source of [plan, revise]) {
+      expect(source).toContain('not in scope');
+      expect(source).toContain('I read X as Y');
+      expect(source).toContain('assuming');
+    }
   });
 
   it('keeps the incremental revision safety contracts', () => {
@@ -92,6 +95,37 @@ describe('the shipped planx skill', () => {
     expect(revise).toContain('$CODEX_THREAD_ID');
     expect(revise).toContain('captured plan only, not conversation');
     expect(revise).toContain('80 physical');
+    expect(revise).toContain('Do not summarise them back to the user');
+    expect(revise).toContain('still unaddressed from earlier versions');
     expect(revise.match(/Plan created\. Open/gu)).toHaveLength(1);
+  });
+
+  // The review folds `##` through `####` and nothing deeper (MAX_FOLD_LEVEL in
+  // src/tui/model.ts). A plan of flat `##` sections is all-or-nothing to fold.
+  it('asks for the heading depths the review can fold, on both write paths', () => {
+    for (const source of [plan, revise]) {
+      expect(source).toContain('`##`, `###` and `####`');
+      expect(source).toContain('nothing deeper');
+    }
+  });
+
+  // Without a third row an agent that is neither most likely copies the Claude
+  // one, filing the plan under an agent that is not it — and `--agent` defaults
+  // to `--source`, so a resume can be aimed at the wrong binary.
+  it('tells an agent that is neither Claude nor Codex what to pass', () => {
+    for (const source of [plan, revise]) {
+      expect(source).toContain('neither variable is set');
+      expect(source).toContain('`--source <your agent>`, and no `--session-id`');
+    }
+  });
+
+  it('makes the patch round the default way to capture a revision', () => {
+    expect(revise).toContain('--parent v<n> --patch --stdin');
+    expect(revise).toContain('planx diff --plain');
+    // The stored parent is the base. Reviewer edits are annotations until an
+    // agent captures them, and revise.md used to claim the opposite.
+    expect(revise).toContain('### Edited by the reviewer');
+    expect(revise).toContain('byte for byte');
+    expect(revise).toContain('three lines of context');
   });
 });
