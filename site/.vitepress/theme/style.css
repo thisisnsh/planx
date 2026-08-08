@@ -169,23 +169,12 @@ body {
 .hero {
   position: relative;
   display: grid;
-  min-height: 1000px;
-  grid-template-columns: minmax(0, 0.85fr) minmax(540px, 1.15fr);
+  min-height: 850px;
+  grid-template-columns: minmax(0, 1fr);
   align-content: center;
   align-items: center;
-  gap: 70px;
   padding-top: 150px;
   padding-bottom: 170px;
-}
-
-.hero::before {
-  position: absolute;
-  top: 92px;
-  bottom: 0;
-  left: 46%;
-  width: 1px;
-  background: linear-gradient(transparent, var(--px-line) 10%, var(--px-line) 90%, transparent);
-  content: '';
 }
 
 .hero::after {
@@ -203,7 +192,6 @@ body {
 }
 
 .hero-copy,
-.hero-art,
 .hero-principles {
   position: relative;
   z-index: 2;
@@ -238,7 +226,7 @@ body {
 }
 
 .hero h1 {
-  max-width: 700px;
+  max-width: 940px;
   margin-bottom: 34px;
   font-size: clamp(3.5rem, 6vw, 6.6rem);
   line-height: 0.92;
@@ -251,7 +239,7 @@ body {
 }
 
 .hero-lede {
-  max-width: 610px;
+  max-width: 720px;
   margin-bottom: 17px;
   color: #e1e3e7;
   font-size: clamp(1rem, 1.35vw, 1.18rem);
@@ -260,7 +248,7 @@ body {
 }
 
 .hero-detail {
-  max-width: 600px;
+  max-width: 680px;
   margin-bottom: 38px;
   color: var(--px-muted);
   font-size: 0.85rem;
@@ -310,32 +298,6 @@ body {
   background: rgba(255, 255, 255, 0.04);
 }
 
-.hero-art {
-  min-width: 0;
-  padding: 36px 0 0 34px;
-}
-
-.signal-line {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin: 0 0 17px -4px;
-  color: var(--px-muted-dark);
-  font-size: 0.8rem;
-}
-
-.signal-line::after {
-  height: 1px;
-  flex: 1;
-  background: var(--px-yellow);
-  content: '';
-}
-
-.signal-line b {
-  color: var(--px-yellow);
-  font-size: 0.95rem;
-}
-
 .screen {
   position: relative;
   margin: 0;
@@ -366,11 +328,6 @@ body {
   font-size: 0.61rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-}
-
-.screen-hero {
-  width: calc(100% + 90px);
-  max-width: 760px;
 }
 
 .hero-principles {
@@ -548,7 +505,16 @@ body {
 }
 
 .feature-intro {
-  margin-bottom: 35px;
+  margin-bottom: 70px;
+}
+
+.review-overview {
+  width: min(100%, 1100px);
+  margin: 0 auto 80px;
+}
+
+.review-overview img {
+  border-color: rgba(255, 212, 0, 0.42);
 }
 
 .feature-row {
@@ -603,16 +569,6 @@ body {
 .feature-row .screen-narrow {
   max-width: 700px;
   justify-self: center;
-}
-
-.inline-command {
-  display: inline-block;
-  margin-top: 26px;
-  padding: 12px 15px;
-  color: var(--px-green);
-  border: 1px solid rgba(67, 213, 149, 0.3);
-  background: rgba(67, 213, 149, 0.06);
-  font: 700 0.74rem/1 var(--px-mono);
 }
 
 .install {
@@ -891,28 +847,12 @@ body {
 @media (max-width: 1100px) {
   .hero {
     min-height: auto;
-    grid-template-columns: 1fr;
-    gap: 75px;
     padding-top: 175px;
     padding-bottom: 190px;
   }
 
-  .hero::before {
-    display: none;
-  }
-
   .hero-copy {
     max-width: 860px;
-  }
-
-  .hero-art {
-    width: calc(100% - 20px);
-    padding: 0;
-  }
-
-  .screen-hero {
-    width: 100%;
-    max-width: none;
   }
 
   .feature-row,
@@ -1056,7 +996,6 @@ body {
   }
 
   .hero {
-    gap: 58px;
     padding-top: 135px;
     padding-bottom: 230px;
   }
@@ -1118,6 +1057,13 @@ body {
 
   .screen img {
     border-radius: 7px;
+  }
+
+  .review-overview {
+    width: calc(100% + 10px);
+    margin-right: -5px;
+    margin-bottom: 55px;
+    margin-left: -5px;
   }
 
   .install {
@@ -1191,10 +1137,6 @@ body {
 
   .hero-actions {
     flex-direction: column;
-  }
-
-  .signal-line span {
-    display: none;
   }
 
   .manifesto h2 {

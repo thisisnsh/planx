@@ -216,20 +216,6 @@ function closeMenu(): void {
           </div>
         </div>
 
-        <div class="hero-art">
-          <div class="signal-line" aria-hidden="true"><b>planx</b><span>v0.7.0</span></div>
-          <figure class="screen screen-hero">
-            <img
-              src="/images/planx-view.png"
-              width="1340"
-              height="556"
-              alt="PlanX terminal plan picker showing saved plans and their versions"
-              fetchpriority="high"
-            />
-            <figcaption>Pick a plan. Review an exact version.</figcaption>
-          </figure>
-        </div>
-
         <div class="hero-principles" aria-label="PlanX capabilities">
           <span>Compare every revision.</span>
           <span>Comment on exact lines.</span>
@@ -295,6 +281,16 @@ function closeMenu(): void {
             </div>
             <p>Every image below is the real PlanX terminal interface.</p>
           </div>
+
+          <figure class="screen review-overview">
+            <img
+              src="/images/planx-view.png"
+              width="1340"
+              height="556"
+              alt="PlanX terminal plan picker showing saved plans and their versions"
+            />
+            <figcaption>Pick a plan. Review an exact version.</figcaption>
+          </figure>
 
           <article class="feature-row">
             <div class="feature-copy">
@@ -389,7 +385,6 @@ function closeMenu(): void {
                 Configure any agent command that accepts a trailing prompt. One agent can plan,
                 another can revise, and a third can execute.
               </p>
-              <code class="inline-command">planx defaults</code>
             </div>
             <figure class="screen screen-narrow">
               <img
@@ -438,6 +433,7 @@ function closeMenu(): void {
           <h2 id="other-commands">Other commands</h2>
         </div>
         <div class="command-list">
+          <p><span>Configure revise and execute agents</span><code>planx defaults</code></p>
           <p><span>Update PlanX and installed skills</span><code>planx update</code></p>
           <p><span>Add skills for every agent</span><code>planx add-skills</code></p>
           <p><span>Add the Codex skill only</span><code>planx add-skills --agent codex</code></p>
