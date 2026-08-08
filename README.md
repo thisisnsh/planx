@@ -7,10 +7,10 @@ you execute them. **[planx.sh](https://planx.sh)**
 [![ci](https://img.shields.io/github/actions/workflow/status/thisisnsh/planx/ci.yml?branch=main&labelColor=0b0b0c)](https://github.com/thisisnsh/planx/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-ffd400?labelColor=0b0b0c)](LICENSE)
 
-## Build plans worth executing
+## Make plans you want to read
 
-Planning is not a ritual you perform to make an agent feel prepared. It is the
-moment you decide what will be built.
+Planning is not a ritual you perform to make an agent feel prepared. It is for
+you to decide what will be built.
 
 PlanX turns the giant blob of text you read once and lose in chat into a
 versioned artifact you can actually review:

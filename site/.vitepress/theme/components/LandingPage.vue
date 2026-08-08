@@ -199,7 +199,7 @@ function closeMenu(): void {
       <section id="top" class="hero section-shell">
         <div class="hero-copy">
           <p class="kicker"><span></span> Open source · Codex · Claude Code · any agent</p>
-          <h1>Build plans<br />worth <em>executing.</em></h1>
+          <h1>Make plans<br />you want to <em>read.</em></h1>
           <p class="hero-lede">
             A skill for coding agents and a terminal interface for reviewing plans before you
             execute them.
@@ -229,7 +229,7 @@ function closeMenu(): void {
           <p class="section-label">Why PlanX</p>
           <div>
             <h2>Planning is not a ritual you perform to make an agent feel prepared.</h2>
-            <p>It is the moment you decide what will be built.</p>
+            <p>It is for you to decide what will be built.</p>
           </div>
         </div>
       </section>
@@ -404,7 +404,7 @@ function closeMenu(): void {
         <div class="section-shell install-grid">
           <div>
             <p class="section-label">Install</p>
-            <h2>Make the next plan worth executing.</h2>
+            <h2>Make the next plan you can actually read.</h2>
             <p>
               PlanX installs its skill into existing Codex and Claude Code installations. Start a
               new agent session after installing.
@@ -462,7 +462,7 @@ function closeMenu(): void {
     <footer>
       <div class="footer-main section-shell">
         <a class="brand footer-brand" href="#top"><span class="brand-bracket">⌜</span>planx</a>
-        <p>Build plans worth executing.</p>
+        <p>Make plans you want to read.</p>
         <nav aria-label="Footer navigation">
           <a href="https://www.npmjs.com/package/@thisisnsh/planx">npm</a>
           <a href="https://github.com/thisisnsh/planx/blob/main/CONTRIBUTING.md">Contribute</a>
