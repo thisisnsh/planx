@@ -6,6 +6,7 @@ import { ArgError, has, one, parseArgs, type CommandSpec } from './cli/args.js';
 import {
   cmdAddSkills,
   cmdCapture,
+  cmdDefaults,
   cmdDiff,
   cmdDoctor,
   cmdExecuted,
@@ -62,6 +63,8 @@ async function dispatch(name: string, ctx: Ctx): Promise<number> {
       return cmdExecuted(ctx);
     case 'diff':
       return cmdDiff(ctx);
+    case 'defaults':
+      return cmdDefaults(ctx);
     case 'show':
       return cmdShow(ctx);
     case 'list':

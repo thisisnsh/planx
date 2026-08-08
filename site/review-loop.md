@@ -63,5 +63,9 @@ note offers revision in the session that wrote the plan. A settled version
 offers execution in a new session. You can also copy the matching `/planx`
 command and paste it into an agent yourself.
 
+These rows can be your own commands: set `planx defaults` and the hand-off calls
+any other agent you use. PlanX appends the `/planx` slash command to the end of
+what you stored — see [Configuration](/reference/config).
+
 An empty review is meaningful: it says the version is settled and moves the
 flow to [execution](/executing).

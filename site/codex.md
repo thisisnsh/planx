@@ -35,6 +35,10 @@ The revision resumes the Codex session that wrote the plan, preserving its
 repository research and planning context. Review each new version until the
 plan is settled.
 
+These rows can be your own commands: set `planx defaults` and the hand-off calls
+any other agent you use. PlanX appends the `/planx` slash command to the end of
+what you stored — see [Configuration](/reference/config).
+
 ## 5. Execute the reviewed version
 
 ```text

@@ -9,12 +9,16 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  agentInCommand,
   agentProcess,
+  customLaunchLine,
   launchFor,
   launchLine,
+  promptFor,
   replayableArgv,
   runAgent,
   splitCommandLine,
+  stripPrompt,
 } from '../src/exec/launch.js';
 
 const PID = process.ppid;
@@ -155,6 +159,66 @@ describe('splitting a launch line back into arguments', () => {
       '/planx revise guard',
     ]);
     expect(splitCommandLine('   ')).toEqual([]);
+  });
+});
+
+/**
+ * The commands the reviewer brought themselves.
+ *
+ * planx knows nothing about them beyond which agent they name, which is what
+ * decides how the appended prompt is spelt — and being able to take that prompt
+ * back off is what lets an edited row become the new default.
+ */
+describe('appending the prompt to a stored command', () => {
+  it('spells the prompt the way the command’s own agent invokes a skill', () => {
+    for (const command of ['codex exec --full-auto', 'npx codex', '/usr/local/bin/codex resume']) {
+      expect(promptFor(command, 'revise guard')).toBe('$planx revise guard');
+      expect(agentInCommand(command)).toBe('codex');
+    }
+    // Everything else takes the slash, including a word planx cannot name.
+    for (const command of ['claude --model opus', 'my-own-agent --go', 'node ./agent.js']) {
+      expect(promptFor(command, 'execute guard v3')).toBe('/planx execute guard v3');
+    }
+    expect(agentInCommand('my-own-agent --go')).toBe(null);
+  });
+
+  it('appends it as exactly one argument, whatever the command already quotes', () => {
+    for (const command of [
+      'codex exec --full-auto',
+      'claude --append-system-prompt "be brief"',
+      "claude --model 'gpt 5'",
+    ]) {
+      const prompt = promptFor(command, 'revise guard-a3f9');
+      const line = customLaunchLine(command, prompt);
+      expect(splitCommandLine(line)).toEqual([...splitCommandLine(command), prompt]);
+    }
+  });
+
+  it('trims the stored command, so the line has one space in the join', () => {
+    expect(customLaunchLine('  codex exec  ', '$planx revise x')).toBe(
+      'codex exec "\\$planx revise x"',
+    );
+  });
+
+  it('takes one appended prompt back off, in either spelling', () => {
+    for (const command of ['codex exec --full-auto', 'claude --model opus']) {
+      const line = customLaunchLine(command, promptFor(command, 'revise guard-a3f9'));
+      expect(stripPrompt(line)).toBe(command);
+    }
+    // Bare rather than quoted — what a reviewer typing by hand leaves behind.
+    expect(stripPrompt('codex exec $planx revise guard')).toBe('codex exec');
+    expect(stripPrompt('claude /planx execute guard v3')).toBe('claude');
+  });
+
+  it('leaves a line with no prompt on the end whole', () => {
+    for (const line of ['codex exec --full-auto', 'claude', 'my-own-agent --go --then']) {
+      expect(stripPrompt(line)).toBe(line);
+    }
+  });
+
+  it('takes only the last one off a command that mentions planx in itself', () => {
+    const command = 'claude --append-system-prompt "/planx is the tool you are in"';
+    expect(stripPrompt(customLaunchLine(command, '/planx revise guard'))).toBe(command);
   });
 });
 

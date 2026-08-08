@@ -4,6 +4,7 @@ import { buildAnnotation } from '../protocol/submit.js';
 import {
   blue,
   bold,
+  caretLine,
   dim,
   gray,
   inverse,
@@ -15,6 +16,7 @@ import {
   yellow,
 } from '../render/ansi.js';
 import type { RenderMode } from '../render/diff.js';
+import type { DefaultKey } from '../store/defaults.js';
 import type { LineEdit } from '../store/plans.js';
 import { contextSha } from '../store/text.js';
 import type { Annotation, Feedback } from '../store/types.js';
@@ -66,7 +68,17 @@ export interface FeedbackBatch {
  * null is an entry the list does not draw, so there is no second source of
  * truth about what can be started.
  */
-export type Commands = Record<number, { revise: string | null; execute: string | null }>;
+export type Commands = Record<
+  number,
+  {
+    revise: string | null;
+    execute: string | null;
+    /** The stored revise command with its own prompt appended. */
+    customRevise: string | null;
+    /** The stored execute command with its own prompt appended. */
+    customExecute: string | null;
+  }
+>;
 
 export interface ReviewResult {
   /**
@@ -77,6 +89,12 @@ export interface ReviewResult {
   action: 'revise' | 'execute' | 'commands' | 'back';
   /** The launch line, as the reviewer left it. Only on revise and execute. */
   command: string | null;
+  /**
+   * The default the picked row was composed from, or null on everything planx
+   * built itself. It is what the CLI writes an edited command back to — the
+   * review names the field and does no reading or writing of its own.
+   */
+  custom: DefaultKey | null;
   /**
    * Every version the reviewer edited, plus the one they finished on — and the
    * empty ones belong here: a batch with no annotations and no note is how
@@ -112,9 +130,10 @@ export interface ReviewAppProps {
    */
   previous: Feedback[];
   /**
-   * The launch line for each intent, per version. Where planx cannot build one
-   * — no session recorded to resume, no agent named on the version — the entry is
-   * not offered at all rather than being drawn and declining a press.
+   * The launch line for each intent, per version, planx's own and yours. Where
+   * planx cannot build one — no session recorded to resume, no agent named on
+   * the version, no command stored — the entry is not offered at all rather
+   * than being drawn and declining a press.
    */
   commands?: Commands;
   /** What a second ctrl+c does. Defaults to ending the process with 130. */
@@ -170,6 +189,12 @@ interface HandoffEntry {
   command: string;
   /** What planx built, so `esc` in the editor can put it back. */
   original: string;
+  /**
+   * The default this row was composed from, or null on the rows planx built
+   * from the version itself. Editing one of those changes nothing on disk: a
+   * `--resume` line is composed per version and has no field to be stored in.
+   */
+  custom: DefaultKey | null;
 }
 
 /**
@@ -212,6 +237,12 @@ const CURSOR_GUTTER = 2;
 
 const NO_ANNOTATIONS: Annotation[] = [];
 const NO_EDITS: ReadonlyMap<number, string> = new Map();
+const NO_COMMANDS: Commands[number] = {
+  revise: null,
+  execute: null,
+  customRevise: null,
+  customExecute: null,
+};
 
 export function ReviewApp(props: ReviewAppProps) {
   const { exit } = useApp();
@@ -743,7 +774,11 @@ export function ReviewApp(props: ReviewAppProps) {
    * finished: submitting edits alone still writes that version's record, so
    * `planx revise` has something to report the edits against.
    */
-  function finish(action: ReviewResult['action'], command: string | null = null) {
+  function finish(
+    action: ReviewResult['action'],
+    command: string | null = null,
+    custom: DefaultKey | null = null,
+  ) {
     const versions = new Set<number>([versionB, ...touched]);
     if (edits.size) versions.add(latest);
 
@@ -758,6 +793,7 @@ export function ReviewApp(props: ReviewAppProps) {
     props.onDone({
       action,
       command,
+      custom,
       batches,
       version: versionB,
       edits: [...edits].sort(([a], [b]) => a - b).map(([line, text]) => ({ line, text })),
@@ -791,16 +827,32 @@ export function ReviewApp(props: ReviewAppProps) {
    * and not fixed: `1` is whatever is first here, not always Revise.
    *
    * Every intent planx can build appears twice, once to run and once to hand
-   * its slash command to an agent.
+   * its slash command to an agent — and above all of them, the commands you
+   * stored yourself, which survive a version planx can start nothing for.
    * A version with nothing to start still has one row, because the way back
    * into the review is a command too and a list you cannot answer is not a
    * question.
    */
   function handoffEntries(): HandoffEntry[] {
-    const lines = props.commands?.[versionB] ?? { revise: null, execute: null };
+    const lines = props.commands?.[versionB] ?? NO_COMMANDS;
     const asking = annotations.length > 0 || general.trim().length > 0;
     const revise = asking ? lines.revise : null;
+    // Custom revise still waits for something to revise: without a comment or a
+    // note there is no request to send, whichever agent would receive it.
+    const customRevise = asking ? lines.customRevise : null;
     const entries: HandoffEntry[] = [];
+
+    // Yours first, so a reviewer who set one gets it at `1`. They answer to
+    // less than planx's own rows do — the command names its own agent, so it
+    // needs neither the recorded session nor a launcher planx knows about.
+    if (customRevise) {
+      entries.push(entry('revise', 'Revise using custom command', customRevise, 'revise_command'));
+    }
+    if (lines.customExecute) {
+      entries.push(
+        entry('execute', 'Execute using custom command', lines.customExecute, 'execute_command'),
+      );
+    }
 
     if (revise) entries.push(entry('revise', 'Revise plan in the session that wrote it', revise));
     if (lines.execute) {
@@ -824,7 +876,11 @@ export function ReviewApp(props: ReviewAppProps) {
       );
     }
 
-    if (!entries.length) {
+    // Not `no entries at all`: a version planx cannot start keeps its way back
+    // into the review even when custom rows have given the list something to
+    // answer. What the fallback is about is the rows planx built from the
+    // version itself, and those are exactly these two.
+    if (!revise && !lines.execute) {
       entries.push(entry('commands', 'Copy reopen command', `planx ${props.planId} v${versionB}`));
     }
     return entries;
@@ -1040,13 +1096,13 @@ export function ReviewApp(props: ReviewAppProps) {
         // numbering the rows, and walking to a row you can already name is
         // work the list invented for itself.
         const picked = /^[1-9]$/.test(input) ? mode.entries[Number(input) - 1] : undefined;
-        if (picked) return finish(picked.action, picked.command);
+        if (picked) return finish(picked.action, picked.command, picked.custom);
         // Into the line itself, to change the model, add a directory, rewrite
         // the prompt, or replace the command outright.
         if (key.rightArrow && editable(here)) {
           return setMode({ ...mode, editing: true, caret: here.command.length });
         }
-        if (key.return) return finish(here.action, here.command);
+        if (key.return) return finish(here.action, here.command, here.custom);
         // Back to the plan, on the row you were on — not out of planx.
         if (key.escape) return setMode({ kind: 'browse' });
         return;
@@ -1062,7 +1118,7 @@ export function ReviewApp(props: ReviewAppProps) {
       if (key.return) {
         // Nothing to run, so nothing happens. The list is still there.
         if (!command.trim()) return;
-        return finish(here.action, command);
+        return finish(here.action, command, here.custom);
       }
       // `←` at the start of the line is the way back out of it, which is the
       // same key that got you here, reversed.
@@ -1202,8 +1258,13 @@ export function ReviewApp(props: ReviewAppProps) {
   );
 }
 
-function entry(action: HandoffEntry['action'], label: string, command: string): HandoffEntry {
-  return { action, label, command, original: command };
+function entry(
+  action: HandoffEntry['action'],
+  label: string,
+  command: string,
+  custom: DefaultKey | null = null,
+): HandoffEntry {
+  return { action, label, command, original: command, custom };
 }
 
 /** The list with the highlighted entry's command replaced by what was typed. */
@@ -1344,21 +1405,6 @@ function boxBody(text: string, caret: number, box: number): string {
   const padded = padEnd(text, box);
   const at = Math.min(caret, box - 1);
   return `${padded.slice(0, at)}${inverse(padded[at] ?? ' ')}${padded.slice(at + 1)}`;
-}
-
-/**
- * The line being rewritten, scrolled horizontally under the caret.
- *
- * A line wider than the text column runs off the right edge, and a caret you
- * cannot see is a caret you cannot type at — so the window follows it, pinning
- * it to the last column once there is more line than there is room.
- */
-function caretLine(draft: string, caret: number, width: number): string {
-  const room = Math.max(1, width - 1);
-  const start = Math.max(0, caret - room + 1);
-  const visible = draft.slice(start, start + room);
-  const at = caret - start;
-  return `${visible.slice(0, at)}${inverse(draft[caret] ?? ' ')}${visible.slice(at + 1)}`;
 }
 
 /* ------------------------------------------------------- the hand-off */

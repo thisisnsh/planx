@@ -6,7 +6,8 @@ import { buildAnnotation, submitFeedback } from '../src/protocol/submit.js';
 import { green, red, setColorEnabled, stripAnsi } from '../src/render/ansi.js';
 import { listFeedback } from '../src/store/feedback.js';
 import { readVersionText } from '../src/store/plans.js';
-import type { Feedback } from '../src/store/types.js';
+import type { Defaults as DefaultValues, Feedback } from '../src/store/types.js';
+import { Defaults } from '../src/tui/Defaults.js';
 import { Picker, type PickerItem } from '../src/tui/Picker.js';
 import { ReviewApp, type Commands, type ReviewResult } from '../src/tui/ReviewApp.js';
 import { UpdatePrompt, type UpdateChoice } from '../src/tui/UpdatePrompt.js';
@@ -1255,6 +1256,17 @@ const CAN: Commands = {
   1: {
     revise: 'claude --resume 01J8XR "/planx revise guard"',
     execute: 'claude "/planx execute guard v1"',
+    customRevise: null,
+    customExecute: null,
+  },
+};
+
+/** The same version, with both of the reviewer's own commands stored too. */
+const CUSTOM: Commands = {
+  1: {
+    ...CAN[1]!,
+    customRevise: 'codex exec --full-auto "\\$planx revise guard"',
+    customExecute: 'codex exec "\\$planx execute guard v1"',
   },
 };
 
@@ -1563,7 +1575,12 @@ describe('the hand-off list', () => {
    */
   it('drops the entries planx cannot start', async () => {
     const app = mount(seed(), null, 1, [1], 100, 30, [], {
-      1: { revise: null, execute: 'claude "/planx execute guard v1"' },
+      1: {
+        revise: null,
+        execute: 'claude "/planx execute guard v1"',
+        customRevise: null,
+        customExecute: null,
+      },
     });
     await app.ready();
 
@@ -1575,7 +1592,9 @@ describe('the hand-off list', () => {
 
   it('offers the way back in where nothing can be started', async () => {
     const id = seed();
-    const app = mount(id, null, 1, [1], 100, 30, [], { 1: { revise: null, execute: null } });
+    const app = mount(id, null, 1, [1], 100, 30, [], {
+      1: { revise: null, execute: null, customRevise: null, customExecute: null },
+    });
     await app.ready();
 
     await app.press('s');
@@ -1590,6 +1609,133 @@ describe('the hand-off list', () => {
       action: 'commands',
       command: `planx ${id} v1`,
     });
+    app.unmount();
+  });
+});
+
+/**
+ * The two rows built from the commands you stored yourself.
+ *
+ * They come first, they answer to less than planx's own rows do, and picking
+ * one names the field it came from so the CLI can store an edit back.
+ */
+describe('the custom rows', () => {
+  async function comment(app: Harness, text = 'one more thing') {
+    await app.press('f');
+    await app.press(text);
+    await app.press(ENTER);
+    await app.frame(text);
+  }
+
+  it('puts yours first, so 1 is the command you wrote', async () => {
+    const id = seed();
+    const app = mount(id, null, 1, [1], 100, 30, [], CUSTOM);
+    await app.ready();
+    await comment(app);
+
+    await app.press('s');
+    await app.frame('1. Revise using custom command');
+    const frame = app.stdout.lastFrame;
+    expect(frame).toContain('2. Execute using custom command');
+    expect(frame).toContain('3. Revise plan in the session that wrote it');
+    expect(frame).toContain('4. Execute plan in a new session');
+    expect(frame).toContain('5. Copy revise command for agent');
+    expect(frame).toContain('6. Copy execute skill for agent');
+    // The numbers are positional and the hint counts what is on the list.
+    expect(frame).toContain('1-6 pick');
+    app.unmount();
+  });
+
+  /** Without a comment or a note there is no request to send, to any agent. */
+  it('waits for something to revise before offering custom revise', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], CUSTOM);
+    await app.ready();
+
+    await app.press('s');
+    await app.frame('1. Execute using custom command');
+    expect(app.stdout.lastFrame).not.toContain('Revise using custom command');
+
+    await app.press(ESC);
+    await comment(app);
+    await app.press('s');
+    await app.frame('1. Revise using custom command');
+    app.unmount();
+  });
+
+  /**
+   * The case the feature is most useful in: the command names its own agent, so
+   * it needs neither the recorded session nor a launcher planx knows about.
+   */
+  it('survives a version planx can start nothing for, and keeps the way back in', async () => {
+    const id = seed();
+    const app = mount(id, null, 1, [1], 100, 30, [], {
+      1: { ...CUSTOM[1]!, revise: null, execute: null },
+    });
+    await app.ready();
+    await comment(app);
+
+    await app.press('s');
+    await app.frame('1. Revise using custom command');
+    const frame = app.stdout.lastFrame;
+    expect(frame).toContain('2. Execute using custom command');
+    expect(frame).not.toContain('Revise plan in the session');
+    expect(frame).not.toContain('Execute plan in a new session');
+    // The reopen row is about the rows planx builds from the version itself, so
+    // it is still here even though the list has answers.
+    expect(frame).toContain('3. Copy reopen command');
+    app.unmount();
+  });
+
+  it('hands back the field it was composed from, so an edit can be stored', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], CUSTOM);
+    await app.ready();
+
+    await app.press('s');
+    await app.frame('▸ 1. Execute using custom command');
+    await app.press(RIGHT);
+    await app.frame('enter run');
+    // `esc` puts back the line planx composed, field and all.
+    await app.press(' --sandbox danger');
+    await app.press(ESC);
+    await app.frame('esc back');
+    await app.press(ENTER);
+
+    expect(await app.result).toMatchObject({
+      action: 'execute',
+      command: 'codex exec "\\$planx execute guard v1"',
+      custom: 'execute_command',
+    });
+    app.unmount();
+  });
+
+  it('carries the rewritten line out with the field it belongs to', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], CUSTOM);
+    await app.ready();
+    await comment(app);
+
+    await app.press('s');
+    await app.frame('▸ 1. Revise using custom command');
+    await app.press(RIGHT);
+    await app.frame('enter run');
+    await app.press(ENTER);
+
+    expect(await app.result).toMatchObject({
+      action: 'revise',
+      command: 'codex exec --full-auto "\\$planx revise guard"',
+      custom: 'revise_command',
+    });
+    app.unmount();
+  });
+
+  /** planx's own rows have no field to be stored in: a resume line is per version. */
+  it('names no field for a row planx built itself', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], CAN);
+    await app.ready();
+
+    await app.press('s');
+    await app.frame('▸ 1. Execute plan in a new session');
+    await app.press(ENTER);
+    expect((await app.result).custom).toBe(null);
     app.unmount();
   });
 });
@@ -2688,6 +2834,140 @@ describe('the update choice before a review', () => {
     skip.stdin.send(ENTER);
     await expect(skip.chosen).resolves.toEqual(['skip']);
     skip.unmount();
+  });
+});
+
+/**
+ * The defaults screen.
+ *
+ * It wears the same frame as everything else planx draws, and every commit is
+ * already on disk by the time `esc` is pressed — so what there is to hold is
+ * what it draws, and that each write names one key and one value.
+ */
+describe('the defaults screen', () => {
+  function mountDefaults(values: DefaultValues) {
+    const stdout = new FakeStdout();
+    const stdin = new FakeStdin();
+    const saves: Array<[string, string | null]> = [];
+    let resolve!: () => void;
+    const done = new Promise<void>((r) => (resolve = r));
+    const instance = render(
+      <Defaults
+        values={values}
+        version="9.9.9"
+        onSave={(key, value) => saves.push([key, value])}
+        onDone={resolve}
+      />,
+      {
+        stdout: stdout as unknown as NodeJS.WriteStream,
+        stdin: stdin as unknown as NodeJS.ReadStream,
+        exitOnCtrlC: false,
+        patchConsole: false,
+      },
+    );
+    // One key at a time, with room for the render in between: two sends in the
+    // same tick are handled against one render's state, so the second would see
+    // the draft the first had not yet changed.
+    const press = async (keys: string) => {
+      const before = stdout.frames.length;
+      stdin.send(keys);
+      await new Promise((r) => setTimeout(r, 60));
+      await waitFor(() => stdout.frames.length > before, 1_000);
+    };
+    return { stdout, stdin, saves, done, press, unmount: () => instance.unmount() };
+  }
+
+  const UNSET: DefaultValues = { revise_command: null, execute_command: null };
+
+  it('draws a row per field, and previews the line the highlighted one runs', async () => {
+    const app = mountDefaults({ ...UNSET, revise_command: 'codex exec --full-auto' });
+    await waitFor(() => app.stdout.lastFrame.includes('Defaults'));
+
+    const frame = app.stdout.lastFrame;
+    expect(frame).toContain('planx v9.9.9');
+    expect(frame).toContain('Your own commands, and what PlanX appends to them.');
+    expect(frame).toContain('❯ revise');
+    expect(frame).toContain('codex exec --full-auto');
+    // An unset field says so rather than drawing an empty column.
+    expect(frame).toContain('execute');
+    expect(frame).toContain('(not set)');
+    // The prompt is spelt for the agent the stored command actually runs.
+    expect(frame).toContain('Runs: codex exec --full-auto "\\$planx revise <id>"');
+    expect(frame).toContain('Your own command for the revise hand-off.');
+    expect(frame).toContain('↑↓ choose');
+    expect(frame).toContain('⌫ clear');
+    app.unmount();
+  });
+
+  it('previews nothing for an unset field, and says so', async () => {
+    const app = mountDefaults(UNSET);
+    await waitFor(() => app.stdout.lastFrame.includes('Defaults'));
+    expect(app.stdout.lastFrame).toContain('Nothing to run until this is set.');
+    expect(app.stdout.lastFrame).not.toContain('Runs:');
+    app.unmount();
+  });
+
+  it('types a value in and writes it on enter, with the caret at the end', async () => {
+    const app = mountDefaults({ ...UNSET, revise_command: 'codex exec' });
+    await waitFor(() => app.stdout.lastFrame.includes('❯ revise'));
+
+    await app.press(ENTER);
+    await waitFor(() => app.stdout.lastFrame.includes('enter save'));
+    await app.press(' --full-auto');
+    await app.press(ENTER);
+
+    await waitFor(() => app.stdout.lastFrame.includes('Saved.'));
+    expect(app.saves).toEqual([['revise_command', 'codex exec --full-auto']]);
+    app.unmount();
+  });
+
+  it('esc in the value restores what was stored and writes nothing', async () => {
+    const app = mountDefaults({ ...UNSET, revise_command: 'codex exec' });
+    await waitFor(() => app.stdout.lastFrame.includes('❯ revise'));
+
+    await app.press(ENTER);
+    await waitFor(() => app.stdout.lastFrame.includes('esc discard'));
+    await app.press(' --full-auto');
+    await app.press(ESC);
+
+    await waitFor(() => app.stdout.lastFrame.includes('⌫ clear'));
+    expect(app.stdout.lastFrame).toContain('Runs: codex exec "\\$planx revise <id>"');
+    expect(app.saves).toEqual([]);
+    app.unmount();
+  });
+
+  it('backspace on a row clears the field, and does nothing on an unset one', async () => {
+    const app = mountDefaults({ revise_command: 'codex exec', execute_command: null });
+    await waitFor(() => app.stdout.lastFrame.includes('❯ revise'));
+
+    await app.press(BACKSPACE);
+    await waitFor(() => app.stdout.lastFrame.includes('Cleared.'));
+    expect(app.saves).toEqual([['revise_command', null]]);
+
+    await app.press(DOWN);
+    await waitFor(() => app.stdout.lastFrame.includes('❯ execute'));
+    await app.press(BACKSPACE);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(app.saves).toHaveLength(1);
+    app.unmount();
+  });
+
+  it('walks the fields and leaves on esc, with nothing pending to lose', async () => {
+    const app = mountDefaults({ ...UNSET, execute_command: 'claude --model opus' });
+    await waitFor(() => app.stdout.lastFrame.includes('❯ revise'));
+
+    await app.press(DOWN);
+    await waitFor(() => app.stdout.lastFrame.includes('❯ execute'));
+    expect(app.stdout.lastFrame).toContain('Runs: claude --model opus "/planx execute <id> v<n>"');
+    // Down past the last field stays on it; up at the top stays too.
+    await app.press(DOWN);
+    await app.press(UP);
+    await app.press(UP);
+    await waitFor(() => app.stdout.lastFrame.includes('❯ revise'));
+
+    await app.press(ESC);
+    await app.done;
+    app.unmount();
   });
 });
 

@@ -1,7 +1,9 @@
 import { render } from 'ink';
 import type { StepRunner } from '../install/install.js';
 import type { RenderMode } from '../render/diff.js';
-import type { Feedback } from '../store/types.js';
+import type { DefaultKey } from '../store/defaults.js';
+import type { Defaults as DefaultValues, Feedback } from '../store/types.js';
+import { Defaults } from './Defaults.js';
 import { terminalWidth } from './frame.js';
 import { Picker, type PickerItem } from './Picker.js';
 import { ReviewApp, type Commands, type ReviewResult } from './ReviewApp.js';
@@ -95,6 +97,7 @@ export async function runReview(opts: RunReviewOptions): Promise<ReviewResult> {
       finish({
         action: 'back',
         command: null,
+        custom: null,
         batches: [],
         version: opts.versionB,
         edits: [],
@@ -260,6 +263,45 @@ export async function runPicker<T>(opts: RunPickerOptions<T>): Promise<T[]> {
     );
 
     instance.waitUntilExit().then(() => finish([]));
+  });
+}
+
+export interface RunDefaultsOptions {
+  /** The block as it stands on disk. */
+  values: DefaultValues;
+  /** planx's own version, for the frame. */
+  version?: string;
+  /** Write one field. The screen names the key; the store is the caller's. */
+  onSave: (key: DefaultKey, value: string | null) => void;
+}
+
+/**
+ * The defaults screen, until `esc`.
+ *
+ * It takes the screen the way the review does. Every commit is already on disk
+ * by the time this comes back, so there is nothing to return.
+ */
+export async function runDefaults(opts: RunDefaultsOptions): Promise<void> {
+  clearScreen();
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      instance.unmount();
+      endFrame();
+      resolve();
+    };
+
+    const instance = render(
+      <Defaults values={opts.values} version={opts.version} onSave={opts.onSave} onDone={finish} />,
+      // ctrl+c is the screen's own, twice — the same guard every planx frame
+      // wears, so leaving means the same keystroke wherever you are.
+      { exitOnCtrlC: false },
+    );
+
+    instance.waitUntilExit().then(finish);
   });
 }
 

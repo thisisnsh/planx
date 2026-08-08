@@ -9,6 +9,7 @@ import { blue, setColorEnabled, yellow } from '../src/render/ansi.js';
 import { readVersionText } from '../src/store/plans.js';
 import { normalizedLines } from '../src/store/text.js';
 import { listFeedback } from '../src/store/feedback.js';
+import { readDefaults, writeDefault, type DefaultKey } from '../src/store/defaults.js';
 import { paths } from '../src/store/paths.js';
 import { SAMPLE_PLAN, tempStore } from './helpers.js';
 
@@ -241,10 +242,15 @@ describe('what the reviewer picked', () => {
   }
 
   /** A review that ended on `action`, with whatever the reviewer left behind. */
-  function ended(action: 'revise' | 'execute' | 'commands' | 'back', command: string | null) {
+  function ended(
+    action: 'revise' | 'execute' | 'commands' | 'back',
+    command: string | null,
+    custom: DefaultKey | null = null,
+  ) {
     return async () => ({
       action,
       command,
+      custom,
       batches: [
         { version: 1, annotations: [], general: 'the whole thing reads well', touched: true },
       ],
@@ -282,6 +288,58 @@ describe('what the reviewer picked', () => {
     expect(out.join('\n')).not.toContain('Running');
     expect(out.join('\n')).toContain(`Revise this plan in your agent:  /planx revise ${planId}`);
     expect(code).toBe(0);
+  });
+
+  /**
+   * Rewriting a custom row and running it is how a stored command gets fixed:
+   * the next review opens on the command you settled on rather than on the one
+   * you have now corrected twice.
+   */
+  describe('an edited custom row', () => {
+    /** A binary that is not on PATH: the write happens before the spawn does. */
+    const BIN = 'planx-no-such-agent';
+
+    /** Run the review on `command` and hand back what the defaults became. */
+    async function ran(
+      action: 'revise' | 'execute',
+      command: string,
+      key: DefaultKey | null = null,
+    ) {
+      const { planId } = seed();
+      await runInteractiveReview(ctx([], []), planId, null, 1, ended(action, command, key));
+      return readDefaults();
+    }
+
+    it('stores the remainder once the appended prompt is off', async () => {
+      writeDefault('revise_command', BIN);
+      const after = await ran(
+        'revise',
+        `${BIN} --full-auto "/planx revise guard"`,
+        'revise_command',
+      );
+      expect(after.revise_command).toBe(`${BIN} --full-auto`);
+      // One key, and only one.
+      expect(after.execute_command).toBe(null);
+    });
+
+    it('writes nothing when the reviewer changed nothing', async () => {
+      writeDefault('execute_command', BIN);
+      const after = await ran('execute', `${BIN} "/planx execute guard v1"`, 'execute_command');
+      expect(after.execute_command).toBe(BIN);
+    });
+
+    /** Clearing a default is what `planx defaults` is for, not an emptied line. */
+    it('writes nothing when what is left is blank', async () => {
+      writeDefault('revise_command', BIN);
+      const after = await ran('revise', '  "/planx revise guard"', 'revise_command');
+      expect(after.revise_command).toBe(BIN);
+    });
+
+    it('leaves the defaults alone for a row planx built itself', async () => {
+      writeDefault('revise_command', BIN);
+      const after = await ran('revise', `${BIN} --resume 01J8 "/planx revise guard"`);
+      expect(after.revise_command).toBe(BIN);
+    });
   });
 });
 

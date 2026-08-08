@@ -1,4 +1,4 @@
-import { mkdirSync, symlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, symlinkSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -315,6 +315,59 @@ describe('every line planx prints is a sentence', () => {
   });
 });
 
+/**
+ * `planx defaults`, against the real binary and a real store.
+ *
+ * The flags are what a dotfiles repo uses, so they never open a screen and the
+ * output is what a script reads back.
+ */
+describe('the defaults command', () => {
+  it('sets a key with a flag and prints the block', async () => {
+    const set = await cli.run(['defaults', '--revise', 'codex exec --full-auto']);
+    expect(set.code).toBe(0);
+    expect(set.stdout).toContain('revise');
+    expect(set.stdout).toContain('codex exec --full-auto');
+    expect(set.stdout).toContain('(not set)');
+
+    // Written, not just printed: a second run reads it back off disk.
+    const again = await cli.run(['defaults', '--json']);
+    expect(JSON.parse(again.stdout)).toEqual({
+      revise_command: 'codex exec --full-auto',
+      execute_command: null,
+    });
+  });
+
+  it('clears a key with an empty value', async () => {
+    await cli.run(['defaults', '--execute', 'claude --model opus']);
+    const cleared = await cli.run(['defaults', '--execute', '']);
+    expect(cleared.code).toBe(0);
+    expect(JSON.parse((await cli.run(['defaults', '--json'])).stdout).execute_command).toBe(null);
+  });
+
+  it('sets both in one call', async () => {
+    await cli.run(['defaults', '--revise', 'codex exec', '--execute', 'codex exec --full-auto']);
+    expect(JSON.parse((await cli.run(['defaults', '--json'])).stdout)).toEqual({
+      revise_command: 'codex exec',
+      execute_command: 'codex exec --full-auto',
+    });
+  });
+
+  /** A store with no config file is seeded rather than failing. */
+  it('answers on a store it has never written to, and leaves one behind', async () => {
+    const fresh = await cli.run(['defaults', '--json']);
+    expect(fresh.code).toBe(0);
+    expect(JSON.parse(fresh.stdout)).toEqual({ revise_command: null, execute_command: null });
+    expect(existsSync(join(cli.dir, 'config.json'))).toBe(true);
+  });
+
+  it('never opens a screen with a flag, and never asks for one when piped', async () => {
+    // The suite's stdout is a pipe, so the screen path is unreachable here —
+    // which is the point: both of these have to answer and exit.
+    expect((await cli.run(['defaults'])).code).toBe(0);
+    expect((await cli.run(['defaults'])).stdout).toContain('execute');
+  });
+});
+
 describe('the generated reference', () => {
   it('documents every non-hidden command', async () => {
     const docs = await cli.run(['__gen-cli-docs']);
@@ -324,6 +377,7 @@ describe('the generated reference', () => {
       'revise',
       'executed',
       'diff',
+      'defaults',
       'show',
       'list',
       'update',
@@ -331,14 +385,18 @@ describe('the generated reference', () => {
     ]) {
       expect(docs.stdout).toContain(`## \`planx ${command}\``);
     }
+    // The flags are generated from the field registry, so the reference cannot
+    // disagree with the screen about what a default is called.
+    expect(docs.stdout).toContain('`--revise <CMD>`');
+    expect(docs.stdout).toContain('`--execute <CMD>`');
     expect(docs.stdout).toContain('Do not edit by hand');
     // The generator names itself in the header, but hidden commands get no section.
     expect(docs.stdout).not.toContain('## `planx __gen-cli-docs`');
     expect(docs.stdout).not.toContain('## `planx __update-check`');
 
-    // Ten sections — twelve commands, two of them hidden — and the ones that
-    // were cut are not among them.
-    expect(docs.stdout.match(/^## `planx /gm)).toHaveLength(10);
+    // Eleven sections — thirteen commands, two of them hidden — and the ones
+    // that were cut are not among them.
+    expect(docs.stdout.match(/^## `planx /gm)).toHaveLength(11);
     for (const gone of ['submit', 'versions', 'restore', 'clean', 'rename', 'import', 'config']) {
       expect(docs.stdout, gone).not.toContain(`## \`planx ${gone}\``);
     }

@@ -5,11 +5,14 @@ import { diffVersions, rowsForSingleVersion } from '../diff/lines.js';
 import { copyToClipboard } from '../exec/clipboard.js';
 import {
   agentProcess,
+  customLaunchLine,
   isAgent,
   launchFor,
   launchLine,
+  promptFor,
   runAgent,
   splitCommandLine,
+  stripPrompt,
 } from '../exec/launch.js';
 import { runInstall, runUninstall } from '../install/install.js';
 import { capture } from '../protocol/capture.js';
@@ -17,6 +20,8 @@ import { carriedOver, collapseEdits, presentResume } from '../protocol/present.j
 import { submitFeedback } from '../protocol/submit.js';
 import { blue, bold, dim, green, padEnd, red, signal, yellow } from '../render/ansi.js';
 import { renderDocument, renderStatLine, renderUnified, type RenderMode } from '../render/diff.js';
+import { ensureConfig } from '../store/config.js';
+import { DEFAULT_FIELDS, readDefaults, writeDefault } from '../store/defaults.js';
 import { listFeedback } from '../store/feedback.js';
 import { paths } from '../store/paths.js';
 import {
@@ -35,12 +40,13 @@ import {
   resolveVersionRef,
   rewriteVersion,
 } from '../store/plans.js';
-import type { VersionRecord } from '../store/types.js';
+import type { Defaults, VersionRecord } from '../store/types.js';
 import type { PickerItem } from '../tui/Picker.js';
 import type { Commands, ReviewResult } from '../tui/ReviewApp.js';
 import {
   clearScreen,
   isInteractive,
+  runDefaults,
   runPicker,
   runReview,
   runSteps,
@@ -498,6 +504,10 @@ export async function runInteractiveReview(
     }
   }
 
+  // Before the terminal is handed over, because after it there is no `here` to
+  // come back to: the process becomes the agent.
+  storeEditedCommand(result);
+
   if (result.action === 'revise' || result.action === 'execute') {
     return handOffToAgent(ctx, id, result);
   }
@@ -530,8 +540,18 @@ export async function runInteractiveReview(
  * with a guess, and neither is running an agent the version does not name, so a
  * version missing either gets a null. A null is an entry the list does not
  * show, which is what keeps this the only place that decides what can start.
+ *
+ * The two stored commands answer to less: they depend on neither the recorded
+ * agent, the recorded argv nor the session id, because a command you wrote is a
+ * command planx can run. They are built here rather than by handing the raw
+ * defaults into the TUI so that the review stays ignorant of the config, and so
+ * that everything about what can be started is still decided in one function.
  */
 function versionCommands(id: string, records: readonly VersionRecord[]): Commands {
+  const defaults = readDefaults();
+  const custom = (command: string | null, tail: string) =>
+    command ? customLaunchLine(command, promptFor(command, tail)) : null;
+
   const out: Commands = {};
   for (const record of records) {
     const agent = record.agent && isAgent(record.agent) ? record.agent : null;
@@ -549,9 +569,31 @@ function versionCommands(id: string, records: readonly VersionRecord[]): Command
     out[record.n] = {
       revise: line('revise', `/planx revise ${id}`),
       execute: line('execute', `/planx execute ${id} v${record.n}`),
+      customRevise: custom(defaults.revise_command, `revise ${id}`),
+      customExecute: custom(defaults.execute_command, `execute ${id} v${record.n}`),
     };
   }
   return out;
+}
+
+/**
+ * A rewritten custom row becomes the stored command.
+ *
+ * Fixing one in the review and running it is how a default gets corrected, so
+ * the next review opens on the command you settled on rather than on the one
+ * you have now corrected twice. What is stored is what the reviewer left minus
+ * the prompt planx appended — a line rewritten past recognition is stored
+ * whole, because a guess at which half of it was theirs is worse than keeping
+ * all of it.
+ *
+ * A blank remainder writes nothing: clearing a default is what `planx defaults`
+ * is for, and an accidentally emptied line should not silently unset a command.
+ */
+function storeEditedCommand(result: ReviewResult): void {
+  if (!result.custom || !result.command) return;
+  const remainder = stripPrompt(result.command).trim();
+  if (!remainder || remainder === readDefaults()[result.custom]) return;
+  writeDefault(result.custom, remainder);
 }
 
 /**
@@ -679,6 +721,52 @@ export function cmdShow(ctx: Ctx): number {
 
   for (const line of renderDocument(text, ctx.mode)) ctx.out(line);
   return 0;
+}
+
+/* ------------------------------------------------------------ defaults */
+
+/**
+ * Your own commands, set once and used on every plan.
+ *
+ * Three paths, in order. A field flag sets and prints without ever opening a
+ * screen, which is what a script or a dotfiles repo uses; `--json` or a pipe
+ * prints the block; anything else opens the screen. The flags are generated
+ * from `DEFAULT_FIELDS`, so the flag list, `--help` and the committed CLI
+ * reference cannot disagree with what the screen draws.
+ */
+export async function cmdDefaults(ctx: Ctx): Promise<number> {
+  // A store with no config file is seeded rather than failing: this is a
+  // command about configuration, and reading it should leave one behind.
+  ensureConfig();
+
+  const given = DEFAULT_FIELDS.filter((field) => ctx.args.values.has(field.flag));
+  if (given.length) {
+    let values = readDefaults();
+    for (const field of given) values = writeDefault(field.key, one(ctx.args, field.flag) ?? null);
+    for (const line of defaultsLines(values, ctx.json)) ctx.out(line);
+    return 0;
+  }
+
+  if (ctx.json || !isInteractive()) {
+    for (const line of defaultsLines(readDefaults(), ctx.json)) ctx.out(line);
+    return 0;
+  }
+
+  await runDefaults({
+    values: readDefaults(),
+    version: ctx.version,
+    onSave: (key, value) => writeDefault(key, value),
+  });
+  return 0;
+}
+
+/** The block, as JSON or as one plain line per field. */
+function defaultsLines(values: Defaults, json: boolean): string[] {
+  if (json) return [JSON.stringify(values, null, 2)];
+  const width = Math.max(...DEFAULT_FIELDS.map((f) => f.label.length));
+  return DEFAULT_FIELDS.map(
+    (field) => `  ${signal(padEnd(field.label, width))}  ${values[field.key] ?? dim('(not set)')}`,
+  );
 }
 
 /* -------------------------------------------------------------- listing */

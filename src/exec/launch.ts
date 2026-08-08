@@ -221,6 +221,63 @@ function quote(arg: string): string {
   return /[\s"'$`\\]/.test(arg) ? `"${arg.replace(/(["\\$`])/g, '\\$1')}"` : arg;
 }
 
+/* ----------------------------------------------------- your own commands */
+
+/**
+ * The agent a stored command runs, or null.
+ *
+ * The public half of `agentIn`: a command you wrote is a line to read an agent
+ * out of, not a process to walk up to, and only the name matters here.
+ */
+export function agentInCommand(command: string): AgentName | null {
+  return agentIn(command)?.agent ?? null;
+}
+
+/**
+ * The prompt as the agent that command runs invokes a skill.
+ *
+ * `$planx` under Codex and `/planx` everywhere else — that is how each of them
+ * spells it, and getting it wrong is a launch that starts an agent and then
+ * says nothing to it. An unrecognised command gets the slash, which is what
+ * every agent but Codex uses.
+ */
+export function promptFor(command: string, tail: string): string {
+  return `${agentInCommand(command) === 'codex' ? '$' : '/'}planx ${tail}`;
+}
+
+/**
+ * A stored command with the prompt appended as one argument.
+ *
+ * Quoted the way `launchLine` quotes, so the result goes through the same
+ * `splitCommandLine` and the same `spawn` as a line planx built itself. A shell
+ * operator inside a stored command is still text handed to the binary rather
+ * than something a shell interprets — the same trade the editable command line
+ * already makes.
+ */
+export function customLaunchLine(command: string, prompt: string): string {
+  return `${command.trim()} ${quote(prompt)}`;
+}
+
+/**
+ * One trailing planx prompt, quoted or bare, in either spelling.
+ *
+ * Anchored at the end, so a command that mentions `/planx` in a system prompt
+ * of its own keeps it and gives up only the last one.
+ */
+const TRAILING_PROMPT =
+  /\s+(?:"\\?[$/]planx[^"]*"|'\\?[$/]planx[^']*'|\\?[$/]planx(?:\s+\S+)*)\s*$/;
+
+/**
+ * `customLaunchLine` undone: the stored half of a line planx composed.
+ *
+ * It removes one trailing prompt and nothing else. A line the reviewer rewrote
+ * past recognition comes back whole, so what is stored is what they will see
+ * next time rather than a guess at which half of it was theirs.
+ */
+export function stripPrompt(line: string): string {
+  return line.replace(TRAILING_PROMPT, '');
+}
+
 /**
  * A launch line back into argv — `launchLine`'s inverse.
  *

@@ -158,16 +158,38 @@ export type Feedback = z.infer<typeof FeedbackSchema>;
 /* ---------------------------------------------------------------- config */
 
 /**
- * What is left of configuration: how to render, and nothing else.
+ * The commands you brought yourself, set once and used on every plan.
+ *
+ * `null` is not set — the seeded state, and what clearing a value returns it to.
+ * Each one is a command planx appends its own skill invocation to, which is why
+ * they are stored as whole command lines rather than as a binary and its flags:
+ * what is stored is what the hand-off list shows you, minus the prompt.
+ */
+export const DefaultsSchema = z.object({
+  revise_command: z.string().nullable().default(null),
+  execute_command: z.string().nullable().default(null),
+});
+export type Defaults = z.infer<typeof DefaultsSchema>;
+
+/**
+ * What is left of configuration: how to render, and your own commands.
  *
  * `enabled` went with `planx on`/`off` — enabling planx is the skill's business
  * now, not a flag in the store. `mouse` went with wheel scrolling: an
  * append-only render cannot host a moving cursor, boxes that grow as you type,
  * or folds, so there was nothing on the other side of the trade it offered.
+ *
+ * `defaults` is `prefault` rather than `default` because the block's own keys
+ * are filled in on the way through the schema rather than supplied by the
+ * caller — a config written before it existed parses with every field on its
+ * own default. That is also why it is not a `FORMAT_VERSION` bump: an older CLI
+ * parses the file and Zod strips the key it does not know, and nothing older
+ * writes the config back, so a downgrade cannot drop the block.
  */
 export const ConfigSchema = z.object({
   format_version: formatVersion,
   render: z.enum(['rich', 'plain']).default('rich'),
+  defaults: DefaultsSchema.prefault({}),
 });
 export type Config = z.infer<typeof ConfigSchema>;
 

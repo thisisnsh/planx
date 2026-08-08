@@ -7,6 +7,10 @@ choose **Execute plan in a new session**, or copy the command into an agent:
 /planx execute <id> v<n>
 ```
 
+These rows can be your own commands: set `planx defaults` and the hand-off calls
+any other agent you use. PlanX appends the `/planx` slash command to the end of
+what you stored — see [Configuration](/reference/config).
+
 <FeatureTerminal example="handoff" />
 
 ## What the agent does

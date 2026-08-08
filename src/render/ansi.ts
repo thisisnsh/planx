@@ -97,6 +97,26 @@ export function padStart(text: string, width: number): string {
   return pad > 0 ? ' '.repeat(pad) + text : text;
 }
 
+/**
+ * A line being typed, scrolled horizontally under the caret.
+ *
+ * Every editable line planx draws uses this one: the note box, the `e` line
+ * editor, the hand-off command and the defaults screen. A line wider than the
+ * column it is in runs off the right edge, and a caret you cannot see is a
+ * caret you cannot type at — so the window follows it, pinning it to the last
+ * column once there is more line than there is room.
+ *
+ * It lives here rather than in a screen because it is a pure text function with
+ * no React in it, next to the padding and truncation it is drawn beside.
+ */
+export function caretLine(draft: string, caret: number, width: number): string {
+  const room = Math.max(1, width - 1);
+  const start = Math.max(0, caret - room + 1);
+  const visible = draft.slice(start, start + room);
+  const at = caret - start;
+  return `${visible.slice(0, at)}${inverse(draft[caret] ?? ' ')}${visible.slice(at + 1)}`;
+}
+
 /** Truncate to `width` visible characters, preserving escape sequences. */
 export function truncate(text: string, width: number): string {
   if (visibleLength(text) <= width) return text;

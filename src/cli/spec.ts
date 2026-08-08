@@ -1,3 +1,4 @@
+import { DEFAULT_FIELDS } from '../store/defaults.js';
 import type { CommandSpec, FlagSpec } from './args.js';
 
 export const GLOBAL_FLAGS: FlagSpec[] = [
@@ -112,6 +113,35 @@ export const COMMANDS: CommandSpec[] = [
       { name: '--stat', summary: 'Just the summary line.' },
     ],
     examples: ['planx diff guard-clock-a3f9', 'planx diff guard-clock-a3f9 v1 v3 --print --plain'],
+  },
+  {
+    name: 'defaults',
+    group: 'everyday',
+    usage: `planx defaults [${DEFAULT_FIELDS.map((f) => `${f.flag} CMD`).join('] [')}] [--json]`,
+    summary: 'Your own commands for the review hand-off.',
+    description:
+      'Set once, globally, and the review offers them as two more rows on the list `s` opens — ' +
+      'above the ones planx builds itself, so a command you wrote is what `1` picks. planx ' +
+      'takes the command you stored and puts the skill invocation on the end of it as one ' +
+      'quoted argument, spelt `$planx …` for a command that runs Codex and `/planx …` for ' +
+      'everything else, because that is how each agent invokes a skill. So the command has to ' +
+      'be written to take a trailing prompt, and the agent it names needs the planx skill ' +
+      'installed for that prompt to mean anything there. With a flag it sets and prints; an ' +
+      'empty value clears. With neither, in a terminal, it opens a screen. Rewriting one of ' +
+      'these rows in the review before running it stores what you typed, minus the appended ' +
+      'prompt, as the new default.',
+    flags: [
+      ...DEFAULT_FIELDS.map((field) => ({
+        name: field.flag,
+        arg: 'CMD',
+        summary: `${field.summary} Empty clears it.`,
+      })),
+    ],
+    examples: [
+      'planx defaults',
+      'planx defaults --revise "codex exec --full-auto"',
+      'planx defaults --execute ""',
+    ],
   },
   {
     name: 'show',

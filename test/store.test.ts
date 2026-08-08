@@ -2,6 +2,8 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { previousStoredVersion } from '../src/cli/commands.js';
 import { StoreCorruptionError } from '../src/store/atomic.js';
+import { defaultConfig, readConfig, writeConfig } from '../src/store/config.js';
+import { readDefaults, writeDefault } from '../src/store/defaults.js';
 import { contentHash, planId, slugify, ulid } from '../src/store/ids.js';
 import { paths } from '../src/store/paths.js';
 import {
@@ -385,5 +387,48 @@ describe('corruption', () => {
     const id = seed();
     writeFileSync(paths.versions(id), 'truncated mid-writ');
     expect(() => readVersions(id)).toThrow(StoreCorruptionError);
+  });
+});
+
+/**
+ * The user-level defaults, which live in the config beside `render`.
+ *
+ * They are an optional block with a default rather than a format bump, so the
+ * first thing to hold is that a config written before they existed still reads.
+ */
+describe('the defaults block', () => {
+  it('reads a config that predates it as two unset fields', () => {
+    writeFileSync(paths.config(), '{"format_version": 1, "render": "plain"}\n');
+    expect(readDefaults()).toEqual({ revise_command: null, execute_command: null });
+    expect(readConfig().render).toBe('plain');
+  });
+
+  it('replaces one key and leaves the rest of the config alone', () => {
+    writeConfig({ ...defaultConfig(), render: 'plain' });
+    writeDefault('revise_command', 'codex exec --full-auto');
+    const after = writeDefault('execute_command', 'claude --model opus');
+
+    expect(after).toEqual({
+      revise_command: 'codex exec --full-auto',
+      execute_command: 'claude --model opus',
+    });
+    // Round-tripped through the file, not just returned.
+    expect(readConfig()).toMatchObject({ render: 'plain', defaults: after });
+
+    writeDefault('revise_command', 'codex exec');
+    expect(readDefaults().execute_command).toBe('claude --model opus');
+    expect(readConfig().render).toBe('plain');
+  });
+
+  it('stores a blank value as unset, whichever way it is blank', () => {
+    writeDefault('revise_command', 'codex exec');
+    expect(writeDefault('revise_command', '   ').revise_command).toBe(null);
+
+    writeDefault('revise_command', 'codex exec');
+    expect(writeDefault('revise_command', null).revise_command).toBe(null);
+  });
+
+  it('trims what it stores, so the stored line is the line it runs', () => {
+    expect(writeDefault('revise_command', '  codex exec  ').revise_command).toBe('codex exec');
   });
 });

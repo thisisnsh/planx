@@ -37,6 +37,34 @@ describe('the static website examples', () => {
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
   });
 
+  /**
+   * The one thing a person can get wrong about a custom command is what PlanX
+   * appends to it, so every page that hands a plan to an agent says it — and
+   * the configuration reference is where the rule itself lives.
+   */
+  it('documents the custom hand-off commands wherever a plan is handed over', () => {
+    const config = read('site/reference/config.md');
+    expect(config).toContain('defaults.revise_command');
+    expect(config).toContain('defaults.execute_command');
+    expect(config).toContain('planx defaults --revise');
+    // Both spellings of the appended prompt, and the two surprises.
+    expect(config).toContain('"$planx revise upload-limits-a3f9"');
+    expect(config).toContain('`/planx` for');
+    expect(config).toContain('trailing prompt');
+    expect(config).toContain('PlanX skill installed');
+
+    for (const page of [
+      'site/review-loop.md',
+      'site/executing.md',
+      'site/claude-code.md',
+      'site/codex.md',
+    ]) {
+      const text = read(page);
+      expect(text, page).toContain('set `planx defaults`');
+      expect(text, page).toContain('[Configuration](/reference/config)');
+    }
+  });
+
   it('removes the browser simulator and registers the static component', () => {
     const theme = read('site/.vitepress/theme/index.ts');
 
