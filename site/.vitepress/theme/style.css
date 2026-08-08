@@ -170,9 +170,10 @@ body {
   position: relative;
   display: grid;
   min-height: 850px;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(480px, 1fr);
   align-content: center;
   align-items: center;
+  gap: 48px;
   padding-top: 150px;
   padding-bottom: 170px;
 }
@@ -192,6 +193,7 @@ body {
 }
 
 .hero-copy,
+.hero-art,
 .hero-principles {
   position: relative;
   z-index: 2;
@@ -298,6 +300,10 @@ body {
   background: rgba(255, 255, 255, 0.04);
 }
 
+.hero-art {
+  min-width: 0;
+}
+
 .screen {
   position: relative;
   margin: 0;
@@ -328,6 +334,11 @@ body {
   font-size: 0.61rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.screen-hero {
+  width: calc(100% + 80px);
+  max-width: 720px;
 }
 
 .hero-principles {
@@ -506,15 +517,6 @@ body {
 
 .feature-intro {
   margin-bottom: 70px;
-}
-
-.review-overview {
-  width: min(100%, 1100px);
-  margin: 0 auto 80px;
-}
-
-.review-overview img {
-  border-color: rgba(255, 212, 0, 0.42);
 }
 
 .feature-row {
@@ -847,12 +849,25 @@ body {
 @media (max-width: 1100px) {
   .hero {
     min-height: auto;
+    grid-template-columns: 1fr;
+    gap: 65px;
     padding-top: 175px;
     padding-bottom: 190px;
   }
 
   .hero-copy {
     max-width: 860px;
+  }
+
+  .hero-art {
+    width: calc(100% - 20px);
+    justify-self: center;
+  }
+
+  .screen-hero {
+    width: 100%;
+    max-width: none;
+    margin-inline: auto;
   }
 
   .feature-row,
@@ -1057,13 +1072,6 @@ body {
 
   .screen img {
     border-radius: 7px;
-  }
-
-  .review-overview {
-    width: calc(100% + 10px);
-    margin-right: -5px;
-    margin-bottom: 55px;
-    margin-left: -5px;
   }
 
   .install {

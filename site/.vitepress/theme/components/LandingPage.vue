@@ -216,6 +216,18 @@ function closeMenu(): void {
           </div>
         </div>
 
+        <div class="hero-art" aria-hidden="true">
+          <figure class="screen screen-hero">
+            <img
+              src="/images/planx-view.png"
+              width="1340"
+              height="556"
+              alt=""
+              fetchpriority="high"
+            />
+          </figure>
+        </div>
+
         <div class="hero-principles" aria-label="PlanX capabilities">
           <span>Compare every revision.</span>
           <span>Comment on exact lines.</span>
@@ -237,8 +249,7 @@ function closeMenu(): void {
       <section id="workflow" class="workflow section-shell">
         <div class="section-intro">
           <div>
-            <p class="section-label">The workflow</p>
-            <h2>Plan → Review → Revise → Execute</h2>
+            <h2>The workflow</h2>
           </div>
           <p>
             The plan leaves chat long enough to become something you can inspect. Every revision
@@ -281,16 +292,6 @@ function closeMenu(): void {
             </div>
             <p>Every image below is the real PlanX terminal interface.</p>
           </div>
-
-          <figure class="screen review-overview">
-            <img
-              src="/images/planx-view.png"
-              width="1340"
-              height="556"
-              alt="PlanX terminal plan picker showing saved plans and their versions"
-            />
-            <figcaption>Pick a plan. Review an exact version.</figcaption>
-          </figure>
 
           <article class="feature-row">
             <div class="feature-copy">
