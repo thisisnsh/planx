@@ -91,11 +91,10 @@ would quote is your old wording, which is no longer there, so the hunk will not
 match. Leave those lines out of the patch entirely unless a comment asks you to
 change them again.
 
-**Give every hunk at least three lines of context, and make the counts in the
-`@@` header match the body under it.** planx searches outward from the line
-number in the header, so an offset you miscounted is absorbed; a context line
-that occurs twice in the plan is not, and neither is a header whose counts are
-wrong.
+**Give every hunk at least three lines of context.** PlanX derives both hunk
+counts from the body. It also searches outward from the line offsets, so
+offsets and counts may drift. Context may not: every context and removed line
+must match the stored parent exactly.
 
 planx answers with what it applied — `Applied 3 hunks: +12 −4.` — and that is
 your only sight of the document you just wrote. If those numbers are not the
@@ -142,9 +141,11 @@ hands the user a command to paste back instead. That is a normal way in.
 If the user declined something, say so here in one short line — in the chat, not
 in the plan. Then, verbatim, with nothing after it:
 
-> Plan created. Open `planx <plan-id> v<n>` in new tab.
+> Plan created. Exit the agent, then run `planx <plan-id> v<n>`.
 
-Then end your turn. The next round starts when they paste a command back.
+Then end your turn. The user exits the agent and runs that command. After they
+submit the review, PlanX resumes this same agent conversation with everything
+already in context.
 
 ## A review that asked for nothing
 

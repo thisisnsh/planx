@@ -9,6 +9,7 @@ const SKILL_DIR = join(ROOT, 'skills', 'planx');
 const router = readFileSync(join(SKILL_DIR, 'SKILL.md'), 'utf8');
 const plan = readFileSync(join(SKILL_DIR, 'references', 'plan.md'), 'utf8');
 const revise = readFileSync(join(SKILL_DIR, 'references', 'revise.md'), 'utf8');
+const handoff = 'Plan created. Exit the agent, then run `planx <plan-id> v<n>`.';
 
 // There is no size budget here on purpose. File size was the wrong proxy for
 // prompt cost: the repeating cost of a revision is the plan re-emitted on every
@@ -66,13 +67,15 @@ describe('the shipped planx skill', () => {
 
   it('keeps the initial planning and capture contracts', () => {
     expect(plan).toContain('ExitPlanMode');
-    expect(plan).toContain('Anything else before I write it?');
+    expect(plan).not.toContain('Anything else before I write it?');
+    expect(plan).toContain('one batch of necessary clarifying questions');
+    expect(plan).toContain('materially affect the plan');
     expect(plan).toContain('captured plan only, not conversation');
     expect(plan).toContain('80 physical');
     expect(plan).toContain('planx capture --stdin');
     expect(plan).toContain('$CLAUDE_CODE_SESSION_ID');
     expect(plan).toContain('$CODEX_THREAD_ID');
-    expect(plan.match(/Plan created\. Open/gu)).toHaveLength(1);
+    expect(plan.match(/Plan created\. Exit/gu)).toHaveLength(1);
   });
 
   // The abstract rule does not fire on its own — an agent pattern-matches on
@@ -97,7 +100,15 @@ describe('the shipped planx skill', () => {
     expect(revise).toContain('80 physical');
     expect(revise).toContain('Do not summarise them back to the user');
     expect(revise).toContain('still unaddressed from earlier versions');
-    expect(revise.match(/Plan created\. Open/gu)).toHaveLength(1);
+    expect(revise.match(/Plan created\. Exit/gu)).toHaveLength(1);
+  });
+
+  it('hands review to the terminal as the last agent output', () => {
+    for (const source of [plan, revise]) {
+      expect(source).toContain(`Then, verbatim, with nothing after it:\n\n> ${handoff}`);
+      expect(source).toContain('resumes this same agent conversation');
+      expect(source).not.toContain('open in new tab');
+    }
   });
 
   // The review folds `##` through `####` and nothing deeper (MAX_FOLD_LEVEL in
@@ -127,5 +138,9 @@ describe('the shipped planx skill', () => {
     expect(revise).toContain('### Edited by the reviewer');
     expect(revise).toContain('byte for byte');
     expect(revise).toContain('three lines of context');
+    expect(revise).toContain('derives both hunk');
+    expect(revise).toContain('counts from the body');
+    expect(revise).toContain('offsets and counts may drift');
+    expect(revise).toContain('match the stored parent exactly');
   });
 });

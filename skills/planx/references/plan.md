@@ -19,23 +19,12 @@ If you have no such tool, print this and stop until the user answers:
 
 Do not skip this. Do not write the plan into `ExitPlanMode`.
 
-## 1. Clarify, then check
+## 1. Clarify
 
-Two steps before any research, both mandatory, both ending in a wait.
-
-**First, ask what is ambiguous.** Scope, approach, the trade-offs that decide
-what actually gets built. Use the question tool, and wait for the answers.
-
-**Then ask, in the chat:**
-
-> Anything else before I write it?
-
-and wait again.
-
-The second question is the one that catches what the first did not think to ask
-about. Skipping it is how a plan arrives missing a requirement the user assumed
-was obvious — and a missing requirement costs a whole review round, because the
-only way to tell you about it is to annotate a plan built without it.
+Before any research, ask one batch of necessary clarifying questions about
+scope, approach and the trade-offs that decide what actually gets built. Ask
+only questions whose answers materially affect the plan. Use the question tool,
+and wait for the answers.
 
 ## 2. Research and write it
 
@@ -101,11 +90,11 @@ somewhere nothing is going to clean up.
 If the user declined something, say so here in one short line — in the chat, not
 in the plan. Then, verbatim, with nothing after it:
 
-> Plan created. Open `planx <plan-id> v<n>` in new tab.
+> Plan created. Exit the agent, then run `planx <plan-id> v<n>`.
 
-**Then stop and end your turn.** Nothing blocks and nothing polls. They review
-it, and the reviewer prints a command they paste back to you — usually
-`/planx revise <plan-id>`. That is what starts the next round.
+**Then stop and end your turn.** Nothing blocks and nothing polls. The user
+exits the agent and runs that command. After they submit the review, PlanX
+resumes this same agent conversation with everything already in context.
 
 Do not revise, do not re-capture, and do not ask whether they are done. There is
 nothing to act on until they come back.

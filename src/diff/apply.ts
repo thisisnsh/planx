@@ -29,6 +29,79 @@ export type ApplyResult = ApplyOk | ApplyFailure;
  */
 const CSI = /\u001b\[[0-9;?]*[ -\/]*[@-~]/gu;
 
+const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/u;
+const HUNK_HEADER_PREFIX = /^@@\s/u;
+
+/**
+ * Replace agent-supplied hunk counts with the counts in each hunk body.
+ *
+ * Start offsets remain hints: jsdiff searches outwards from them when it
+ * applies a hunk. Counts are different — jsdiff uses them to decide where the
+ * body ends, so one oversized count can swallow the next `@@` header. Hunk and
+ * file headers are structural boundaries here, independent of those hints.
+ */
+function normalizeHunkCounts(patch: string): string {
+  const lines = patch.split('\n');
+
+  for (let i = 0; i < lines.length; i++) {
+    const header = HUNK_HEADER.exec(lines[i]!);
+    if (!header) {
+      if (HUNK_HEADER_PREFIX.test(lines[i]!)) {
+        throw new Error(`Hunk at line ${i + 1} has an invalid header`);
+      }
+      continue;
+    }
+
+    const oldStart = header[1]!;
+    const newStart = header[3]!;
+    const section = header[5]!;
+    let oldLines = 0;
+    let newLines = 0;
+    let body = i + 1;
+
+    for (; body < lines.length; body++) {
+      const line = lines[body]!;
+      if (HUNK_HEADER.test(line) || startsFile(lines, body)) break;
+      if (HUNK_HEADER_PREFIX.test(line)) {
+        throw new Error(`Hunk at line ${body + 1} has an invalid header`);
+      }
+
+      // split() leaves one empty element after a final newline. jsdiff treats
+      // that as a terminator, while an empty physical line inside the payload
+      // is tolerated as an unprefixed context line.
+      if (line === '' && body === lines.length - 1) break;
+
+      const operation = line === '' ? ' ' : line[0];
+      if (operation === ' ') {
+        oldLines++;
+        newLines++;
+      } else if (operation === '-') {
+        oldLines++;
+      } else if (operation === '+') {
+        newLines++;
+      } else if (operation !== '\\') {
+        throw new Error(`Hunk at line ${i + 1} contained invalid line ${line}`);
+      }
+    }
+
+    lines[i] = `@@ -${oldStart},${oldLines} +${newStart},${newLines} @@${section}`;
+    i = body - 1;
+  }
+
+  return lines.join('\n');
+}
+
+/** A boundary that must never be counted as part of the preceding hunk. */
+function startsFile(lines: string[], index: number): boolean {
+  const line = lines[index]!;
+  if (/^diff --git /u.test(line) || /^Index:\s/u.test(line)) return true;
+  if (/^diff(?: -r \w+)+\s/u.test(line) || /^={67}/u.test(line)) return true;
+
+  // Unified diffs may put the next file's headers directly after a hunk. The
+  // pair is important: a single removed line is allowed to begin `--- `.
+  return /^---\s/u.test(line) && /^\+\+\+\s/u.test(lines[index + 1] ?? '');
+}
+
 /**
  * Apply a unified diff to the text of a stored version.
  *
@@ -81,7 +154,8 @@ export function applyUnifiedPatch(base: string, patch: string): ApplyResult {
  */
 function parse(patch: string): StructuredPatch[] | string {
   try {
-    return parsePatch(patch.replace(CSI, ''));
+    const plain = patch.replace(CSI, '');
+    return parsePatch(normalizeHunkCounts(plain));
   } catch (err) {
     const detail = err instanceof Error ? err.message.trim() : String(err);
     return `the patch does not parse — ${detail || 'malformed unified diff'}`;

@@ -32,7 +32,11 @@ function inStore<T>(fn: () => T): T {
 }
 
 async function seed(): Promise<string> {
-  const result = await cli.run(['capture', '--stdin', '--source', 'test'], PLAN_V1);
+  return seedText(PLAN_V1);
+}
+
+async function seedText(text: string): Promise<string> {
+  const result = await cli.run(['capture', '--stdin', '--source', 'test'], text);
   const id = /Captured (\S+) v1\./.exec(result.stdout)?.[1];
   expect(id, result.stdout + result.stderr).toBeTruthy();
   return id!;
@@ -78,6 +82,127 @@ describe('capture --patch', () => {
 
     expect(result.code, result.stderr).toBe(0);
     expect(inStore(() => readVersionText(id, 2))).toBe(PLAN_V2);
+  });
+
+  it('derives an oversized count before an adjacent hunk', async () => {
+    const oldLines = Array.from({ length: 23 }, (_, index) =>
+      index === 0 ? '# Adjacent hunk regression' : `Original line ${index + 1}.`,
+    );
+    const additions = Array.from({ length: 7 }, (_, index) => `Inserted line ${index + 1}.`);
+    const base = `${oldLines.join('\n')}\n`;
+    const expected = `${[
+      ...oldLines.slice(0, 20),
+      ...additions,
+      oldLines[20],
+      'Original line 22, revised.',
+      oldLines[22],
+    ].join('\n')}\n`;
+    const patch = [
+      // The failed revision declared 28 new lines here, but its body has 27.
+      '@@ -1,20 +1,28 @@ Keep this section label',
+      ...oldLines.slice(0, 20).map((line) => ` ${line}`),
+      ...additions.map((line) => `+${line}`),
+      '@@ -21,3 +28,3 @@',
+      ` ${oldLines[20]}`,
+      `-${oldLines[21]}`,
+      '+Original line 22, revised.',
+      ` ${oldLines[22]}`,
+      '',
+    ].join('\n');
+    const id = await seedText(base);
+
+    const result = await cli.run(
+      ['capture', '--plan-id', id, '--parent', 'v1', '--patch', '--stdin'],
+      patch,
+    );
+
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stdout).toContain('Applied 2 hunks: +8 −1.');
+    expect(inStore(() => readVersionText(id, 2))).toBe(expected);
+    expect(versionsOf(id)).toEqual([1, 2]);
+  });
+
+  it('derives counts that are too small for the valid body lines', async () => {
+    const id = await seed();
+
+    const result = await cli.run(
+      ['capture', '--plan-id', id, '--parent', 'v1', '--patch', '--stdin'],
+      hunk('@@ -6,1 +6,1 @@'),
+    );
+
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stdout).toContain('Applied 1 hunk: +1 −1.');
+    expect(inStore(() => readVersionText(id, 2))).toBe(PLAN_V2);
+    expect(versionsOf(id)).toEqual([1, 2]);
+  });
+
+  it('repairs independently wrong old and new counts', async () => {
+    const id = await seed();
+
+    const result = await cli.run(
+      ['capture', '--plan-id', id, '--parent', 'v1', '--patch', '--stdin'],
+      hunk('@@ -6,9 +6,1 @@'),
+    );
+
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stdout).toContain('Applied 1 hunk: +1 −1.');
+    expect(inStore(() => readVersionText(id, 2))).toBe(PLAN_V2);
+    expect(versionsOf(id)).toEqual([1, 2]);
+  });
+
+  it('repairs every hunk in a multi-hunk patch', async () => {
+    const id = await seed();
+    const patch =
+      hunk('@@ -6,20 +6,1 @@') +
+      '@@ -9,1 +9,20 @@\n ## Rollout\n' +
+      '-Deploy behind the `ff_clock_guard` flag, 10% then 50% then 100%.\n' +
+      '+Deploy the guard on Monday.\n';
+    const expected = PLAN_V2.replace(
+      'Deploy behind the `ff_clock_guard` flag, 10% then 50% then 100%.',
+      'Deploy the guard on Monday.',
+    );
+
+    const result = await cli.run(
+      ['capture', '--plan-id', id, '--parent', 'v1', '--patch', '--stdin'],
+      patch,
+    );
+
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stdout).toContain('Applied 2 hunks: +2 −2.');
+    expect(inStore(() => readVersionText(id, 2))).toBe(expected);
+    expect(versionsOf(id)).toEqual([1, 2]);
+  });
+
+  it('derives a zero old count for a pure insertion', async () => {
+    const base = '# Pure insertion\none\ntwo\nthree\n';
+    const id = await seedText(base);
+
+    const result = await cli.run(
+      ['capture', '--plan-id', id, '--parent', 'v1', '--patch', '--stdin'],
+      '@@ -2,8 +3,9 @@\n+inserted A\n+inserted B\n',
+    );
+
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stdout).toContain('Applied 1 hunk: +2 −0.');
+    expect(inStore(() => readVersionText(id, 2))).toBe(
+      '# Pure insertion\none\ninserted A\ninserted B\ntwo\nthree\n',
+    );
+    expect(versionsOf(id)).toEqual([1, 2]);
+  });
+
+  it('derives a zero new count for a pure deletion', async () => {
+    const base = '# Pure deletion\none\ntwo\nthree\n';
+    const id = await seedText(base);
+
+    const result = await cli.run(
+      ['capture', '--plan-id', id, '--parent', 'v1', '--patch', '--stdin'],
+      '@@ -3,9 +2,9 @@\n-two\n-three\n',
+    );
+
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stdout).toContain('Applied 1 hunk: +0 −2.');
+    expect(inStore(() => readVersionText(id, 2))).toBe('# Pure deletion\none\n');
+    expect(versionsOf(id)).toEqual([1, 2]);
   });
 
   // The one failure mode this must never have is applying cleanly to the wrong
@@ -133,6 +258,42 @@ describe('capture --patch', () => {
     expect(versionsOf(id)).toEqual([1]);
   });
 
+  it('refuses malformed hunk body text and writes no version', async () => {
+    const id = await seed();
+
+    const result = await cli.run(
+      ['capture', '--plan-id', id, '--patch', '--stdin'],
+      '@@ -1,1 +1,1 @@\n # Guard the clock regression\nthis line has no prefix\n',
+    );
+
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain('contained invalid line');
+    expect(versionsOf(id)).toEqual([1]);
+    expect(inStore(() => readVersionText(id, 1))).toBe(PLAN_V1);
+  });
+
+  it('refuses a multi-file patch even when both files need count repair', async () => {
+    const id = await seed();
+    const patch =
+      '--- a/plan.md\n' +
+      '+++ b/plan.md\n' +
+      '@@ -1,9 +1,9 @@\n' +
+      '-# Guard the clock regression\n' +
+      '+# First document\n' +
+      '--- a/other.md\n' +
+      '+++ b/other.md\n' +
+      '@@ -1,9 +1,9 @@\n' +
+      '-# Guard the clock regression\n' +
+      '+# Second document\n';
+
+    const result = await cli.run(['capture', '--plan-id', id, '--patch', '--stdin'], patch);
+
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain('patches more than one file');
+    expect(versionsOf(id)).toEqual([1]);
+    expect(inStore(() => readVersionText(id, 1))).toBe(PLAN_V1);
+  });
+
   // A patch is content-addressed like any other capture: what matters is the
   // document it produces, not that a diff was involved in producing it.
   it('hits the existing no-op when the patch reproduces the parent', async () => {
@@ -184,6 +345,30 @@ describe('capture --patch', () => {
     expect(result.code, result.stderr).toBe(0);
     expect(result.stdout).toContain(`Captured ${id} v2.`);
     expect(inStore(() => readVersionText(id, 2))).toBe(PLAN_V2);
+  });
+
+  it('ignores no-newline markers and ANSI sequences when deriving counts', async () => {
+    const base = '# Marker\nold';
+    const id = await seedText(base);
+    const cyan = (text: string) => `\u001b[36m${text}\u001b[39m`;
+    const patch = [
+      cyan('@@ -1,9 +1,8 @@'),
+      cyan(' # Marker'),
+      cyan('-old'),
+      cyan('+new'),
+      cyan('\\ No newline at end of file'),
+      '',
+    ].join('\n');
+
+    const result = await cli.run(
+      ['capture', '--plan-id', id, '--parent', 'v1', '--patch', '--stdin'],
+      patch,
+    );
+
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stdout).toContain('Applied 1 hunk: +1 −1.');
+    expect(inStore(() => readVersionText(id, 2))).toBe('# Marker\nnew\n');
+    expect(versionsOf(id)).toEqual([1, 2]);
   });
 });
 
