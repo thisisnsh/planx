@@ -35,7 +35,7 @@ Claude Code /planx <task>
 
 PlanX installs its skill into existing Codex and Claude Code installations.
 
-![PlanX diff](assets/planx-diff.png)
+![PlanX view](assets/planx-view.png)
 
 ## The workflow
 
