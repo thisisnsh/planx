@@ -17,5 +17,4 @@
 
 - [ ] `npm test` passes
 - [ ] `npm run lint && npm run typecheck` pass
-- [ ] `npm run docs:cli` re-run and committed, if `src/cli/spec.ts` changed
 - [ ] The on-disk `~/.planx` format is unchanged, or the PR describes the migration
