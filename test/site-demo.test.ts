@@ -56,12 +56,14 @@ describe('the single-page product website', () => {
     expect(component).not.toMatch(/<button|<input|@click|@keydown|addEventListener/);
   });
 
-  it('keeps implementation and configuration details in README accordions', () => {
+  it('keeps implementation and configuration details expanded in the README', () => {
     const readme = read('README.md');
 
-    expect(readme).toContain('<summary><strong>Configuration</strong></summary>');
-    expect(readme).toContain('<summary><strong>Plans, cleanup, and removal</strong></summary>');
-    expect(readme).toContain('custom hand-off commands');
+    expect(readme).toContain('## Configuration');
+    expect(readme).toContain('## Agent setup and updates');
+    expect(readme).not.toContain('<details>');
+    expect(readme).toContain('Custom revise and execute commands');
     expect(readme).toContain('The command must accept a trailing prompt');
+    expect(readme).toContain('assets/planx-handoff.png');
   });
 });

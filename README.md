@@ -1,6 +1,7 @@
 # PlanX
 
-A skill for coding agents and a terminal interface that helps you plan like never before. **[planx.sh](https://planx.sh)**
+A skill for coding agents and a terminal interface for reviewing plans before
+you execute them. **[planx.sh](https://planx.sh)**
 
 [![npm](https://img.shields.io/npm/v/@thisisnsh/planx?color=ffd400&labelColor=0b0b0c)](https://www.npmjs.com/package/@thisisnsh/planx)
 [![ci](https://img.shields.io/github/actions/workflow/status/thisisnsh/planx/ci.yml?branch=main&labelColor=0b0b0c)](https://github.com/thisisnsh/planx/actions/workflows/ci.yml)
@@ -11,7 +12,15 @@ A skill for coding agents and a terminal interface that helps you plan like neve
 Planning is not a ritual you perform to make an agent feel prepared. It is the
 moment you decide what will be built.
 
-PlanX turns the giant blob of text you read once and lose in chat into a versioned artifact you can actually review — compare revisions, comment on exact lines, make edits, and execute only the version you approve.
+PlanX turns the giant blob of text you read once and lose in chat into a
+versioned artifact you can actually review:
+
+- Compare every revision.
+- Comment on exact lines.
+- Edit what is already decided.
+- Execute only the version you approve.
+
+## Install
 
 ```bash
 npm install --global @thisisnsh/planx
@@ -23,11 +32,10 @@ Start a new agent session, then ask for a reviewable plan:
 Codex       $planx <task>
 Claude Code /planx <task>
 ```
+
 PlanX installs its skill into existing Codex and Claude Code installations.
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/thisisnsh/planx/main/assets/planx-review.png" alt="PlanX comparing two versions of a plan with a collapsed unchanged section, an edited line, and feedback attached to an exact line" width="920">
-</p>
+![PlanX diff](assets/planx-diff.png)
 
 ## The workflow
 
@@ -38,50 +46,34 @@ PlanX installs its skill into existing Codex and Claude Code installations.
 2. **Review outside the agent.** Run `planx`, read the plan, collapse sections,
    select exact lines, leave feedback, add a whole-plan note, or edit directly.
 3. **Revise with context.** Send the review back to the same agent session, or
-   hand it to another agent. Every revision becomes a new version you can compare.
+   hand it to another agent. Every revision becomes a new version you can
+   compare.
 4. **Execute what you approved.** Choose an exact reviewed version and let the
    agent build that version—not a fuzzy recollection of the conversation.
 
 ## What changes when plans become reviewable
 
-<table>
-<tr>
-<td width="50%" valign="top">
-<h3>Versioned, not overwritten</h3>
-Every revision stays attached to the plan. Walk from the first proposal to the
-settled version without losing the decisions that shaped it.
-</td>
-<td width="50%" valign="top">
-<h3>Diffs, not rereading</h3>
-See removed and added words together. Unchanged sections collapse so your attention
-goes to the decisions that moved.
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-<h3>Exact feedback, not vague prompts</h3>
-Select one line or a range. The agent receives your comment beside the exact
-text it needs to change.
-</td>
-<td width="50%" valign="top">
-<h3>Notes and direct edits</h3>
-Add one instruction for the whole plan, or rewrite a line yourself when the
-right wording is already obvious.
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-<h3>Readable at any length</h3>
-Collapse sections, feedback boxes, and unchanged diff runs. Keep the current
-decision visible without deleting its context.
-</td>
-<td width="50%" valign="top">
-<h3>Agent-agnostic hand-offs</h3>
-Plan in Codex, revise in Claude Code, execute with another agent—or keep the
-entire loop in one agent session.
-</td>
-</tr>
-</table>
+### Compare without rereading
+
+Every revision stays attached to the plan. Word-level diffs show what moved,
+and unchanged sections collapse so your attention goes to the new decisions.
+
+![PlanX diff](assets/planx-diff.png)
+
+### Give precise feedback
+
+Select one line or a range and comment beside the exact text. Add a note for the
+whole plan, or edit a line directly when the right wording is already obvious.
+
+![PlanX feedback](assets/planx-feedback.png)
+
+### Keep the plan readable
+
+Collapse sections, feedback boxes, and unchanged diff runs without deleting
+their context. Long plans stay navigable from the first proposal to the settled
+version.
+
+![PlanX collapse](assets/planx-collapse.png)
 
 ## Use the agent you want
 
@@ -95,7 +87,7 @@ cross-agent workflows ordinary: one agent can plan, another can revise, and a
 third can execute. The receiving agent only needs access to the PlanX skill and
 CLI.
 
-#### Installation and agent setup
+### Agent setup and updates
 
 PlanX requires Node.js 20.19 or newer. The npm installation adds the `planx`
 CLI and writes the PlanX skill into agent directories that already exist.
@@ -111,9 +103,13 @@ planx add-skills --agent claude
 Start a new agent session after installing or refreshing the skill. Set
 `PLANX_NO_POSTINSTALL=1` before npm installation to skip automatic skill setup.
 
-To update PlanX, run `planx update`.
+Update PlanX and its installed skills with:
 
-## Configuration
+```bash
+planx update
+```
+
+## Configuration for other agents
 
 Open the defaults screen with:
 
@@ -128,10 +124,10 @@ planx defaults --revise "custom-agent exec --arg"
 planx defaults --execute "custom-agent --some-arg"
 ```
 
-The command must accept a trailing prompt, and the receiving agent
-must have the PlanX skill installed.
+The command must accept a trailing prompt, and the receiving agent must have the
+PlanX skill installed.
 
-## Remove the best way to plan
+## Uninstall the best way to plan
 
 ```bash
 planx remove-skills
