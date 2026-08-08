@@ -1,8 +1,9 @@
 import { defineConfig } from 'vitepress';
 
 export default defineConfig({
-  title: 'planx',
-  description: "Your agent's plan, as a versioned artifact you can annotate and lock.",
+  title: 'PlanX',
+  titleTemplate: ':title · PlanX',
+  description: "Review an agent's plan with feedback on exact lines and a diff for every revision.",
   // Served from the root of planx.sh, so no base path.
   base: '/',
   cleanUrls: true,
@@ -11,6 +12,16 @@ export default defineConfig({
 
   head: [
     ['meta', { name: 'theme-color', content: '#ffd400' }],
+    ['meta', { property: 'og:site_name', content: 'PlanX' }],
+    ['meta', { property: 'og:title', content: 'PlanX — review an agent plan like code' }],
+    [
+      'meta',
+      {
+        property: 'og:description',
+        content:
+          'Attach feedback to exact lines, compare revisions, and execute the plan you approve.',
+      },
+    ],
     // The wordmark's block cursor, on its own.
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
     ['link', { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' }],
@@ -21,23 +32,20 @@ export default defineConfig({
   appearance: 'force-dark',
 
   themeConfig: {
-    // Every page is a doc page reachable from the sidebar, so the nav bar
-    // carries only what the sidebar cannot: the places planx lives elsewhere.
+    // Every page is reachable from the sidebar, so the nav carries only the
+    // place the literal package lives elsewhere.
     nav: [{ text: 'npm', link: 'https://www.npmjs.com/package/@thisisnsh/planx' }],
 
-    // The nav title already links to '/', so the overview does not need a
-    // sidebar entry of its own — the wordmark is the way back to it.
     sidebar: [
       {
         text: 'Guide',
         items: [
           { text: 'Install', link: '/install' },
-          { text: 'Claude Code', link: '/claude-code' },
-          { text: 'Codex', link: '/codex' },
-          { text: 'Review Loop', link: '/review-loop' },
-          { text: 'Diffing', link: '/diffing' },
-          { text: 'Executing', link: '/executing' },
-          { text: 'Deleting', link: '/retention' },
+          { text: 'Review a plan', link: '/review-loop' },
+          { text: 'Compare versions', link: '/diffing' },
+          { text: 'Revise with Claude Code', link: '/claude-code' },
+          { text: 'Revise with Codex', link: '/codex' },
+          { text: 'Execute a plan', link: '/executing' },
         ],
       },
       {
@@ -46,9 +54,10 @@ export default defineConfig({
           { text: 'CLI', link: '/reference/cli' },
           { text: 'Configuration', link: '/reference/config' },
           { text: 'Storage', link: '/reference/storage' },
+          { text: 'Delete plans', link: '/retention' },
+          { text: 'Troubleshooting', link: '/troubleshooting' },
         ],
       },
-      { text: 'Troubleshooting', link: '/troubleshooting' },
     ],
 
     socialLinks: [{ icon: 'github', link: 'https://github.com/thisisnsh/planx' }],

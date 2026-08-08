@@ -1,6 +1,6 @@
 # Configuration
 
-`~/.planx/config.json`, seeded on first use. There is one key.
+PlanX reads `~/.planx/config.json`. It contains one user setting:
 
 ```jsonc
 {
@@ -9,45 +9,22 @@
 }
 ```
 
-| Key | Type | Default | Meaning |
+| Key | Values | Default | Purpose |
 | --- | --- | --- | --- |
-| `render` | `rich` \| `plain` | `"rich"` | Default rendering for `diff` and `show`. `--plain` and `--rich` override it per command. |
+| `render` | `rich`, `plain` | `rich` | Default output for `diff` and `show` |
 
-There is no `planx config` command. One key in a two-line file is a text editor's
-job, and a command to set it would be a bigger surface than the thing it sets.
+`--plain` and `--rich` override the setting for one command.
 
-## What is not configuration
-
-`~/.planx/update.json` sits beside it and is a **cache**, not a setting:
-
-```jsonc
-{
-  "format_version": 1,
-  "latest": "0.5.0",
-  "checked_at": "2026-08-05T21:11:04.000Z"
-}
-```
-
-It is what the last background check found on npm, and the only reason the
-update notice can appear without any command waiting on the network. Deleting
-it costs one check. Editing it is pointless — the next check overwrites it.
-
-## What used to be here
-
-- **`mouse`**, which turned on wheel scrolling in the review at the cost of the
-  terminal's own click-and-drag text selection. Wheel scrolling is gone: an
-  append-only render cannot host a moving cursor, boxes that grow as you type,
-  or folds, so there was nothing on the other side of the trade.
-- **`agents`**, an argv registry that existed so planx could spawn an agent for
-  you. It does not: it prints a command and you run it where you already are.
-
-## Environment
+## Environment variables
 
 | Variable | Effect |
 | --- | --- |
-| `PLANX_DIR` | Use a different store. `--dir` takes precedence. |
-| `PLANX_NO_POSTINSTALL` | Stop npm running `add-skills` after an install. |
-| `PLANX_NO_UPDATE_CHECK` | Never check npm for a newer planx. `CI` does this too. |
-| `PLANX_DEBUG` | Print stack traces on error. |
-| `NO_COLOR` | Disable ANSI colour, per [no-color.org](https://no-color.org). |
-| `FORCE_COLOR` | Force colour on when not a TTY. |
+| `PLANX_DIR` | Use another store; `--dir` takes precedence. |
+| `PLANX_NO_POSTINSTALL` | Skip skill installation during npm install. |
+| `PLANX_NO_UPDATE_CHECK` | Disable npm update checks. |
+| `PLANX_DEBUG` | Include stack traces in errors. |
+| `NO_COLOR` | Disable ANSI colour. |
+| `FORCE_COLOR` | Enable colour outside a TTY. |
+
+`~/.planx/update.json` is a cache of the latest npm version, not configuration.
+PlanX refreshes it during background update checks.

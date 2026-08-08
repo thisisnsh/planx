@@ -1,101 +1,53 @@
 # Storage
 
-**`~/.planx` on disk is the protocol.** Every command is a thin operation over
-it, which is what makes any agent that can spawn a process a first-class
-citizen, forever.
+PlanX stores its data under `~/.planx` by default:
 
-```
+```text
 ~/.planx/
-  config.json                     # render preference, and nothing else
-  update.json                     # cache: what npm last said `latest` is
-  index.json                      # id → {title, cwd, updated, latest}
+  config.json
+  update.json
+  index.json
   plans/
-    guard-clock-regression-a3f9/
-      meta.json                   # id, title, created, source, cwd, session_id, tags
-      versions.json               # ordered version records
-      v1.md  v2.md  v3.md
-      feedback/  v2-01K9X4….json
+    upload-limits-a3f9/
+      meta.json
+      versions.json
+      v1.md
+      v2.md
+      feedback/
   logs/
 ```
 
-## Why files and not a daemon
+The CLI and agent skills use these files directly. There is no PlanX server or
+daemon.
 
-The thing planx needs is a **tool call that blocks** while a human does
-something out of band. A blocking shell command gets it: the agent runs
-`planx revise <id>`, the command reads what the TUI in another
-tab submits, and then it prints the feedback to stdout.
+## Plans and versions
 
-That works in Claude Code, Codex, Gemini CLI, Cursor, Amp — anything that can
-run a subprocess. No server, no lifecycle, nothing to install alongside.
+Plan IDs combine a readable title slug with a short content hash. Metadata
+records the title, capture directory, source agent, and session ID. Each
+`vN.md` contains one complete plan version, while `versions.json` records their
+order, hashes, parent versions, notes, and reviewer edits.
 
-Its one real weakness was the timeout ceiling, which is gone now that nothing
-resumable. See [Review Loop](/review-loop).
+Capturing content identical to the latest version returns that version instead
+of creating a duplicate. A revision that returns to older wording still creates
+a version when it differs from the current latest.
 
-## Plans are global
+## Feedback
 
-One flat store, not scoped per project. `cwd` is recorded as metadata and
-available as a filter (`planx list --here`), but never as a boundary — plans
-move between repos and get referenced from anywhere.
+Feedback files connect comments, whole-plan notes, and reviewer edits to the
+version under review. `planx revise <id>` reads open feedback for the agent; a
+new captured revision closes the round it addresses.
 
-## Plan ids
+## Safe writes and repair
 
-Kebab slug of the title plus a 4-character content hash:
-
-```
-guard-clock-regression-a3f9
-```
-
-Greppable and tab-completable, where a UUID would be neither, while the hash
-keeps two plans called "refactor the poller" apart. `--name` pins an id
-instead.
-
-Because the id is derived from title *and* content, capturing the same plan
-twice lands on the same id and adds no version. That is what makes a defensive
-`capture` safe to run.
-
-## Versions are content-addressed
-
-`versions.json` holds `{n, sha256, author, agent, created, parent, note, edits}`.
-
-`edits` is what the reviewer rewrote in place with `e` — `{line, before, after,
-at}` per line, appended and never rewritten, so a version edited across two
-reviews keeps both rounds. Rewriting a line updates that version's `sha256` and
-its `vN.md`; it mints nothing. The field is optional with a default, so a store
-written by a newer planx still parses under an older one.
-
-Capturing content byte-identical to the current **latest** is a no-op returning
-that version. Only the latest is compared: matching an older version would mean
-rewinding `latest` and losing everything in between, and a revision that happens
-to revert to v1 is still a decision worth recording.
-
-## Concurrency
-
-- Every write is a temp file plus `rename`, which is atomic within a filesystem.
-  A reader sees the whole old file or the whole new one, never half of either.
-- `index.json` takes an advisory lock: an `O_EXCL` lockfile, stolen if it is
-  more than 10 seconds old. Not `flock`, because dotfiles live on network
-  filesystems where `flock` lies.
-- Two `revise`s on the same version both read the same feedback.
-
-## Corruption
-
-A file that exists but fails its schema raises an error naming the file. planx
-never silently falls back to defaults — quietly replacing a plan's
-`versions.json` with "no versions" is exactly the data loss this store exists to
-prevent.
+PlanX writes through temporary files and atomic renames. `index.json` is a
+rebuildable list cache; the plan directories remain the source of truth.
 
 ```bash
-planx doctor    # checks every plan and rebuilds index.json
+planx doctor
 ```
 
-`index.json` is a cache. A plan directory that is missing from it still lists,
-and `doctor` rebuilds it from the plan directories, which are the truth.
+This validates stored plans and rebuilds the index. Stored files carry their own
+format version so an incompatible CLI reports the problem instead of replacing
+data.
 
-## Format version
-
-Every stored file carries `format_version`. It is versioned **independently of
-the npm package**, because the CLI can be rolled back in seconds and a migrated
-store cannot. Any migration is documented in the relevant
-[GitHub Release](https://github.com/thisisnsh/planx/releases).
-
-Current on-disk format version: **1**.
+Use `PLANX_DIR` or the global `--dir` flag to work with another store.

@@ -1,95 +1,66 @@
 # Troubleshooting
 
-## `/planx` does nothing, or the agent has never heard of it
+## `/planx` is unavailable
 
-Check whether the skill was ever written:
-
-```bash
-ls ~/.claude/skills/planx ~/.codex/skills/planx
-```
-
-If neither is there, you have not run the second install step. npm installs the
-CLI; the skills are a command:
+Refresh the installed skills and start a new agent session:
 
 ```bash
 planx add-skills
 ```
 
-Skills are read at session start for both agents, so restart the session
-afterwards. If `~/.codex` does not exist on your machine, `add-skills` skips it
-on purpose rather than creating it — pass `--agent codex` to force it.
+PlanX writes into agent directories that already exist. Force one target when
+needed:
 
-## The agent prints "no feedback yet (waited 480s)"
+```bash
+planx add-skills --agent claude
+planx add-skills --agent codex
+```
 
-Its skill is out of date. planx no longer blocks or polls: the agent captures
-the plan, tells you to run `planx`, and ends its turn. Run
-`planx add-skills`, which also removes the retired `planx-diff` and
-`planx-execute` skills, then restart the session.
+## The agent stops after creating the plan
 
-## The agent just stopped after capturing
+Open `planx` in a terminal, review the plan, and press `s`. The review hands you
+the command for revision or execution; paste that command into the agent if you
+do not launch it from PlanX.
 
-That is correct. Nothing is waiting. Run `planx`, review, submit — the reviewer
-prints the command to paste back, and that starts the next round.
+## Feedback does not appear
 
-## I submitted, but the agent did not pick it up
-
-Check the feedback is actually stored and still open:
+Check the stored review directly:
 
 ```bash
 planx revise <id>
-ls ~/.planx/plans/<id>/feedback/
 ```
 
-Feedback is open until a newer version exists. If the agent already captured a
-newer version, your feedback was closed against it — leave it again on the new
-version:
+Feedback belongs to the version where it is left. If a newer revision already
+addresses that review, open the latest version and leave any remaining request
+there.
+
+## Terminal colour or layout is unclear
 
 ```bash
-planx diff <id>
+planx diff <id> --print --plain
+NO_COLOR=1 planx diff <id> --print
 ```
 
-## The TUI looks broken, or colours bleed
+Set `"render": "plain"` in `~/.planx/config.json` to keep plain output as the
+default. Run `reset` if another process leaves the terminal in a broken state.
 
-```bash
-planx diff <id> --plain
-NO_COLOR=1 planx diff <id>
-# make it the default: "render": "plain" in ~/.planx/config.json
-```
-
-If the terminal is left in a strange state after a crash, run `reset`.
-
-## Everything looks wrong after an interrupted write
+## The picker or store looks inconsistent
 
 ```bash
 planx doctor
 ```
 
-It reports plans with no versions recorded and versions whose files are
-missing, and rebuilds `index.json` from the plan directories.
+The command validates plans and rebuilds `index.json`. If PlanX names a stale
+lock and no PlanX process is running, delete only the named `.lock` file.
 
-If a stale lockfile is left by a killed process, planx steals it after 10
-seconds. If it complains about one persistently and no planx process is running,
-delete the named `.lock` file.
+## A plan was deleted
 
-## I deleted a plan by accident
+Picker deletion is permanent. See [Delete plans and versions](/retention)
+before confirming a target.
 
-It is gone. There is no trash and nothing to restore from — deleting from the
-picker is permanent, which is what the red confirmation naming the plan in full
-is there to say. See [Deleting](/retention).
+## Report a problem
 
-The one thing that survives is a version you deleted from a plan you kept: the
-plan and its other versions are all still there.
-
-## Filing a bug
-
-```bash
-planx --version    # include this, suffix and all — it names the channel
-planx doctor
-```
-
-[Open an issue](https://github.com/thisisnsh/planx/issues/new/choose). For
-anything security-related, use
-[private reporting](https://github.com/thisisnsh/planx/security/advisories/new)
-instead — but read the [scope statement](https://github.com/thisisnsh/planx/blob/main/SECURITY.md)
-first, because "an agent with shell access can edit `~/.planx`" is the
-documented boundary rather than a vulnerability.
+Include `planx --version` and the output of `planx doctor` in a
+[GitHub issue](https://github.com/thisisnsh/planx/issues/new/choose). Report
+security problems through
+[GitHub's private advisory form](https://github.com/thisisnsh/planx/security/advisories/new).

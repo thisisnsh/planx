@@ -1,17 +1,5 @@
 <script setup lang="ts">
-/**
- * The loop, drawn rather than typed.
- *
- * It replaces an ASCII sequence diagram, which said the right thing in the
- * wrong voice: grey monospace pipes at the top of the page that a reader has to
- * decode before the page begins. The shape is what matters here — two sides, a
- * hand-off in each direction, and a turn that ends rather than waits — so the
- * two sides get columns of their own, the hand-offs get the yellow, and the
- * commands stay in the mono the terminal prints them in.
- *
- * One rail down the middle on a wide screen, one down the left on a phone: the
- * order of the steps is the argument, and it survives the column collapsing.
- */
+/** The review loop: one hand-off at a time, readable in one or two columns. */
 
 interface Step {
   side: 'agent' | 'you';
@@ -24,28 +12,24 @@ interface Step {
 const steps: Step[] = [
   {
     side: 'agent',
-    command: 'planx capture --stdin --title "…"',
-    detail: ['writes v2.md, prints the id and version', 'says “open planx <id> v2”, then stops'],
-    handoff: 'turn over — nothing waits, nothing polls',
+    command: '/planx <task>',
+    detail: ['researches the work', 'captures a version and prints its ID'],
+    handoff: 'the plan is ready for review',
   },
   {
     side: 'you',
     command: 'planx <id> v2',
     detail: [
       'opens as the diff against v1',
-      'select lines · feedback · lock · rewrite',
+      'selects lines · adds feedback · edits text',
       's submits everything at once',
     ],
-    handoff: 'prints /planx revise <id> — paste it back',
+    handoff: 'choose revision or copy /planx revise <id>',
   },
   {
     side: 'agent',
-    command: 'planx revise <id>',
-    detail: [
-      'every comment, quoted against its lines',
-      'the locked blocks it must reproduce',
-      'revises, captures v3, stops again',
-    ],
+    command: '/planx revise <id>',
+    detail: ['reads each comment beside its exact lines', 'keeps direct edits', 'captures v3'],
   },
 ];
 </script>
@@ -70,6 +54,6 @@ const steps: Step[] = [
       </li>
     </ol>
 
-    <p class="pnx-loop-again">and round again, until you press <b>a</b></p>
+    <p class="pnx-loop-again">and round again, until the plan is settled</p>
   </div>
 </template>

@@ -1,0 +1,125 @@
+.pnx-terminal {
+  max-width: 100%;
+  min-width: 0;
+  margin: 24px 0 34px;
+  overflow: hidden;
+  border: 1px solid #393940;
+  border-radius: 10px;
+  background: #141416;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
+}
+
+.pnx-terminal figcaption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.pnx-terminal-bar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 13px;
+  border-bottom: 1px solid #303036;
+  background: #202024;
+  color: var(--pnx-ink-2);
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+}
+
+.pnx-terminal-bar span {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ff6158;
+}
+
+.pnx-terminal-bar span:nth-child(2) {
+  background: #ffbd2e;
+}
+
+.pnx-terminal-bar span:nth-child(3) {
+  margin-right: 4px;
+  background: #28c840;
+}
+
+.pnx-terminal pre {
+  max-width: 100%;
+  margin: 0;
+  padding: 20px 22px 22px;
+  overflow-x: auto;
+  background: transparent;
+  color: var(--pnx-ink);
+  font-size: 13px;
+  line-height: 1.65;
+  scrollbar-width: thin;
+}
+
+.pnx-terminal code {
+  display: block;
+  min-width: 0;
+}
+
+.pnx-terminal code > span {
+  display: block;
+}
+
+.pnx-terminal .pnx-term-head,
+.pnx-terminal b {
+  color: var(--pnx-signal);
+  font-weight: 600;
+}
+
+.pnx-term-dim,
+.pnx-term-gap {
+  color: var(--pnx-ink-3);
+}
+
+.pnx-term-selected,
+.pnx-term-rail {
+  color: var(--pnx-signal);
+}
+
+.pnx-term-selected {
+  background: rgba(255, 212, 0, 0.08);
+}
+
+.pnx-term-note {
+  color: #f0d56a;
+}
+
+.pnx-term-del {
+  color: #ff8d83;
+}
+
+.pnx-term-add,
+.pnx-term-current,
+.pnx-term-edit {
+  color: #54d995;
+}
+
+.pnx-terminal mark {
+  border-radius: 2px;
+  background: currentColor;
+  color: var(--pnx-void);
+}
+
+@media (max-width: 640px) {
+  .pnx-terminal {
+    margin-right: -8px;
+    margin-left: -8px;
+    border-radius: 7px;
+  }
+
+  .pnx-terminal pre {
+    padding: 16px;
+    font-size: 11px;
+  }
+}

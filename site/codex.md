@@ -1,54 +1,46 @@
-# Codex
+# Use PlanX with Codex
 
-Codex is not a second-class citizen. The skills are the same files, the CLI is
-the same CLI, and the protocol is identical — planx talks to both through a
-directory of JSON, so neither is privileged.
-
-## Start
-
-```
-/planx add rate limiting to the upload endpoint
-```
-
-::: tip If Codex is in Plan Mode
-Codex has no tool for leaving plan mode on its own, so the skill prints:
-
-> press shift+tab to leave plan mode, then say "go"
-
-Do that and the loop starts. (Under Claude Code the equivalent step is
-automatic — one accepted `ExitPlanMode` stub.)
-:::
-
-## Review
-
-Exactly as everywhere else, in a second terminal tab:
+## 1. Install and restart
 
 ```bash
-planx <plan-id>
+npm install -g @thisisnsh/planx
 ```
 
-Leave a comment, press `s`, and pick off the list — the first entry hands the
-work straight back to the thread that wrote the plan, the last prints the line to
-paste yourself:
+Start a new Codex session so it loads the PlanX skill. If Codex was installed
+after PlanX, run `planx add-skills --agent codex` first.
 
-<PlanxSim scenario="agents" :rows="14" />
+## 2. Ask for a plan
 
-## Executing
-
-planx launches Codex for you. `s` opens the list, and the entry you pick runs the
-line beside it:
-
-```
-codex resume 01J8XR… "/planx revise guard-clock-regression-a3f9"
-codex "/planx execute guard-clock-regression-a3f9 v3"
+```text
+/planx add per-user rate limits to uploads
 ```
 
-Revising resumes the thread that wrote the plan rather than forking it, so the
-revision lands in the thread with the history in it. The flags the thread was
-started with are replayed in front, because resuming restores the conversation
-and not the terminal it was typed into — and the whole command is printed before
-it runs, so what it was granted is on the scrollback.
+Codex researches the repository, captures a versioned plan, prints its ID, and
+hands the turn to you.
 
-For that to work, the capture has to have carried `--session-id
-"$CODEX_THREAD_ID"`; the skill does it. Without one there is nothing to resume,
-so the list simply does not offer that entry — see [Executing](/executing).
+## 3. Review it
+
+Open another terminal and run `planx`. Select ranges, add feedback or a global
+note, edit exact lines, and press `s` when the review is ready.
+
+## 4. Revise in context
+
+Choose the revision action in PlanX, or paste:
+
+```text
+/planx revise <id>
+```
+
+The revision resumes the Codex session that wrote the plan, preserving its
+repository research and planning context. Review each new version until the
+plan is settled.
+
+## 5. Execute the reviewed version
+
+```text
+/planx execute <id> v<n>
+```
+
+Codex reads that stored version and its review, marks it as executed, and builds
+it in the current session. Continue with [Review a plan](/review-loop) or
+[Execute a reviewed plan](/executing).

@@ -1,62 +1,47 @@
-# Claude Code
+# Use PlanX with Claude Code
 
-## Start
-
-```
-/planx add rate limiting to the upload endpoint
-```
-
-Claude researches, writes the plan, captures it, prints the id, and stops. Its
-turn is over — nothing is waiting on a queue, and nothing is polling.
-
-::: tip If you were already in plan mode
-The skill calls `ExitPlanMode` immediately with a one-line stub — not with a
-plan — and asks you to accept it. That is deliberate: plan mode's accept/reject
-gate is incompatible with a review loop, because the plan does not exist as an
-artifact until `ExitPlanMode` is accepted, and accepting it ends the planning
-phase. One keypress buys you one flow instead of two half-flows.
-:::
-
-## Review
-
-In a second terminal tab:
+## 1. Install and restart
 
 ```bash
-planx <plan-id>
+npm install -g @thisisnsh/planx
 ```
 
-Press `v` to start a selection, extend it with the arrows, and then:
+Start a new Claude Code session so it loads the PlanX skill. If Claude Code was
+installed after PlanX, run `planx add-skills --agent claude` first.
 
-| Key | What it does |
-| --- | --- |
-| `f` | Feedback on the selection — or edit the note under the cursor |
-| `e` | Rewrite the line yourself, in place |
-| `n` | A note about the whole plan |
-| `d` `←` `→` | The diff against the previous version, and the history |
-| `s` | Submit everything at once, then pick what happens to the plan next |
-| `?` | Every key |
+## 2. Ask for a plan
 
-<PlanxSim scenario="agents" :rows="14" />
+```text
+/planx add per-user rate limits to uploads
+```
 
-`s` opens one list of what happens next: revise in the session that wrote the
-plan, execute in a fresh one, or copy the line to paste yourself. The
-command each would run is on the row beside it, and `→` edits it before it goes.
-See [Executing](/executing).
+Claude Code researches the repository, captures a versioned plan, prints its
+ID, and hands the turn to you.
 
-## Nothing blocks, so nothing has to be resumed
+## 3. Review it
 
-Claude Code caps a single Bash call at 600 seconds, and you will often take
-longer than that to review a plan properly. planx used to work around that by
-blocking in slices and having Claude re-run the command — which is why you would
-see `PLANX: no feedback yet (waited 480s)` scroll past.
+Open another terminal and run `planx`. Select exact ranges, attach feedback,
+add a whole-plan note, edit lines directly, and press `s` when the review is
+ready.
 
-That is gone. Claude captures the plan, tells you to run `planx`, and ends its
-turn. You review whenever you like. The reviewer prints the command to hand
-back, and pasting it starts the next round with the session's context intact.
+## 4. Revise in context
 
-## After the last round
+Choose the revision action in PlanX, or paste:
 
-Submitting a review that asks for nothing prints one command to paste back — no
-questions about agents or models. planx cannot switch a running session's model and no agent CLI lets it,
-so it prints the command and you run it wherever you like. See
-[Executing](/executing).
+```text
+/planx revise <id>
+```
+
+The revision resumes the Claude Code session that wrote the plan, preserving
+its repository research and planning context. Review each new version until the
+plan is settled.
+
+## 5. Execute the reviewed version
+
+```text
+/planx execute <id> v<n>
+```
+
+Claude Code reads that stored version and its review, marks it as executed, and
+builds it in the current session. Continue with [Review a plan](/review-loop)
+or [Execute a reviewed plan](/executing).
