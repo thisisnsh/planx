@@ -96,7 +96,7 @@ planx defaults
 The receiving agent must have the
 PlanX skill installed.
 
-![PlanX custom-agent configuration](assets/planx-custom.png)
+![PlanX custom-agent configuration](assets/planx-defaults.png)
 
 ## Other commands 
 
