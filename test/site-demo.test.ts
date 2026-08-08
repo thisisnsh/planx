@@ -5,73 +5,63 @@ import { describe, expect, it } from 'vitest';
 const root = process.cwd();
 const read = (path: string) => readFileSync(join(root, path), 'utf8');
 
-describe('the static website examples', () => {
-  it('presents every product feature without interactive controls', () => {
+describe('the single-page product website', () => {
+  it('uses one landing page instead of agent-specific and reference routes', () => {
+    const index = read('site/index.md');
+    const config = read('site/.vitepress/config.ts');
+
+    expect(index).toContain('<LandingPage />');
+    expect(config).not.toContain('sidebar:');
+
+    for (const page of [
+      'site/install.md',
+      'site/review-loop.md',
+      'site/diffing.md',
+      'site/executing.md',
+      'site/codex.md',
+      'site/claude-code.md',
+      'site/retention.md',
+      'site/troubleshooting.md',
+      'site/reference/cli.md',
+      'site/reference/config.md',
+      'site/reference/storage.md',
+    ]) {
+      expect(existsSync(join(root, page)), page).toBe(false);
+    }
+  });
+
+  it('makes the product, agent support, workflow, and proof explicit', () => {
+    const page = read('site/.vitepress/theme/components/LandingPage.vue');
+
+    expect(page).toContain('PlanX is a skill and terminal review interface');
+    expect(page).toContain('CODEX SKILL');
+    expect(page).toContain('CLAUDE CODE SKILL');
+    expect(page).toContain('OTHER AGENT CLIs');
+    expect(page).toContain('Plan. Review. Revise. Execute.');
+    expect(page).toContain('Stop feeding agents');
+    expect(page).toContain('planx-review.png');
+    expect(page.match(/SCREENSHOT PLACEHOLDER/g)).toHaveLength(2);
+  });
+
+  it('shows every core feature with a static terminal view', () => {
+    const page = read('site/.vitepress/theme/components/LandingPage.vue');
     const component = read('site/.vitepress/theme/components/FeatureTerminal.vue');
 
     for (const example of ['feedback', 'diff', 'versions', 'editing', 'readability', 'handoff']) {
+      expect(page).toContain(`example="${example}"`);
       expect(component).toContain(`${example}:`);
     }
 
     expect(component).toContain('aria-label="label"');
-    expect(component).toContain('several selected lines');
-    expect(component).toContain('v3 ← v2');
-    expect(component).toContain('space to expand');
-    expect(component).toContain('/planx execute upload-limits-a3f9 v3');
     expect(component).not.toMatch(/<button|<input|@click|@keydown|addEventListener/);
   });
 
-  it('tells the feature story in the agreed order', () => {
-    const home = read('site/index.md');
-    const headings = [
-      '## Feedback on exact lines',
-      '## A diff for every revision',
-      '## Context that survives revision',
-      '## Direct edits and whole-plan notes',
-      '## Long plans that stay readable',
-      '## Execute the settled version',
-    ];
+  it('keeps implementation and configuration details in README accordions', () => {
+    const readme = read('README.md');
 
-    const positions = headings.map((heading) => home.indexOf(heading));
-    expect(positions.every((position) => position >= 0)).toBe(true);
-    expect(positions).toEqual([...positions].sort((a, b) => a - b));
-  });
-
-  /**
-   * The one thing a person can get wrong about a custom command is what PlanX
-   * appends to it, so every page that hands a plan to an agent says it — and
-   * the configuration reference is where the rule itself lives.
-   */
-  it('documents the custom hand-off commands wherever a plan is handed over', () => {
-    const config = read('site/reference/config.md');
-    expect(config).toContain('defaults.revise_command');
-    expect(config).toContain('defaults.execute_command');
-    expect(config).toContain('planx defaults --revise');
-    // Both spellings of the appended prompt, and the two surprises.
-    expect(config).toContain('"$planx revise upload-limits-a3f9"');
-    expect(config).toContain('`/planx` for');
-    expect(config).toContain('trailing prompt');
-    expect(config).toContain('PlanX skill installed');
-
-    for (const page of [
-      'site/review-loop.md',
-      'site/executing.md',
-      'site/claude-code.md',
-      'site/codex.md',
-    ]) {
-      const text = read(page);
-      expect(text, page).toContain('set `planx defaults`');
-      expect(text, page).toContain('[Configuration](/reference/config)');
-    }
-  });
-
-  it('removes the browser simulator and registers the static component', () => {
-    const theme = read('site/.vitepress/theme/index.ts');
-
-    expect(theme).toContain("app.component('FeatureTerminal', FeatureTerminal)");
-    expect(theme).not.toContain('PlanxSim');
-    expect(existsSync(join(root, 'site/.vitepress/theme/sim'))).toBe(false);
-    expect(existsSync(join(root, 'site/.vitepress/theme/components/PlanxScreen.vue'))).toBe(false);
-    expect(existsSync(join(root, 'site/.vitepress/theme/components/PlanxPicker.vue'))).toBe(false);
+    expect(readme).toContain('<summary><strong>Configuration</strong></summary>');
+    expect(readme).toContain('<summary><strong>Plans, cleanup, and removal</strong></summary>');
+    expect(readme).toContain('custom hand-off commands');
+    expect(readme).toContain('The command must accept a trailing prompt');
   });
 });

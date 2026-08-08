@@ -9,9 +9,9 @@ export const GLOBAL_FLAGS: FlagSpec[] = [
 ];
 
 /**
- * Every command, with the metadata `--help` and the generated reference both
- * read. Hand-maintained CLI docs go stale within two releases without
- * exception, so `site/reference/cli.md` is generated from this and committed.
+ * Every command, with the metadata `--help` and machine-generated reference
+ * output both read. Keeping the metadata here prevents downstream CLI docs
+ * from drifting away from the real command surface.
  */
 export const COMMANDS: CommandSpec[] = [
   {

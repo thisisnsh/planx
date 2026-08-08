@@ -134,7 +134,6 @@ changed makes the next person re-derive the reasoning.
 
 ```bash
 npm run lint && npm run typecheck && npm test
-npm run docs:cli     # if you touched src/cli/spec.ts — CI checks this
 ```
 
 If you changed anything in `~/.planx`'s layout, call it out explicitly in the

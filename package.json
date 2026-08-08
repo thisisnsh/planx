@@ -43,7 +43,6 @@
     "format": "prettier --write \"src/**/*.{ts,tsx}\" \"scripts/*.js\" \"test/**/*.{ts,tsx}\" \"site/.vitepress/**/*.{ts,vue,css}\"",
     "test": "vitest run",
     "test:watch": "vitest",
-    "docs:cli": "node dist/cli.js __gen-cli-docs > site/reference/cli.md",
     "docs:dev": "vitepress dev site",
     "docs:build": "vitepress build site",
     "release:staging": "node scripts/release-staging.js",
