@@ -75,33 +75,30 @@ version.
 
 ![PlanX collapse](assets/planx-collapse.png)
 
-## Use the agent you want
+### Revise without losing context
 
-Codex and Claude Code get first-class installation and session-aware hand-offs.
 PlanX records the session that created a version, so revision can return to the
 agent that already researched the repository. Execution opens from the reviewed
 version in a fresh session.
 
-You can also configure any command that accepts a trailing prompt. That makes
-cross-agent workflows ordinary: one agent can plan, another can revise, and a
-third can execute. The receiving agent only needs access to the PlanX skill and
-CLI.
+![PlanX session-aware revision and execution](assets/planx-custom.png)
 
-### Agent setup and updates
+### Use the agent you want
 
-PlanX requires Node.js 20.19 or newer. The npm installation adds the `planx`
-CLI and writes the PlanX skill into agent directories that already exist.
-
-If you install an agent later, refresh its skills:
+You can also configure any agent command that accepts a trailing prompt. That makes
+cross-agent workflows simple: one agent can plan, another can revise, and a
+third can execute. 
 
 ```bash
-planx add-skills
-planx add-skills --agent codex
-planx add-skills --agent claude
+planx defaults
 ```
 
-Start a new agent session after installing or refreshing the skill. Set
-`PLANX_NO_POSTINSTALL=1` before npm installation to skip automatic skill setup.
+The receiving agent must have the
+PlanX skill installed.
+
+![PlanX custom-agent configuration](assets/planx-custom.png)
+
+## Other commands 
 
 Update PlanX and its installed skills with:
 
@@ -109,25 +106,15 @@ Update PlanX and its installed skills with:
 planx update
 ```
 
-## Configuration for other agents
-
-Open the defaults screen with:
+Add skills for all agents or individually
 
 ```bash
-planx defaults
+planx add-skills
+planx add-skills --agent codex
+planx add-skills --agent claude
 ```
 
-Custom revise and execute commands let you use PlanX with custom agent CLIs:
-
-```bash
-planx defaults --revise "custom-agent exec --arg"
-planx defaults --execute "custom-agent --some-arg"
-```
-
-The command must accept a trailing prompt, and the receiving agent must have the
-PlanX skill installed.
-
-## Uninstall the best way to plan
+Uninstall the best way to plan:
 
 ```bash
 planx remove-skills
