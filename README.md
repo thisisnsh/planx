@@ -7,7 +7,7 @@ you execute them. **[planx.sh](https://planx.sh)**
 [![ci](https://img.shields.io/github/actions/workflow/status/thisisnsh/planx/ci.yml?branch=main&labelColor=0b0b0c)](https://github.com/thisisnsh/planx/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-ffd400?labelColor=0b0b0c)](LICENSE)
 
-[![Watch the PlanX demo](https://img.youtube.com/vi/JxPBqJ0S0hk/maxresdefault.jpg)](https://youtu.be/JxPBqJ0S0hk)
+[![Watch Demo](https://img.shields.io/badge/Watch_Demo-ff0000?style=for-the-badge&logo=youtube&logoColor=white)](https://youtu.be/JxPBqJ0S0hk)
 
 ## Make plans you want to read
 
