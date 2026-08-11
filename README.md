@@ -1,8 +1,5 @@
 # PlanX
 
-A skill for coding agents and a terminal interface for reviewing plans before
-you execute them. **[planx.sh](https://planx.sh)**
-
 [![npm](https://img.shields.io/npm/v/@thisisnsh/planx?color=ffd400&labelColor=0b0b0c)](https://www.npmjs.com/package/@thisisnsh/planx)
 [![ci](https://img.shields.io/github/actions/workflow/status/thisisnsh/planx/ci.yml?branch=main&labelColor=0b0b0c)](https://github.com/thisisnsh/planx/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-ffd400?labelColor=0b0b0c)](LICENSE)
@@ -20,13 +17,15 @@ versioned artifact you can actually review:
 - Edit what is already decided.
 - Execute only the version you approve.
 
-[![Watch Demo](https://img.shields.io/badge/Watch_Demo-ff0000?style=for-the-badge&logo=youtube&logoColor=white)](https://youtu.be/JxPBqJ0S0hk)
-
 ## Install
 
 ```bash
 npm install --global @thisisnsh/planx
 ```
+
+[![Watch Demo](https://img.shields.io/badge/Watch_Demo-ff0000?style=for-the-badge&logo=youtube&logoColor=white)](https://youtu.be/JxPBqJ0S0hk)
+
+_Disclaimer: It might be the most brainrot promo video._
 
 Start a new agent session, then ask for a reviewable plan:
 
