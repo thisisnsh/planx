@@ -430,7 +430,7 @@ export function ReviewApp(props: ReviewAppProps) {
    * A screenful, or half of one — the viewport moves with the cursor.
    *
    * `move` only scrolls when the cursor would leave the screen, which is right
-   * for an arrow key and wrong for a pager: the first ^d from the top of a
+   * for an arrow key and wrong for a pager: the first ctrl+d from the top of a
    * plan would move the cursor into the middle of an unchanged screen and look
    * like nothing happened.
    */
@@ -1248,7 +1248,7 @@ export function ReviewApp(props: ReviewAppProps) {
         row it used to have was reserved on every frame and empty on almost all
         of them, which is a line of the plan spent on a question nobody has
         asked yet — and the hints are the one thing on screen it is safe to
-        interrupt, because `^c exit` is what they were saying anyway.
+        interrupt, because `ctrl+c exit` is what they were saying anyway.
       */}
       {hintRows.map((line, i) => (
         <Text key={i}>{frameLine(line, inner)}</Text>
@@ -1561,11 +1561,11 @@ interface HintContext {
  * rather than bound to an apology. Showing keys that refuse to work teaches the
  * wrong thing.
  *
- * `g G ^d ^u` are gone from here and stay in `?`. They are the keys you already
- * know from every pager, and they were the third of the line that never
- * changed — a hint that is always true is a hint nobody is reading. `h` joins
- * them for the same reason: folding every note at once is a thing you do once
- * a session, and it was costing a hint on every row of every plan.
+ * `g G ctrl+d ctrl+u` are gone from here and stay in `?`. They are the keys you
+ * already know from every pager, and they were the third of the line that
+ * never changed — a hint that is always true is a hint nobody is reading. `h`
+ * joins them for the same reason: folding every note at once is a thing you do
+ * once a session, and it was costing a hint on every row of every plan.
  */
 function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[] {
   if (mode.kind === 'editing')
@@ -1627,7 +1627,7 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
     ['esc', 'back'],
     // The one key that ends the session, and the only one that used to be
     // nowhere on screen.
-    ['^c', 'exit'],
+    ['ctrl+c', 'exit'],
   );
 
   // Space is offered wherever it does something, which the same function the
@@ -1727,8 +1727,8 @@ const HELP: Array<[Hint, 'always' | 'versioned']> = [
   [['e', 'edit the line, or every line of the selection, in place'], 'always'],
   [['f', 'add feedback on the selection, or edit the note under the cursor'], 'always'],
   [['g G', 'the top and the bottom of the plan'], 'always'],
-  [['^d ^u', 'half a screen down or up'], 'always'],
-  [['^f ^b', 'a whole screen down or up'], 'always'],
+  [['ctrl+d ctrl+u', 'half a screen down or up'], 'always'],
+  [['ctrl+f ctrl+b', 'a whole screen down or up'], 'always'],
   [['h', 'fold or unfold every note at once'], 'always'],
   [['j', 'the next feedback on this version, wrapping at the end'], 'always'],
   [['n', 'add or edit the note about the whole plan'], 'always'],
@@ -1747,7 +1747,10 @@ const HELP: Array<[Hint, 'always' | 'versioned']> = [
  * from this list — you are reading it — so it ends on the key that ends the
  * session, which is the last thing you would look for here.
  */
-const HELP_EXIT: Hint = ['^c', 'leave planx — twice'];
+const HELP_EXIT: Hint = ['ctrl+c', 'leave planx — twice'];
+
+/** Wide enough for `ctrl+d ctrl+u`, the longest key column, plus a gap. */
+const HELP_KEY_WIDTH = 15;
 
 function helpLines(width: number, canDiff: boolean): string[] {
   const shown = HELP.filter(([, when]) => when === 'always' || canDiff).map(([hint]) => hint);
@@ -1755,11 +1758,12 @@ function helpLines(width: number, canDiff: boolean): string[] {
     bold(signal('planx review')),
     '',
     ...[...orderHints(shown), HELP_EXIT].map(
-      ([keys, what]) => `${signal(padEnd(keys, 8))}${dim(truncate(what, width - 8))}`,
+      ([keys, what]) =>
+        `${signal(padEnd(keys, HELP_KEY_WIDTH))}${dim(truncate(what, width - HELP_KEY_WIDTH))}`,
     ),
     '',
     dim('a note box is one stop for the cursor, on its first line of text.'),
-    dim('inside a note or a line: ← → ⌥← ⌥→ move the caret, ^a ^e reach its ends.'),
+    dim('inside a note or a line: ← → ⌥← ⌥→ move the caret, ctrl+a ctrl+e reach its ends.'),
     dim('a note is deleted by emptying it: f, clear the text, enter.'),
   ];
 }

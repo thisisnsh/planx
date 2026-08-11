@@ -145,7 +145,7 @@ export function Defaults({ values, version, onSave, onQuit, onDone }: DefaultsPr
     ['enter', mode.kind === 'editing' ? 'save' : 'edit'],
     ['esc', mode.kind === 'editing' ? 'discard' : 'done'],
     ...(mode.kind === 'editing' ? [] : ([['⌫', 'clear']] satisfies Hint[])),
-    ['^c', 'exit'],
+    ['ctrl+c', 'exit'],
   ];
 
   const drawn = [

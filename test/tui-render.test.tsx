@@ -2036,7 +2036,7 @@ describe('the keys, and where they sit', () => {
     const keys = hintBar(bodyRows(app.stdout.lastFrame))
       .split(' · ')
       .map((part) => part.split(' ')[0]!);
-    expect(keys).toEqual(['←→', 'd', 'e', 'f', 'j', 'n', 's', 'space', 'v', 'esc', '^c', '?']);
+    expect(keys).toEqual(['←→', 'd', 'e', 'f', 'j', 'n', 's', 'space', 'v', 'esc', 'ctrl+c', '?']);
     app.unmount();
   });
 
@@ -2092,7 +2092,7 @@ describe('the keys, and where they sit', () => {
 
     // The five the fixed order always put last, and so always lost.
     const bar = hintBar(bodyRows(app.stdout.lastFrame), 3);
-    for (const pair of ['s submit', 'v select lines', 'esc back', '^c exit', '? help']) {
+    for (const pair of ['s submit', 'v select lines', 'esc back', 'ctrl+c exit', '? help']) {
       expect(bar).toContain(pair);
     }
     app.unmount();
@@ -2106,22 +2106,19 @@ describe('the keys, and where they sit', () => {
     await app.frame('planx review');
 
     const keys = bodyRows(app.stdout.lastFrame)
-      .map((row) =>
-        inner(row)
-          .split(/\s{2,}/)[0]!
-          .trim(),
-      )
+      .map((row) => inner(row).split(/\s{2,}/))
       // Prose rows — the heading, the closing note, the hint line — have no
-      // key column, so they come out as a whole sentence.
-      .filter((key) => key.length > 0 && key.length <= 5);
+      // key column, so they never split: they come out as a whole sentence.
+      .filter((parts) => parts.length > 1)
+      .map((parts) => parts[0]!.trim());
     expect(keys).toEqual([
       '←→',
       '↑↓',
       'd',
-      '^d ^u',
+      'ctrl+d ctrl+u',
       'e',
       'f',
-      '^f ^b',
+      'ctrl+f ctrl+b',
       'g G',
       'h',
       'j',
@@ -2133,7 +2130,7 @@ describe('the keys, and where they sit', () => {
       '?',
       // The way out is the last word of the list, under `?` rather than above
       // it: nothing is dropped from this list, so nothing has to end it.
-      '^c',
+      'ctrl+c',
     ]);
     app.unmount();
   });
@@ -2177,7 +2174,7 @@ describe('the keys, and where they sit', () => {
     expect(bar).not.toContain('v select lines');
     // The keys that work anywhere are still there.
     expect(bar).toContain('n add note');
-    expect(bar).toContain('^c exit');
+    expect(bar).toContain('ctrl+c exit');
     app.unmount();
   });
 
@@ -2498,7 +2495,7 @@ describe('getting around a long plan', () => {
     app.unmount();
   });
 
-  it('^d moves half a screen without leaving the plan', async () => {
+  it('ctrl+d moves half a screen without leaving the plan', async () => {
     const app = mount(seedLongPlan(), null, 1);
     await app.ready();
 
@@ -3093,7 +3090,7 @@ describe('the picker as a version tree', () => {
     const keys = inner(bodyRows(app.stdout.lastFrame).at(-1)!)
       .split(' · ')
       .map((part) => part.split(' ')[0]!);
-    expect(keys).toEqual(['→', '↑↓', '^d', 'enter', '^c']);
+    expect(keys).toEqual(['→', '↑↓', 'ctrl+d', 'enter', 'ctrl+c']);
     app.unmount();
   });
 
@@ -3101,10 +3098,10 @@ describe('the picker as a version tree', () => {
    * The list was the one screen where a single key still ended the session.
    * Leaving planx is ctrl+c twice, everywhere.
    */
-  it('does not close on esc, and says ^c exit instead', async () => {
+  it('does not close on esc, and says ctrl+c exit instead', async () => {
     const app = mountPicker(planRows(), () => []);
     await app.ready();
-    expect(app.stdout.lastFrame).toContain('^c exit');
+    expect(app.stdout.lastFrame).toContain('ctrl+c exit');
     expect(app.stdout.lastFrame).not.toContain('esc cancel');
 
     const before = bodyRows(app.stdout.lastFrame);
@@ -3396,16 +3393,16 @@ describe('deleting from the picker', () => {
     app.unmount();
   });
 
-  it('offers ^d only where the row can actually be deleted', async () => {
+  it('offers ctrl+d only where the row can actually be deleted', async () => {
     const app = mountPicker(planRows(), () => []);
     await app.ready();
-    await app.frame('^d delete');
+    await app.frame('ctrl+d delete');
 
     // v3 is the latest, so it cannot go and the hint stops offering it.
     await app.press(RIGHT);
     await app.press(DOWN);
     await new Promise((r) => setTimeout(r, 120));
-    expect(app.stdout.lastFrame).not.toContain('^d delete');
+    expect(app.stdout.lastFrame).not.toContain('ctrl+d delete');
 
     // Pressing it anyway does nothing at all.
     await app.press(CTRL_D);

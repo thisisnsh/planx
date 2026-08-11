@@ -2,8 +2,8 @@
  * One order for every list of keys planx prints.
  *
  * Arrow keys first, then everything else alphabetically by the key itself, then
- * `esc`, `^c`, `?`. A rule rather than a judgement per line, so a key is always
- * in the same place and you stop re-reading the hints to find it.
+ * `esc`, `ctrl+c`, `?`. A rule rather than a judgement per line, so a key is
+ * always in the same place and you stop re-reading the hints to find it.
  *
  * It is a function rather than a convention because the hint line and `?` are
  * written in two different places and would otherwise drift: both sort through
@@ -14,21 +14,22 @@ export type Hint = [key: string, what: string];
 /**
  * Sortable form of a key.
  *
- * `^d` sits beside `d` — a reader looking for the paging keys looks under the
- * letter, not under the caret — and case is not a distinction anybody is
- * scanning for. `esc`, `^c` and `?` are pinned to the end because they are the
- * three keys that mean the same thing on every screen and never need finding.
+ * `ctrl+d` sits beside `d` — a reader looking for the paging keys looks under
+ * the letter, not under the `ctrl+` prefix — and case is not a distinction
+ * anybody is scanning for. `esc`, `ctrl+c` and `?` are pinned to the end
+ * because they are the three keys that mean the same thing on every screen
+ * and never need finding.
  *
- * `^c` does not sort under `c` beside `^d` for that reason: `^d` is a paging
- * key you look for under its letter, and `^c` is one of the three that end the
- * line together.
+ * `ctrl+c` does not sort under `c` beside `ctrl+d` for that reason: `ctrl+d`
+ * is a paging key you look for under its letter, and `ctrl+c` is one of the
+ * three that end the line together.
  */
 function rank(key: string): string {
   if (key.startsWith('←') || key.startsWith('↑') || key.startsWith('→')) return `0${key}`;
   if (key === 'esc') return '2';
-  if (key === '^c') return '3';
+  if (key === 'ctrl+c') return '3';
   if (key === '?') return '4';
-  return `1${key.toLowerCase().replace(/\^/g, '')}`;
+  return `1${key.toLowerCase().replace(/ctrl\+/g, '')}`;
 }
 
 export function orderHints(hints: readonly Hint[]): Hint[] {

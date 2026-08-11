@@ -133,7 +133,7 @@ function planItems(): Array<PickerItem<PlanChoice>> {
 /**
  * Choose a plan, or a version of one.
  *
- * `^d` deletes what is highlighted and there is no trash behind it, so the red
+ * `ctrl+d` deletes what is highlighted and there is no trash behind it, so the red
  * confirmation the picker draws is the only thing between a keystroke and a
  * plan that is gone. That is the direct cost of dropping `clean` and `restore`,
  * and it is why the confirmation names its target in full.

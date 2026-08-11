@@ -126,7 +126,7 @@ describe('walking into notes', () => {
   });
 
   // A pager moves the viewport, so it travels in drawn rows and settles where
-  // it lands. Counting stops instead would send ^d past the bottom of the
+  // it lands. Counting stops instead would send ctrl+d past the bottom of the
   // screen on any plan carrying a few notes.
   it('pages by rows, then settles off any edge it lands on', () => {
     expect(run([{ type: 'move', delta: 4 }], ANNOTATED).cursor).toBe(6);
@@ -230,7 +230,7 @@ describe('wrapping a note', () => {
 });
 
 describe('the order every list of keys is printed in', () => {
-  it('puts the arrows first, then a to z, then esc, ^c, ?', () => {
+  it('puts the arrows first, then a to z, then esc, ctrl+c, ?', () => {
     const shuffled: Hint[] = [
       ['?', 'help'],
       ['x', 'exit'],
@@ -238,11 +238,11 @@ describe('the order every list of keys is printed in', () => {
       ['a', 'approve'],
       ['space', 'fold'],
       ['←→', 'version'],
-      ['^c', 'exit'],
+      ['ctrl+c', 'exit'],
       ['s', 'submit'],
     ];
-    // `^c` ends the line with the two keys that mean the same thing on every
-    // screen, rather than sorting under `c` beside the paging keys.
+    // `ctrl+c` ends the line with the two keys that mean the same thing on
+    // every screen, rather than sorting under `c` beside the paging keys.
     expect(orderHints(shuffled).map(([key]) => key)).toEqual([
       '←→',
       'a',
@@ -250,18 +250,18 @@ describe('the order every list of keys is printed in', () => {
       'space',
       'x',
       'esc',
-      '^c',
+      'ctrl+c',
       '?',
     ]);
   });
 
-  it('files a modified key under its letter, not under the caret', () => {
+  it('files a modified key under its letter, not under the ctrl+ prefix', () => {
     const keys: Hint[] = [
       ['g G', 'ends'],
-      ['^d ^u', 'half a screen'],
+      ['ctrl+d ctrl+u', 'half a screen'],
       ['f', 'feedback'],
     ];
-    expect(orderHints(keys).map(([key]) => key)).toEqual(['^d ^u', 'f', 'g G']);
+    expect(orderHints(keys).map(([key]) => key)).toEqual(['ctrl+d ctrl+u', 'f', 'g G']);
   });
 
   it('joins them into the grey line under the frame', () => {
@@ -285,7 +285,7 @@ const BROWSE: Hint[] = [
   ['v', 'unselect lines'],
   ['x', 'exit'],
   ['esc', 'back'],
-  ['^c', 'exit'],
+  ['ctrl+c', 'exit'],
   ['?', 'help'],
 ];
 
@@ -307,7 +307,7 @@ describe('folding the hint bar', () => {
       'v unselect lines',
       'x exit',
       'esc back',
-      '^c exit',
+      'ctrl+c exit',
       '? help',
     ]) {
       expect(shown).toContain(pair);
