@@ -44,10 +44,8 @@ export interface PickerSection<T> {
   /** Dim divider row drawn above the section. Omitted entirely when the
    *  section has no label and is the only section (a plain flat list). */
   label?: string;
-  /** Drawn in place of the section's rows when `items` is empty and no
-   *  filter is active. A section with no `emptyMessage` simply disappears
-   *  when it has nothing to show. */
-  emptyMessage?: string;
+  /** A section with nothing in it — no items, and after a filter, no matches
+   *  either — disappears entirely, header included. */
   items: Array<PickerItem<T>>;
 }
 
@@ -65,10 +63,9 @@ export interface PickerProps<T> {
   onDone: (chosen: T[]) => void;
 }
 
-/** One drawn row: a section header, its empty-state line, a top-level item, or a child of one. */
+/** One drawn row: a section header, a top-level item, or a child of one. */
 type Row<T> =
   | { kind: 'header'; sectionKey: string; label: string }
-  | { kind: 'empty'; sectionKey: string; label: string }
   | { kind: 'item'; item: PickerItem<T>; parent: number; child: boolean; sectionKey: string };
 
 /**
@@ -120,10 +117,10 @@ function confirmRows(state: Confirming): string[] {
  * from it on every render. A plan with fifty versions is fifty strings; keeping
  * a second, patched copy of the tree in sync would cost more than rebuilding it.
  *
- * A filter matches within each section on its own. A section with nothing
- * matching drops out entirely, header included: the `emptyMessage` is reserved
- * for the section's true, unfiltered empty state, the same way the plain "no
- * matches" line stands for the filtered list as a whole.
+ * A filter matches within each section on its own. A section with nothing to
+ * show — no items, or none of them matching — drops out entirely, header
+ * included, the same way the plain "no matches" line stands in for the
+ * filtered list as a whole.
  */
 function flatten<T>(
   sections: Array<PickerSection<T>>,
@@ -134,35 +131,20 @@ function flatten<T>(
   let parent = 0;
 
   for (const section of sections) {
-    if (query) {
-      const matched = fuzzyFilter(
-        query,
-        section.items,
-        (i) => `${i.label} ${i.searchable ?? ''}`,
-      ).map((m) => m.item);
-      if (!matched.length) continue;
-      if (section.label)
-        rows.push({ kind: 'header', sectionKey: section.key, label: section.label });
-      for (const item of matched) {
-        rows.push({ kind: 'item', item, parent, child: false, sectionKey: section.key });
-        parent++;
-      }
-      continue;
-    }
-
-    if (!section.items.length) {
-      if (section.label)
-        rows.push({ kind: 'header', sectionKey: section.key, label: section.label });
-      if (section.emptyMessage) {
-        rows.push({ kind: 'empty', sectionKey: section.key, label: section.emptyMessage });
-      }
-      continue;
-    }
+    const items = query
+      ? fuzzyFilter(query, section.items, (i) => `${i.label} ${i.searchable ?? ''}`).map(
+          (m) => m.item,
+        )
+      : section.items;
+    if (!items.length) continue;
 
     if (section.label) rows.push({ kind: 'header', sectionKey: section.key, label: section.label });
-    for (const item of section.items) {
+    for (const item of items) {
       rows.push({ kind: 'item', item, parent, child: false, sectionKey: section.key });
-      if (expanded.has(parent)) {
+      // A filter draws every match collapsed: it is for finding a plan, and
+      // matching a version number across forty of them would bury the thing
+      // you were looking for.
+      if (!query && expanded.has(parent)) {
         for (const child of item.children ?? []) {
           rows.push({ kind: 'item', item: child, parent, child: true, sectionKey: section.key });
         }
@@ -175,8 +157,7 @@ function flatten<T>(
 }
 
 /** The nearest `kind: 'item'` row past `cursor` in `direction`, or `cursor`
- *  unchanged when there is none — headers and empty rows are stepped over,
- *  never landed on. */
+ *  unchanged when there is none — a header is stepped over, never landed on. */
 function stepCursor<T>(rows: Array<Row<T>>, cursor: number, direction: 1 | -1): number {
   let i = cursor + direction;
   while (i >= 0 && i < rows.length) {
@@ -352,8 +333,7 @@ export function Picker<T>({
   // change height the moment you start typing.
   //
   // Both halves count top-level items only — a plan expanded into its versions
-  // never inflated this before, and a header or empty-state row is not an item
-  // either.
+  // never inflated this before, and a header row is not an item either.
   const totalItems = sections.reduce((n, s) => n + s.items.length, 0);
   const visibleItems = rows.filter((row) => row.kind === 'item' && !row.child).length;
   const count = `${visibleItems}/${totalItems}`;
@@ -385,9 +365,9 @@ export function Picker<T>({
     '',
     ...visible.flatMap((row) => {
       const active = rows.indexOf(row) === cursor;
-      // A header or an empty-state line carries no cursor column of its own —
-      // the cursor can never reach one — so it sits at the same left margin as
-      // the title and subtitle above it, not indented out to the item rows.
+      // A header carries no cursor column of its own — the cursor can never
+      // reach one — so it sits at the same left margin as the title and
+      // subtitle above it, not indented out to the item rows.
       if (row.kind !== 'item') {
         return [`  ${dim(truncate(row.label, inner - 2))}`];
       }

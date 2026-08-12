@@ -33,13 +33,11 @@ describe('planSections', () => {
     expect(sections.map((s) => s.key)).toEqual(['here']);
   });
 
-  it('carries an empty message on "This directory" when only elsewhere plans exist', () => {
+  it('omits "This directory" entirely when only elsewhere plans exist', () => {
     capture({ text: SAMPLE_PLAN, source: 'test', cwd: '/elsewhere' });
 
     const sections = planSections();
-    expect(sections[0]!.key).toBe('here');
-    expect(sections[0]!.items).toHaveLength(0);
-    expect(sections[0]!.emptyMessage).toBe('No plans for this directory.');
+    expect(sections.map((s) => s.key)).toEqual(['elsewhere']);
   });
 
   it('shows the directory, not the id, in the hint for an elsewhere plan', () => {

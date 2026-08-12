@@ -3266,14 +3266,9 @@ describe('the picker grouped into sections', () => {
     app.unmount();
   });
 
-  it('shows the empty message for an empty section while the other still lists', async () => {
+  it('drops an empty section, header included, while the other still lists', async () => {
     const app = mountPicker([
-      {
-        key: 'here',
-        label: 'This directory',
-        emptyMessage: 'No plans for this directory.',
-        items: [],
-      },
+      { key: 'here', label: 'This directory', items: [] },
       {
         key: 'elsewhere',
         label: 'Elsewhere',
@@ -3283,8 +3278,7 @@ describe('the picker grouped into sections', () => {
     await app.ready();
 
     const frame = app.stdout.lastFrame;
-    expect(frame).toContain('This directory');
-    expect(frame).toContain('No plans for this directory.');
+    expect(frame).not.toContain('This directory');
     expect(frame).toContain('Elsewhere');
     expect(frame).toContain('The annotation rail');
     app.unmount();
@@ -3300,37 +3294,29 @@ describe('the picker grouped into sections', () => {
     app.unmount();
   });
 
-  it('skips over header and empty rows with the arrow keys, never landing on one', async () => {
+  it('skips over header rows with the arrow keys, never landing on one', async () => {
     const app = mountPicker([
-      {
-        key: 'here',
-        label: 'This directory',
-        emptyMessage: 'No plans for this directory.',
-        items: [],
-      },
+      { key: 'here', label: 'This directory', items: [planIn('guard-clock', 'Guard the clock')] },
       {
         key: 'elsewhere',
         label: 'Elsewhere',
-        items: [
-          planIn('guard-clock', 'Guard the clock'),
-          planIn('rail-frame', 'The annotation rail'),
-        ],
+        items: [planIn('rail-frame', 'The annotation rail')],
       },
     ]);
     await app.ready();
 
-    // The cursor opens on the first real row, past the empty "This directory"
-    // section and the "Elsewhere" header above it.
+    // The cursor opens on the first item, past its own section's header.
     let marked = bodyRows(app.stdout.lastFrame).find((l) => l.includes('❯'))!;
     expect(marked).toContain('Guard the clock');
 
     // Up has nothing to land on above it, so it stays put rather than
-    // reaching the header or the empty-state line.
+    // reaching the header.
     await app.press(UP);
     await new Promise((r) => setTimeout(r, 120));
     marked = bodyRows(app.stdout.lastFrame).find((l) => l.includes('❯'))!;
     expect(marked).toContain('Guard the clock');
 
+    // Down steps past the "Elsewhere" header straight onto its item.
     await app.press(DOWN);
     await app.frame('The annotation rail');
     marked = bodyRows(app.stdout.lastFrame).find((l) => l.includes('❯'))!;

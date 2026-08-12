@@ -136,17 +136,15 @@ export function planSections(): Array<PickerSection<PlanChoice>> {
     })),
   });
 
+  const here = plans.filter((p) => p.cwd === cwd).map((p) => item(p, true));
   const elsewhere = plans.filter((p) => p.cwd !== cwd).map((p) => item(p, false));
 
+  // Each section is only rendered when it has something in it — there is
+  // nothing to separate it from when the other holds every stored plan.
   return [
-    {
-      key: 'here',
-      label: 'This directory',
-      emptyMessage: 'No plans for this directory.',
-      items: plans.filter((p) => p.cwd === cwd).map((p) => item(p, true)),
-    },
-    // Only rendered when it has something in it — there is nothing to
-    // separate it from when every stored plan was captured here.
+    ...(here.length
+      ? [{ key: 'here', label: 'This directory', items: here } satisfies PickerSection<PlanChoice>]
+      : []),
     ...(elsewhere.length
       ? [
           {
@@ -169,7 +167,7 @@ export function planSections(): Array<PickerSection<PlanChoice>> {
  */
 async function pickPlan(ctx: Ctx): Promise<PlanChoice | null> {
   const sections = planSections();
-  if (!sections.some((s) => s.items.length)) throw new Error('planx: no plans stored yet.');
+  if (!sections.length) throw new Error('planx: no plans stored yet.');
   if (!isInteractive()) {
     throw new Error('planx: name a plan. `planx list` shows what is stored.');
   }
