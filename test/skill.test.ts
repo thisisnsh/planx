@@ -9,7 +9,7 @@ const SKILL_DIR = join(ROOT, 'skills', 'planx');
 const router = readFileSync(join(SKILL_DIR, 'SKILL.md'), 'utf8');
 const plan = readFileSync(join(SKILL_DIR, 'references', 'plan.md'), 'utf8');
 const revise = readFileSync(join(SKILL_DIR, 'references', 'revise.md'), 'utf8');
-const handoff = 'Plan created. Exit the agent, then run `planx <plan-id> v<n>`.';
+const handoff = 'Plan created. Exit the agent, then run `planx <plan-id> v<n>`';
 
 // There is no size budget here on purpose. File size was the wrong proxy for
 // prompt cost, and a word ceiling on the skill fails the moment someone
@@ -104,7 +104,11 @@ describe('the shipped planx skill', () => {
 
   it('hands review to the terminal as the last agent output', () => {
     for (const source of [plan, revise]) {
-      expect(source).toContain(`Then, verbatim, with nothing after it:\n\n> ${handoff}`);
+      expect(source).toContain('verbatim, with nothing after it');
+      expect(source).toContain(`\n> ${handoff}\n`);
+      // The line ends on the command so it survives a copy-paste — a trailing
+      // period rides along into the shell.
+      expect(source).not.toContain(`${handoff}.`);
       expect(source).toContain('resumes this same agent conversation');
       expect(source).not.toContain('open in new tab');
     }

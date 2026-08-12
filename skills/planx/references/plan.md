@@ -88,9 +88,10 @@ somewhere nothing is going to clean up.
 ## 4. Hand it over, then stop
 
 If the user declined something, say so here in one short line — in the chat, not
-in the plan. Then, verbatim, with nothing after it:
+in the plan. Then, verbatim, with nothing after it — no trailing period, since
+the command is there to be copied:
 
-> Plan created. Exit the agent, then run `planx <plan-id> v<n>`.
+> Plan created. Exit the agent, then run `planx <plan-id> v<n>`
 
 **Then stop and end your turn.** Nothing blocks and nothing polls. The user
 exits the agent and runs that command. After they submit the review, PlanX
