@@ -386,10 +386,10 @@ export function Picker<T>({
     ...visible.flatMap((row) => {
       const active = rows.indexOf(row) === cursor;
       // A header or an empty-state line carries no cursor column of its own —
-      // the cursor can never reach one — so it takes the same left margin a
-      // blank mark would leave, and nothing else about the row.
+      // the cursor can never reach one — so it sits at the same left margin as
+      // the title and subtitle above it, not indented out to the item rows.
       if (row.kind !== 'item') {
-        return [`    ${dim(truncate(row.label, inner - 4))}`];
+        return [`  ${dim(truncate(row.label, inner - 2))}`];
       }
       const indent = row.child ? '   ' : '';
       const mark = active ? '❯ ' : '  ';
