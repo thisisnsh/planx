@@ -19,6 +19,12 @@ export function storeRoot(): string {
   return join(homedir(), '.planx');
 }
 
+/** `~/projects/planx`, not `/Users/nsh/projects/planx`. */
+export function shortHome(path: string): string {
+  const home = homedir();
+  return home && path.startsWith(home) ? `~${path.slice(home.length)}` : path;
+}
+
 export const paths = {
   root: () => storeRoot(),
   config: () => join(storeRoot(), 'config.json'),

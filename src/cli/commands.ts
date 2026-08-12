@@ -22,7 +22,7 @@ import { renderDocument, renderStatLine, renderUnified, type RenderMode } from '
 import { ensureConfig } from '../store/config.js';
 import { DEFAULT_FIELDS, readDefaults, writeDefault } from '../store/defaults.js';
 import { listFeedback } from '../store/feedback.js';
-import { paths } from '../store/paths.js';
+import { paths, shortHome } from '../store/paths.js';
 import {
   ensureStore,
   latestVersion,
@@ -40,7 +40,7 @@ import {
   rewriteVersion,
 } from '../store/plans.js';
 import type { Defaults, VersionRecord } from '../store/types.js';
-import type { PickerItem } from '../tui/Picker.js';
+import type { PickerItem, PickerSection } from '../tui/Picker.js';
 import type { Commands, ReviewResult } from '../tui/ReviewApp.js';
 import {
   clearScreen,
@@ -98,7 +98,8 @@ function storedVersions(id: string): VersionRecord[] {
 }
 
 /**
- * Every plan, each opening into its own versions.
+ * Every plan, each opening into its own versions — grouped by where it was
+ * captured from.
  *
  * Time first in the grey column. The old order put the id first and the version
  * in the middle, so a narrow terminal truncated the version away — the one
@@ -108,11 +109,17 @@ function storedVersions(id: string): VersionRecord[] {
  * Rebuilt from the store rather than patched, so a delete can hand back a list
  * that is simply true.
  */
-function planItems(): Array<PickerItem<PlanChoice>> {
-  return listPlans().map((plan) => ({
+function planSections(): Array<PickerSection<PlanChoice>> {
+  const cwd = process.cwd();
+  const plans = listPlans();
+  const item = (plan: (typeof plans)[number], here: boolean): PickerItem<PlanChoice> => ({
     value: { id: plan.id, version: plan.latest, row: 'plan' },
     label: plan.title,
-    hint: `${padEnd(ago(plan.updated), 9)}${plan.id}`,
+    // The directory is redundant on a row already known to be here; elsewhere
+    // it stands in for the id, which is still searchable, just not shown.
+    hint: here
+      ? `${padEnd(ago(plan.updated), 9)}${plan.id}`
+      : `${padEnd(ago(plan.updated), 9)}${plan.cwd ? shortHome(plan.cwd) : plan.id}`,
     searchable: plan.id,
     deleteAs: plan.id,
     // A plan whose latest version is newer than the one that was built goes
@@ -127,7 +134,23 @@ function planItems(): Array<PickerItem<PlanChoice>> {
       // The latest is the plan itself, so it never offers a delete.
       deleteAs: v.n === plan.latest ? undefined : `${plan.id} v${v.n}`,
     })),
-  }));
+  });
+
+  const elsewhere = plans.filter((p) => p.cwd !== cwd).map((p) => item(p, false));
+
+  return [
+    {
+      key: 'here',
+      label: 'This directory',
+      emptyMessage: 'No plans for this directory.',
+      items: plans.filter((p) => p.cwd === cwd).map((p) => item(p, true)),
+    },
+    // Only rendered when it has something in it — there is nothing to
+    // separate it from when every stored plan was captured here.
+    ...(elsewhere.length
+      ? [{ key: 'elsewhere', items: elsewhere } satisfies PickerSection<PlanChoice>]
+      : []),
+  ];
 }
 
 /**
@@ -139,8 +162,8 @@ function planItems(): Array<PickerItem<PlanChoice>> {
  * and it is why the confirmation names its target in full.
  */
 async function pickPlan(ctx: Ctx): Promise<PlanChoice | null> {
-  const items = planItems();
-  if (!items.length) throw new Error('planx: no plans stored yet.');
+  const sections = planSections();
+  if (!sections.some((s) => s.items.length)) throw new Error('planx: no plans stored yet.');
   if (!isInteractive()) {
     throw new Error('planx: name a plan. `planx list` shows what is stored.');
   }
@@ -149,11 +172,11 @@ async function pickPlan(ctx: Ctx): Promise<PlanChoice | null> {
     title: 'Which plan?',
     subtitle: 'Pick one to review, → for its versions, or type to filter.',
     version: ctx.version,
-    items,
+    sections,
     onDelete: (item) => {
       if (item.value.row === 'plan') purgePlan(item.value.id);
       else removeVersions(item.value.id, [item.value.version]);
-      return planItems();
+      return planSections();
     },
   });
   return chosen ?? null;

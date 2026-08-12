@@ -8,7 +8,7 @@ import { listFeedback } from '../src/store/feedback.js';
 import { readVersionText } from '../src/store/plans.js';
 import type { Defaults as DefaultValues, Feedback } from '../src/store/types.js';
 import { Defaults } from '../src/tui/Defaults.js';
-import { Picker, type PickerItem } from '../src/tui/Picker.js';
+import { Picker, type PickerItem, type PickerSection } from '../src/tui/Picker.js';
 import { ReviewApp, type Commands, type ReviewResult } from '../src/tui/ReviewApp.js';
 import { UpdatePrompt, type UpdateChoice } from '../src/tui/UpdatePrompt.js';
 import { brandTitle, MIN_FRAME_WIDTH, topRule } from '../src/tui/frame.js';
@@ -2981,8 +2981,8 @@ interface PickerHarness<T> {
 }
 
 function mountPicker<T>(
-  items: Array<PickerItem<T>>,
-  onDelete?: (item: PickerItem<T>) => Array<PickerItem<T>>,
+  sections: Array<PickerSection<T>>,
+  onDelete?: (item: PickerItem<T>) => Array<PickerSection<T>>,
 ): PickerHarness<T> {
   const stdout = new FakeStdout();
   const stdin = new FakeStdin();
@@ -2994,7 +2994,7 @@ function mountPicker<T>(
     <Picker
       title="Which plan?"
       subtitle="Pick one to review, → for its versions, or type to filter."
-      items={items}
+      sections={sections}
       version="9.9.9"
       onDelete={onDelete}
       onQuit={() => quits.push(Date.now())}
@@ -3034,7 +3034,7 @@ function mountPicker<T>(
 type Pick = { id: string; version: number; row: 'plan' | 'version' };
 
 /** Two plans, one of them three versions deep. */
-function planRows(): Array<PickerItem<Pick>> {
+function planItems(): Array<PickerItem<Pick>> {
   return [
     {
       value: { id: 'guard-clock', version: 3, row: 'plan' },
@@ -3069,6 +3069,12 @@ function planRows(): Array<PickerItem<Pick>> {
       ],
     },
   ];
+}
+
+/** The same two plans, in one unlabeled section — parity with the old flat
+ *  list for every test that does not care about grouping. */
+function planRows(): Array<PickerSection<Pick>> {
+  return [{ key: 'plans', items: planItems() }];
 }
 
 describe('the picker as a version tree', () => {
@@ -3193,12 +3199,13 @@ describe('the picker as a version tree', () => {
 
 describe('the picker says what was built', () => {
   /** The plan row goes green with its latest, and the version says the word. */
-  function builtRows(): Array<PickerItem<Pick>> {
-    const items = planRows();
-    items[0]!.tone = 'executed';
-    items[0]!.children![0]!.tone = 'executed';
-    items[0]!.children![0]!.hint = '1h ago · executed';
-    return items;
+  function builtRows(): Array<PickerSection<Pick>> {
+    const sections = planRows();
+    const item = sections[0]!.items[0]!;
+    item.tone = 'executed';
+    item.children![0]!.tone = 'executed';
+    item.children![0]!.hint = '1h ago · executed';
+    return sections;
   }
 
   it('says it in words on the version row, not only in colour', async () => {
@@ -3225,6 +3232,126 @@ describe('the picker says what was built', () => {
     const raw = app.stdout.frames.join('');
     expect(raw).toMatch(new RegExp(`\\x1b\\[7m${opening(green)}`));
     setColorEnabled(false);
+    app.unmount();
+  });
+});
+
+describe('the picker grouped into sections', () => {
+  function planIn(id: string, label: string): PickerItem<Pick> {
+    return {
+      value: { id, version: 1, row: 'plan' },
+      label,
+      hint: '1h ago',
+      searchable: id,
+      deleteAs: id,
+    };
+  }
+
+  it('draws a header above each populated section', async () => {
+    const app = mountPicker([
+      { key: 'here', label: 'This directory', items: [planIn('guard-clock', 'Guard the clock')] },
+      {
+        key: 'elsewhere',
+        label: 'Elsewhere',
+        items: [planIn('rail-frame', 'The annotation rail')],
+      },
+    ]);
+    await app.ready();
+
+    const frame = app.stdout.lastFrame;
+    expect(frame).toContain('This directory');
+    expect(frame).toContain('Guard the clock');
+    expect(frame).toContain('Elsewhere');
+    expect(frame).toContain('The annotation rail');
+    app.unmount();
+  });
+
+  it('shows the empty message for an empty section while the other still lists', async () => {
+    const app = mountPicker([
+      {
+        key: 'here',
+        label: 'This directory',
+        emptyMessage: 'No plans for this directory.',
+        items: [],
+      },
+      {
+        key: 'elsewhere',
+        label: 'Elsewhere',
+        items: [planIn('rail-frame', 'The annotation rail')],
+      },
+    ]);
+    await app.ready();
+
+    const frame = app.stdout.lastFrame;
+    expect(frame).toContain('This directory');
+    expect(frame).toContain('No plans for this directory.');
+    expect(frame).toContain('Elsewhere');
+    expect(frame).toContain('The annotation rail');
+    app.unmount();
+  });
+
+  it('draws no second header when every plan was captured here', async () => {
+    const app = mountPicker([
+      { key: 'here', label: 'This directory', items: [planIn('guard-clock', 'Guard the clock')] },
+    ]);
+    await app.ready();
+
+    expect(app.stdout.lastFrame).not.toContain('Elsewhere');
+    app.unmount();
+  });
+
+  it('skips over header and empty rows with the arrow keys, never landing on one', async () => {
+    const app = mountPicker([
+      {
+        key: 'here',
+        label: 'This directory',
+        emptyMessage: 'No plans for this directory.',
+        items: [],
+      },
+      {
+        key: 'elsewhere',
+        label: 'Elsewhere',
+        items: [
+          planIn('guard-clock', 'Guard the clock'),
+          planIn('rail-frame', 'The annotation rail'),
+        ],
+      },
+    ]);
+    await app.ready();
+
+    // The cursor opens on the first real row, past the empty "This directory"
+    // section and the "Elsewhere" header above it.
+    let marked = bodyRows(app.stdout.lastFrame).find((l) => l.includes('❯'))!;
+    expect(marked).toContain('Guard the clock');
+
+    // Up has nothing to land on above it, so it stays put rather than
+    // reaching the header or the empty-state line.
+    await app.press(UP);
+    await new Promise((r) => setTimeout(r, 120));
+    marked = bodyRows(app.stdout.lastFrame).find((l) => l.includes('❯'))!;
+    expect(marked).toContain('Guard the clock');
+
+    await app.press(DOWN);
+    await app.frame('The annotation rail');
+    marked = bodyRows(app.stdout.lastFrame).find((l) => l.includes('❯'))!;
+    expect(marked).toContain('The annotation rail');
+    app.unmount();
+  });
+
+  it('drops a section, header included, once filtering leaves it with nothing', async () => {
+    const app = mountPicker([
+      { key: 'here', label: 'This directory', items: [planIn('alpha-plan', 'Alpha plan')] },
+      { key: 'elsewhere', label: 'Elsewhere', items: [planIn('beta-plan', 'Beta plan')] },
+    ]);
+    await app.ready();
+
+    await app.press('alpha');
+    await app.frame('filter: alpha');
+
+    expect(app.stdout.lastFrame).toContain('This directory');
+    expect(app.stdout.lastFrame).toContain('Alpha plan');
+    expect(app.stdout.lastFrame).not.toContain('Elsewhere');
+    expect(app.stdout.lastFrame).not.toContain('Beta plan');
     app.unmount();
   });
 });
@@ -3280,7 +3407,7 @@ describe('deleting from the picker', () => {
     const deleted: string[] = [];
     const app = mountPicker(planRows(), (item) => {
       deleted.push(`${item.value.id}:${item.value.row}`);
-      return planRows().slice(1);
+      return [{ key: 'plans', items: planItems().slice(1) }];
     });
     await app.ready();
 
@@ -3367,16 +3494,21 @@ describe('deleting from the picker', () => {
     const app = mountPicker(
       [
         {
-          value: { id: 'deploy-queue', version: 1, row: 'plan' },
-          label: 'Drain the deploy queue',
-          searchable: 'deploy-queue',
-          deleteAs: 'deploy-queue',
-        },
-        {
-          value: { id: 'guard-clock', version: 1, row: 'plan' },
-          label: 'Guard the clock regression',
-          searchable: 'guard-clock',
-          deleteAs: 'guard-clock',
+          key: 'plans',
+          items: [
+            {
+              value: { id: 'deploy-queue', version: 1, row: 'plan' },
+              label: 'Drain the deploy queue',
+              searchable: 'deploy-queue',
+              deleteAs: 'deploy-queue',
+            },
+            {
+              value: { id: 'guard-clock', version: 1, row: 'plan' },
+              label: 'Guard the clock regression',
+              searchable: 'guard-clock',
+              deleteAs: 'guard-clock',
+            },
+          ],
         },
       ],
       () => [],

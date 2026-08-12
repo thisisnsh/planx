@@ -29,7 +29,7 @@ export function UpdatePrompt({ latest, current, onQuit, onDone }: UpdatePromptPr
       title={`Update to v${latest}?`}
       subtitle={`You are running v${current}. Install the update before opening the review, or skip it.`}
       version={current}
-      items={items}
+      sections={[{ key: 'choices', items }]}
       enterLabel="choose"
       onQuit={onQuit}
       onDone={onDone}

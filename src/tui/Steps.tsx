@@ -1,6 +1,6 @@
 import { Box, Text, useInput } from 'ink';
-import { homedir } from 'node:os';
 import { dim, green, inverse, padEnd, red, signal, truncate } from '../render/ansi.js';
+import { shortHome } from '../store/paths.js';
 import { EXIT_PROMPT, useDoubleCtrlC } from './exit.js';
 
 /**
@@ -124,7 +124,10 @@ export function stepLines(rows: readonly StepRow[], inner: number): string[] {
   const labels = Math.max(0, ...rows.map((r) => r.label.length));
   const notes = Math.max(1, ...rows.map((r) => r.note.length));
   const room = inner - INDENT - labels - GAP - GAP - notes;
-  const paths = Math.max(12, Math.min(Math.max(0, ...rows.map((r) => short(r.path).length)), room));
+  const paths = Math.max(
+    12,
+    Math.min(Math.max(0, ...rows.map((r) => shortHome(r.path).length)), room),
+  );
 
   const out: string[] = [];
   let group: string | null = null;
@@ -136,18 +139,12 @@ export function stepLines(rows: readonly StepRow[], inner: number): string[] {
       group = row.group;
     }
     const label = padEnd(row.label, labels);
-    const path = padEnd(dim(truncate(short(row.path), paths)), paths);
+    const path = padEnd(dim(truncate(shortHome(row.path), paths)), paths);
     const note = row.note ? (row.ok ? green(row.note) : dim(row.note)) : dim('…');
     out.push(truncate(`${' '.repeat(INDENT)}${label}${' '.repeat(GAP)}${path}   ${note}`, inner));
   }
   if (rows.length) out.push('');
   return out;
-}
-
-/** `~/.claude`, not `/Users/somebody/.claude`. */
-function short(path: string): string {
-  const home = homedir();
-  return home && path.startsWith(home) ? `~${path.slice(home.length)}` : path;
 }
 
 /** The same rows, one per line, for a log nobody is watching draw. */

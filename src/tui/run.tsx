@@ -5,7 +5,7 @@ import type { DefaultKey } from '../store/defaults.js';
 import type { Defaults as DefaultValues, Feedback } from '../store/types.js';
 import { Defaults } from './Defaults.js';
 import { terminalWidth } from './frame.js';
-import { Picker, type PickerItem } from './Picker.js';
+import { Picker, type PickerItem, type PickerSection } from './Picker.js';
 import { ReviewApp, type Commands, type ReviewResult } from './ReviewApp.js';
 import { Steps, stepLine, type StepRow } from './Steps.js';
 import { UpdatePrompt, type UpdateChoice } from './UpdatePrompt.js';
@@ -229,9 +229,9 @@ export interface RunPickerOptions<T> {
   title: string;
   /** One dim line under the heading, saying what picking one does. */
   subtitle?: string;
-  items: Array<PickerItem<T>>;
+  sections: Array<PickerSection<T>>;
   /** Delete the highlighted row, and return the list as it stands afterwards. */
-  onDelete?: (item: PickerItem<T>) => Array<PickerItem<T>>;
+  onDelete?: (item: PickerItem<T>) => Array<PickerSection<T>>;
   /** What the hint bar says enter does. Defaults to `open`. */
   enterLabel?: string;
   /** planx's own version, for the frame's top edge. */
@@ -253,7 +253,7 @@ export async function runPicker<T>(opts: RunPickerOptions<T>): Promise<T[]> {
       <Picker
         title={opts.title}
         subtitle={opts.subtitle}
-        items={opts.items}
+        sections={opts.sections}
         onDelete={opts.onDelete}
         enterLabel={opts.enterLabel}
         version={opts.version}

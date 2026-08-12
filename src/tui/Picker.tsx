@@ -37,13 +37,27 @@ export interface PickerItem<T> {
   deleteAs?: string;
 }
 
+export interface PickerSection<T> {
+  /** Stable key, used for React keys and to re-find a section after a
+   *  delete rebuilds the list. */
+  key: string;
+  /** Dim divider row drawn above the section. Omitted entirely when the
+   *  section has no label and is the only section (a plain flat list). */
+  label?: string;
+  /** Drawn in place of the section's rows when `items` is empty and no
+   *  filter is active. A section with no `emptyMessage` simply disappears
+   *  when it has nothing to show. */
+  emptyMessage?: string;
+  items: Array<PickerItem<T>>;
+}
+
 export interface PickerProps<T> {
   title: string;
   subtitle?: string;
-  items: Array<PickerItem<T>>;
+  sections: Array<PickerSection<T>>;
   version?: string;
   /** Delete the row, and return the list as it stands afterwards. */
-  onDelete?: (item: PickerItem<T>) => Array<PickerItem<T>>;
+  onDelete?: (item: PickerItem<T>) => Array<PickerSection<T>>;
   /** What enter does here. The plan list opens; a short choice prompt chooses. */
   enterLabel?: string;
   /** What a second ctrl+c does. Defaults to ending the process with 130. */
@@ -51,13 +65,11 @@ export interface PickerProps<T> {
   onDone: (chosen: T[]) => void;
 }
 
-/** One drawn row: a top-level item, or a child of one. */
-interface Row<T> {
-  item: PickerItem<T>;
-  /** Index of the top-level item this row belongs to. */
-  parent: number;
-  child: boolean;
-}
+/** One drawn row: a section header, its empty-state line, a top-level item, or a child of one. */
+type Row<T> =
+  | { kind: 'header'; sectionKey: string; label: string }
+  | { kind: 'empty'; sectionKey: string; label: string }
+  | { kind: 'item'; item: PickerItem<T>; parent: number; child: boolean; sectionKey: string };
 
 /**
  * A delete waiting on the word.
@@ -100,21 +112,94 @@ function confirmRows(state: Confirming): string[] {
 }
 
 /**
- * Flatten the tree to the rows that are actually on screen.
+ * Flatten every section, and the tree under each of its items, to the rows
+ * that are actually on screen.
  *
- * Expansion is a set of top-level indices, the same shape the review's
- * `expandedGaps` has, and the row list is rebuilt from it on every render. A
- * plan with fifty versions is fifty strings; keeping a second, patched copy of
- * the tree in sync would cost more than rebuilding it.
+ * Expansion is a set of top-level indices counted once across every section —
+ * the same shape the review's `expandedGaps` has — and the row list is rebuilt
+ * from it on every render. A plan with fifty versions is fifty strings; keeping
+ * a second, patched copy of the tree in sync would cost more than rebuilding it.
+ *
+ * A filter matches within each section on its own. A section with nothing
+ * matching drops out entirely, header included: the `emptyMessage` is reserved
+ * for the section's true, unfiltered empty state, the same way the plain "no
+ * matches" line stands for the filtered list as a whole.
  */
-function flatten<T>(items: Array<PickerItem<T>>, expanded: ReadonlySet<number>): Array<Row<T>> {
+function flatten<T>(
+  sections: Array<PickerSection<T>>,
+  expanded: ReadonlySet<number>,
+  query: string,
+): Array<Row<T>> {
   const rows: Array<Row<T>> = [];
-  items.forEach((item, parent) => {
-    rows.push({ item, parent, child: false });
-    if (!expanded.has(parent)) return;
-    for (const child of item.children ?? []) rows.push({ item: child, parent, child: true });
-  });
+  let parent = 0;
+
+  for (const section of sections) {
+    if (query) {
+      const matched = fuzzyFilter(
+        query,
+        section.items,
+        (i) => `${i.label} ${i.searchable ?? ''}`,
+      ).map((m) => m.item);
+      if (!matched.length) continue;
+      if (section.label)
+        rows.push({ kind: 'header', sectionKey: section.key, label: section.label });
+      for (const item of matched) {
+        rows.push({ kind: 'item', item, parent, child: false, sectionKey: section.key });
+        parent++;
+      }
+      continue;
+    }
+
+    if (!section.items.length) {
+      if (section.label)
+        rows.push({ kind: 'header', sectionKey: section.key, label: section.label });
+      if (section.emptyMessage) {
+        rows.push({ kind: 'empty', sectionKey: section.key, label: section.emptyMessage });
+      }
+      continue;
+    }
+
+    if (section.label) rows.push({ kind: 'header', sectionKey: section.key, label: section.label });
+    for (const item of section.items) {
+      rows.push({ kind: 'item', item, parent, child: false, sectionKey: section.key });
+      if (expanded.has(parent)) {
+        for (const child of item.children ?? []) {
+          rows.push({ kind: 'item', item: child, parent, child: true, sectionKey: section.key });
+        }
+      }
+      parent++;
+    }
+  }
+
   return rows;
+}
+
+/** The nearest `kind: 'item'` row past `cursor` in `direction`, or `cursor`
+ *  unchanged when there is none — headers and empty rows are stepped over,
+ *  never landed on. */
+function stepCursor<T>(rows: Array<Row<T>>, cursor: number, direction: 1 | -1): number {
+  let i = cursor + direction;
+  while (i >= 0 && i < rows.length) {
+    if (rows[i]!.kind === 'item') return i;
+    i += direction;
+  }
+  return cursor;
+}
+
+/** The first selectable row — where the cursor opens, and where it lands
+ *  after a filter changes what is visible. */
+function firstItemIndex<T>(rows: Array<Row<T>>): number {
+  const index = rows.findIndex((row) => row.kind === 'item');
+  return index === -1 ? 0 : index;
+}
+
+/** `index`, pulled onto the nearest item row — what a delete leaves the
+ *  cursor on, since the row it pointed at may now be gone. */
+function clampToItem<T>(rows: Array<Row<T>>, index: number): number {
+  const bounded = Math.max(0, Math.min(index, rows.length - 1));
+  if (rows[bounded]?.kind === 'item') return bounded;
+  const forward = stepCursor(rows, bounded, 1);
+  return rows[forward]?.kind === 'item' ? forward : firstItemIndex(rows);
 }
 
 /**
@@ -140,7 +225,7 @@ function flatten<T>(items: Array<PickerItem<T>>, expanded: ReadonlySet<number>):
 export function Picker<T>({
   title,
   subtitle,
-  items: initial,
+  sections: initial,
   version,
   onDelete,
   enterLabel = 'open',
@@ -151,19 +236,13 @@ export function Picker<T>({
   // Above the handler below, so it fires while the confirmation is waiting for
   // the word as well as on the list itself.
   const leaving = useDoubleCtrlC({ onExit: onQuit });
-  const [items, setItems] = useState(initial);
+  const [sections, setSections] = useState(initial);
   const [query, setQuery] = useState('');
-  const [cursor, setCursor] = useState(0);
+  const [cursor, setCursor] = useState(() => firstItemIndex(flatten(initial, new Set(), '')));
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set());
   const [confirming, setConfirming] = useState<Confirming | null>(null);
 
-  const rows = useMemo(() => {
-    if (!query) return flatten(items, expanded);
-    const matched = fuzzyFilter(query, items, (i) => `${i.label} ${i.searchable ?? ''}`).map(
-      (m) => m.item,
-    );
-    return flatten(matched, new Set());
-  }, [items, expanded, query]);
+  const rows = useMemo(() => flatten(sections, expanded, query), [sections, expanded, query]);
 
   const here = rows[cursor];
 
@@ -195,16 +274,16 @@ export function Picker<T>({
     });
     // Back onto the plan the versions belonged to, which is the row the
     // collapsed tree leaves under your finger.
-    setCursor(rows.findIndex((row) => row.parent === parent && !row.child));
+    setCursor(rows.findIndex((row) => row.kind === 'item' && row.parent === parent && !row.child));
   }
 
   function remove(item: PickerItem<T>) {
-    const next = onDelete?.(item) ?? items;
-    setItems(next);
+    const next = onDelete?.(item) ?? sections;
+    setSections(next);
     // Every index into the old list is suspect once a row has gone, and there
     // is nothing worth salvaging: you deleted the thing you were looking at.
     setExpanded(new Set());
-    setCursor((c) => Math.max(0, Math.min(c, next.length - 1)));
+    setCursor((c) => clampToItem(flatten(next, new Set(), query), c));
     setConfirming(null);
   }
 
@@ -213,7 +292,9 @@ export function Picker<T>({
       if (key.escape) return setConfirming(null);
       // Anything short of the word is not an answer, so enter is not one
       // either — it does nothing at all rather than doing the thing.
-      if (key.return) return confirmed(confirming) ? remove(here!.item) : undefined;
+      if (key.return) {
+        return confirmed(confirming) && here?.kind === 'item' ? remove(here.item) : undefined;
+      }
       if (key.backspace || key.delete) {
         return setConfirming({ ...confirming, typed: confirming.typed.slice(0, -1) });
       }
@@ -230,34 +311,36 @@ export function Picker<T>({
     // inside the delete confirmation above, which is backing out of a
     // question rather than leaving.
     if (key.downArrow || (key.ctrl && input === 'n')) {
-      return setCursor((c) => Math.min(rows.length - 1, c + 1));
+      return setCursor((c) => stepCursor(rows, c, 1));
     }
     if (key.upArrow || (key.ctrl && input === 'p')) {
-      return setCursor((c) => Math.max(0, c - 1));
+      return setCursor((c) => stepCursor(rows, c, -1));
     }
     if (key.rightArrow) {
-      if (!here || here.child || !here.item.children?.length) return;
+      if (!here || here.kind !== 'item' || here.child || !here.item.children?.length) return;
       return setExpanded((set) => new Set(set).add(here.parent));
     }
     if (key.leftArrow) {
-      if (!here || !expanded.has(here.parent)) return;
+      if (!here || here.kind !== 'item' || !expanded.has(here.parent)) return;
       return collapse(here.parent);
     }
-    if (key.return) return onDone(here ? [here.item.value] : []);
+    if (key.return) return onDone(here?.kind === 'item' ? [here.item.value] : []);
     // `ctrl+d`, not `d`. A bare letter opened the confirmation before the
     // filter ever saw it, so no plan whose name starts with `d` could be
     // filtered for — and finding a plan is what the list is for.
-    if (key.ctrl && input === 'd' && here?.item.deleteAs) {
+    if (key.ctrl && input === 'd' && here?.kind === 'item' && here.item.deleteAs) {
       return setConfirming({ target: here.item.deleteAs, typed: '' });
     }
 
     if (key.backspace || key.delete) {
-      setCursor(0);
-      return setQuery((q) => q.slice(0, -1));
+      const nextQuery = query.slice(0, -1);
+      setQuery(nextQuery);
+      return setCursor(firstItemIndex(flatten(sections, expanded, nextQuery)));
     }
     if (input && !key.ctrl && !key.meta) {
-      setCursor(0);
-      setQuery((q) => q + input);
+      const nextQuery = query + input;
+      setQuery(nextQuery);
+      return setCursor(firstItemIndex(flatten(sections, expanded, nextQuery)));
     }
   });
 
@@ -267,7 +350,13 @@ export function Picker<T>({
 
   // The query takes the subtitle's row when there is one, so the frame does not
   // change height the moment you start typing.
-  const count = `${rows.length}/${items.length}`;
+  //
+  // Both halves count top-level items only — a plan expanded into its versions
+  // never inflated this before, and a header or empty-state row is not an item
+  // either.
+  const totalItems = sections.reduce((n, s) => n + s.items.length, 0);
+  const visibleItems = rows.filter((row) => row.kind === 'item' && !row.child).length;
+  const count = `${visibleItems}/${totalItems}`;
   const lead = query ? `filter: ${query}${inverse(' ')}` : dim(subtitle ?? '');
   const subtitleRow = `  ${padEnd(lead, inner - 2 - count.length)}${dim(count)}`;
 
@@ -281,12 +370,14 @@ export function Picker<T>({
   // diff`: a row offers the direction it can actually go, and a filtered list —
   // which matches plans only, and draws every one of them collapsed — offers
   // neither, because neither arrow does anything there.
-  const open = here !== undefined && rows.some((row) => row.parent === here.parent && row.child);
-  if (!query && here) {
+  const open =
+    here?.kind === 'item' &&
+    rows.some((row) => row.kind === 'item' && row.parent === here.parent && row.child);
+  if (!query && here?.kind === 'item') {
     if (open) hints.push(['←', 'collapse']);
     else if (!here.child && here.item.children?.length) hints.push(['→', 'versions']);
   }
-  if (here?.item.deleteAs) hints.push(['ctrl+d', 'delete']);
+  if (here?.kind === 'item' && here.item.deleteAs) hints.push(['ctrl+d', 'delete']);
 
   const drawn = [
     `  ${bold(title)}`,
@@ -294,6 +385,12 @@ export function Picker<T>({
     '',
     ...visible.flatMap((row) => {
       const active = rows.indexOf(row) === cursor;
+      // A header or an empty-state line carries no cursor column of its own —
+      // the cursor can never reach one — so it takes the same left margin a
+      // blank mark would leave, and nothing else about the row.
+      if (row.kind !== 'item') {
+        return [`    ${dim(truncate(row.label, inner - 4))}`];
+      }
       const indent = row.child ? '   ' : '';
       const mark = active ? '❯ ' : '  ';
       const width = labelWidth - indent.length;
