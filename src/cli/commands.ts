@@ -109,7 +109,7 @@ function storedVersions(id: string): VersionRecord[] {
  * Rebuilt from the store rather than patched, so a delete can hand back a list
  * that is simply true.
  */
-function planSections(): Array<PickerSection<PlanChoice>> {
+export function planSections(): Array<PickerSection<PlanChoice>> {
   const cwd = process.cwd();
   const plans = listPlans();
   const item = (plan: (typeof plans)[number], here: boolean): PickerItem<PlanChoice> => ({
@@ -148,7 +148,13 @@ function planSections(): Array<PickerSection<PlanChoice>> {
     // Only rendered when it has something in it — there is nothing to
     // separate it from when every stored plan was captured here.
     ...(elsewhere.length
-      ? [{ key: 'elsewhere', items: elsewhere } satisfies PickerSection<PlanChoice>]
+      ? [
+          {
+            key: 'elsewhere',
+            label: 'Elsewhere',
+            items: elsewhere,
+          } satisfies PickerSection<PlanChoice>,
+        ]
       : []),
   ];
 }
