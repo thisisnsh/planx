@@ -23,10 +23,6 @@ versioned artifact you can actually review:
 npm install --global @thisisnsh/planx
 ```
 
-[![Watch Demo](https://img.shields.io/badge/Watch_Demo-ff0000?style=for-the-badge&logo=youtube&logoColor=white)](https://youtu.be/JxPBqJ0S0hk)
-
-_Disclaimer: It might be the most brainrot promo video._
-
 Start a new agent session, then ask for a reviewable plan:
 
 ```text

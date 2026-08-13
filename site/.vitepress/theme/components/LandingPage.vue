@@ -3,7 +3,6 @@ import { ref } from 'vue';
 
 const menuOpen = ref(false);
 const copied = ref(false);
-const videoPlaying = ref(false);
 const installCommand = 'npm install --global @thisisnsh/planx';
 
 const faq = [
@@ -218,43 +217,14 @@ function closeMenu(): void {
         </div>
 
         <div class="hero-art">
-          <figure class="screen screen-hero screen-video">
-            <iframe
-              v-if="videoPlaying"
-              src="https://www.youtube-nocookie.com/embed/JxPBqJ0S0hk?autoplay=1&rel=0"
-              title="PlanX demo: planning skills for agents"
-              allow="
-                accelerometer;
-                autoplay;
-                clipboard-write;
-                encrypted-media;
-                gyroscope;
-                picture-in-picture;
-                web-share;
-              "
-              referrerpolicy="strict-origin-when-cross-origin"
-              allowfullscreen
-            ></iframe>
-            <button
-              v-else
-              class="video-poster"
-              type="button"
-              aria-label="Play the PlanX demo video"
-              @click="videoPlaying = true"
-            >
-              <img
-                src="https://img.youtube.com/vi/JxPBqJ0S0hk/maxresdefault.jpg"
-                alt=""
-                width="1280"
-                height="720"
-                fetchpriority="high"
-              />
-              <span class="video-play" aria-hidden="true">
-                <svg viewBox="0 0 24 24" focusable="false">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              </span>
-            </button>
+          <figure class="screen screen-hero">
+            <img
+              src="/images/planx-view.png"
+              width="1340"
+              height="556"
+              alt="PlanX terminal interface showing a reviewable plan with version history"
+              fetchpriority="high"
+            />
           </figure>
         </div>
 
