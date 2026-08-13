@@ -2,7 +2,6 @@
 
 [![npm](https://img.shields.io/npm/v/@thisisnsh/planx?color=ffd400&labelColor=0b0b0c)](https://www.npmjs.com/package/@thisisnsh/planx)
 [![downloads](https://img.shields.io/npm/dt/@thisisnsh/planx?color=43d595&labelColor=0b0b0c)](https://www.npmjs.com/package/@thisisnsh/planx)
-[![stars](https://img.shields.io/github/stars/thisisnsh/planx?color=ffd400&labelColor=0b0b0c)](https://github.com/thisisnsh/planx/stargazers)
 [![ci](https://img.shields.io/github/actions/workflow/status/thisisnsh/planx/ci.yml?branch=main&labelColor=0b0b0c)](https://github.com/thisisnsh/planx/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-ffd400?labelColor=0b0b0c)](LICENSE)
 
