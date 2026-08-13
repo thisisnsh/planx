@@ -31,6 +31,7 @@ import {
   wrapComment,
   type ViewRow,
 } from './model.js';
+import { currentEntry, outlineColumn, outlineEntries } from './outline.js';
 import { pressArrow, type HeldRun } from './repeat.js';
 import {
   initialSelection,
@@ -235,6 +236,13 @@ const MIN_WIDTH = 48;
 /** The cursor arrow and the space after it. */
 const CURSOR_GUTTER = 2;
 
+/** Columns the outline's own text gets, marker and indent included. */
+const OUTLINE_WIDTH = 22;
+/** ` │ ` between the document and the outline. */
+const OUTLINE_GAP = 3;
+/** What the document keeps, or the outline is not drawn at all. */
+const MIN_DOC_WIDTH = 82;
+
 const NO_ANNOTATIONS: Annotation[] = [];
 const NO_EDITS: ReadonlyMap<number, string> = new Map();
 const NO_COMMANDS: Commands[number] = {
@@ -290,8 +298,18 @@ export function ReviewApp(props: ReviewAppProps) {
   const frameWidth = Math.max(MIN_WIDTH, (stdout?.columns ?? 100) - 1);
   /** Columns between the two frame edges. */
   const inner = frameWidth - FRAME_PADDING;
+  /**
+   * Whether there is room for the map beside the plan.
+   *
+   * Decided from the terminal alone — not from the mode, not from whether this
+   * version has any headings. A document that re-wrapped every time you pressed
+   * `s`, or every time you stepped to a version that happened to have sections,
+   * would be worse than one that is narrower than it could be. So a plan with no
+   * headings gives up the columns too, and the outline is drawn empty.
+   */
+  const showOutline = inner - CURSOR_GUTTER - (OUTLINE_WIDTH + OUTLINE_GAP) >= MIN_DOC_WIDTH;
   /** What is left for the rail, the line gutter and the plan text. */
-  const contentWidth = inner - CURSOR_GUTTER;
+  const contentWidth = inner - CURSOR_GUTTER - (showOutline ? OUTLINE_WIDTH + OUTLINE_GAP : 0);
 
   const annotations = byVersion[versionB] ?? NO_ANNOTATIONS;
   const general = generalByVersion[versionB] ?? '';
@@ -342,6 +360,28 @@ export function ReviewApp(props: ReviewAppProps) {
 
   const rows = model.rows;
   const textWidth = contentWidth - model.gutterWidth;
+
+  /** Every section of this version, for the outline and for `tab`. */
+  const entries = useMemo(() => outlineEntries(model.docLines), [model.docLines]);
+
+  /**
+   * The line of the document the cursor is standing on, or the nearest one
+   * above it.
+   *
+   * The cursor is often on a row that is not a line at all — a note box, a
+   * folded section's stand-in, a collapsed run, a deletion in a diff — so
+   * scanning back is what keeps the section you are reading highlighted rather
+   * than blanking the outline every time you step into a comment.
+   */
+  const cursorLine = useMemo(() => {
+    for (let i = Math.min(selection.cursor, rows.length - 1); i >= 0; i--) {
+      const line = rows[i]?.newLine;
+      if (line !== null && line !== undefined) return line;
+    }
+    return null;
+  }, [rows, selection.cursor]);
+
+  const current = currentEntry(entries, cursorLine);
 
   const previousVersion = useMemo(() => {
     const earlier = props.versions.filter((v) => v < versionB);
@@ -406,6 +446,7 @@ export function ReviewApp(props: ReviewAppProps) {
           diffing: versionA !== null,
           canDiff: previousVersion !== null,
           manyVersions: props.versions.length > 1,
+          manySections: entries.length > 1,
         }),
         inner,
       ).map((line) => (line ? dim(line) : ''));
@@ -690,6 +731,62 @@ export function ReviewApp(props: ReviewAppProps) {
   }
 
   /**
+   * `tab` to the next section, `shift+tab` to the one before it.
+   *
+   * Neither wraps. `j` wraps because forward is the only direction feedback can
+   * be walked in; here both directions are bound, and `g` and `G` already go to
+   * the ends — so `tab` on the last section is a press that does nothing, which
+   * is what the end of a list should feel like.
+   *
+   * It walks rows rather than lines, which is what makes a heading inside a
+   * folded section skipped rather than unfolded on the way past. The fold's
+   * stand-in row is on screen saying what it hides, with `space` one press
+   * away; silently opening a section behind a navigation key is the surprising
+   * choice.
+   */
+  function jumpSection(delta: 1 | -1) {
+    const headings = new Set(entries.map((e) => e.line));
+    for (let i = selection.cursor + delta; i >= 0 && i < rows.length; i += delta) {
+      const row = rows[i];
+      if (row?.kind === 'doc' && row.newLine !== null && headings.has(row.newLine)) {
+        return jumpTo(i);
+      }
+    }
+  }
+
+  /**
+   * `ctrl+space` folds every section at once, and folds them back out.
+   *
+   * A toggle: already all folded means unfold, anything else means fold. What
+   * counts is the sections `foldEnd` will actually take — a heading with
+   * nothing under it can never be in the set, so counting it would be a section
+   * the toggle could never reach "all folded" through.
+   *
+   * Folding a `##` already takes its `###` and `####` with it, so what is left
+   * is the plan's top-level sections, each with its `N lines` stand-in — an
+   * outline of the document in the document, beside the outline in the margin.
+   */
+  function toggleAllSections() {
+    const foldable = entries.map((e) => e.line).filter(canFold);
+    if (!foldable.length) return;
+    if (foldable.every((line) => foldedSections.has(line))) return setFoldedSections(new Set());
+
+    // Folding everything takes the cursor's own rows away with it. The section
+    // that still has a row afterwards is the outermost one the cursor was in,
+    // so that is the stand-in it follows — you end up looking at the folded
+    // form of what you were reading.
+    const outermost =
+      cursorLine === null
+        ? undefined
+        : foldable.find((line) => {
+            const end = foldEnd(model.docLines, line);
+            return end !== null && line <= cursorLine && cursorLine <= end;
+          });
+    if (outermost !== undefined) setPendingFold(outermost);
+    setFoldedSections(new Set(foldable));
+  }
+
+  /**
    * `j` walks the feedback, forward, wrapping at the end.
    *
    * Forward only: with a wrap there is nothing a backward key would reach that
@@ -927,6 +1024,20 @@ export function ReviewApp(props: ReviewAppProps) {
       // fingers that learned them should not have to unlearn them.
       if (input === '[') return stepVersion(-1);
       if (input === ']') return stepVersion(1);
+
+      // Both arrive as `key.tab`, the second with `key.shift` set, so the two
+      // directions are one branch.
+      if (key.tab) return jumpSection(key.shift ? -1 : 1);
+      // `ctrl+space` arrives as a NUL byte, which Ink's keypress parser runs
+      // through its ctrl+letter branch: the byte becomes a backtick and
+      // `key.ctrl` is set. The other two forms are terminals that pass the NUL
+      // through as itself, and ones that report the space key with its modifier
+      // — every form seen in practice. An empty input is deliberately not one
+      // of them: ctrl+← reaches here as exactly that, and stepping a version is
+      // not what it should do.
+      if (key.ctrl && (input === '`' || input === '\0' || input === ' ')) {
+        return toggleAllSections();
+      }
 
       // `v` is what clears a selection now, so esc is free to mean back.
       if (key.escape) return setMode({ kind: 'leave' });
@@ -1194,24 +1305,39 @@ export function ReviewApp(props: ReviewAppProps) {
   // viewport would otherwise draw a frame shorter than the terminal, and Ink
   // adds a newline under any frame that does not reach the bottom — the same
   // gap the chrome constant was leaving.
-  const body = fit(
+  // Help keeps the full `inner` width: it replaces the document, so there is no
+  // document for the outline to sit beside.
+  const body =
     mode.kind === 'help'
-      ? helpLines(inner, previousVersion !== null)
-      : rows.slice(offset, offset + bodyHeight).map((row, i) =>
-          renderRow(row, {
-            cursor: offset + i === selection.cursor,
-            selected: isRowSelected(selection, offset + i),
-            editing: row.kind === 'feedback' && row.annotationId === draftId,
-            line:
-              mode.kind === 'line' && row.newLine === mode.line
-                ? { draft: mode.draft, caret: mode.caret }
-                : null,
-            width: textWidth,
-            indent: model.railColumn,
-          }),
-        ),
-    bodyHeight,
-  );
+      ? fit(helpLines(inner, previousVersion !== null), bodyHeight)
+      : beside(
+          fit(
+            rows.slice(offset, offset + bodyHeight).map((row, i) =>
+              renderRow(row, {
+                cursor: offset + i === selection.cursor,
+                selected: isRowSelected(selection, offset + i),
+                editing: row.kind === 'feedback' && row.annotationId === draftId,
+                line:
+                  mode.kind === 'line' && row.newLine === mode.line
+                    ? { draft: mode.draft, caret: mode.caret }
+                    : null,
+                width: textWidth,
+                indent: model.railColumn,
+              }),
+            ),
+            bodyHeight,
+          ),
+          showOutline
+            ? outlineColumn({
+                entries,
+                current,
+                height: bodyHeight,
+                width: OUTLINE_WIDTH,
+                folded: foldedSections,
+              })
+            : null,
+          CURSOR_GUTTER + contentWidth,
+        );
 
   /**
    * One array rather than groups of rows, because the hand-off list has to be
@@ -1551,6 +1677,8 @@ interface HintContext {
   diffing: boolean;
   canDiff: boolean;
   manyVersions: boolean;
+  /** Two or more sections, so `tab` has somewhere to go. */
+  manySections: boolean;
 }
 
 /**
@@ -1635,6 +1763,12 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
   // cursor and needs no naming; which way it goes is the only thing you cannot
   // see from the row.
   if (ctx.space) hints.push(['space', spaceHint(ctx.space)]);
+  // On a plan with one section there is nowhere for `tab` to go, and a key that
+  // declines a press after advertising itself teaches the wrong thing.
+  // `ctrl+space` stays in `?` only, beside `h`, which it is the sibling of:
+  // folding everything at once is a thing you do once in a session, and the bar
+  // is already three rows deep at MIN_WIDTH.
+  if (ctx.manySections) hints.push(['tab', 'section']);
 
   if (row?.kind === 'feedback') {
     hints.push(['f', 'edit feedback']);
@@ -1700,6 +1834,23 @@ function wordStartAfter(text: string, caret: number): number {
   return i;
 }
 
+/**
+ * The document rows with the outline column down their right, or as they are.
+ *
+ * The separator is a rule rather than empty space because the outline is a
+ * second column of text, not the tail of the first: without an edge between
+ * them a `###` title indented under its section reads as a continuation of
+ * whatever line of the plan it happens to sit beside.
+ *
+ * It runs the height of the body, past the end of a short plan, for the same
+ * reason the frame does: a column that stops halfway down is a rule that looks
+ * broken rather than one that has finished.
+ */
+function beside(lines: string[], column: string[] | null, width: number): string[] {
+  if (!column) return lines;
+  return lines.map((line, i) => `${padEnd(line, width)} ${dim('│')} ${column[i] ?? ''}`);
+}
+
 /** Exactly `height` lines: the tail cut, or blank rows added. */
 function fit(lines: readonly string[], height: number): string[] {
   const out = lines.slice(0, height);
@@ -1734,6 +1885,8 @@ const HELP: Array<[Hint, 'always' | 'versioned']> = [
   [['n', 'add or edit the note about the whole plan'], 'always'],
   [['s', 'submit everything at once, then pick what happens to the plan next'], 'always'],
   [['space', 'collapse the section you are in, or the note — or expand what is hidden'], 'always'],
+  [['ctrl+space', 'fold or unfold every section at once'], 'always'],
+  [['tab', 'the next section, or the previous with shift'], 'always'],
   [['v', 'start or end a selection, then ↑ ↓ to extend'], 'always'],
   [['esc', 'back to the list'], 'always'],
   [['?', 'this list'], 'always'],

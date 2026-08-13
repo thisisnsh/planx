@@ -237,7 +237,14 @@ const CTRL_C = '\x03';
 const ALT_LEFT = '\x1b[1;3D';
 const ALT_RIGHT = '\x1b[1;3C';
 const META_B = '\x1bb';
+const TAB = '\t';
+const SHIFT_TAB = '\x1b[Z';
+/** ctrl+space, which reaches the process as a NUL byte. */
+const CTRL_SPACE = '\x00';
 const ARROW = '▸';
+/** What `signal` and `dim` open with, for asserting on an unstripped frame. */
+const SIGNAL = '\x1b[38;2;255;212;0m';
+const DIM = '\x1b[2m';
 /** The closing corner of a note box — the thing that used to be missing. */
 const BOX_CLOSE = '╮';
 
@@ -1183,6 +1190,221 @@ describe('folding a section', () => {
   });
 });
 
+/**
+ * A plan with a subsection, so the outline has something to indent — and no
+ * feedback anywhere in these tests, so the only rule inside a row is the
+ * outline's own separator.
+ */
+function seedNested(): string {
+  return capture({
+    text: [
+      '# Nested',
+      '',
+      '## Section one',
+      'a',
+      '',
+      '### Subsection',
+      'b',
+      '',
+      '## Section two',
+      'c',
+      '',
+    ].join('\n'),
+    source: 'test',
+  }).planId;
+}
+
+/** The outline cell of a body row: `│ document │ outline │`. */
+function outlineCell(row: string): string {
+  const parts = row.split('│');
+  return parts.length === 4 ? parts[2]! : '';
+}
+
+/** The last drawn frame with its escapes intact, for the colour assertions. */
+function lastRaw(stdout: FakeStdout): string {
+  for (let i = stdout.frames.length - 1; i >= 0; i--) {
+    if (plain(stdout.frames[i] ?? '').trim()) return stdout.frames[i]!;
+  }
+  return '';
+}
+
+describe('the outline column', () => {
+  it('draws the sections down the right, subsections stepped in under them', async () => {
+    const app = mount(seedNested(), null, 1, [1], 140);
+    await app.ready();
+    await app.frame('## Section one');
+
+    const rows = bodyRows(app.stdout.lastFrame);
+    const cells = rows.map(outlineCell);
+    const at = (title: string) => cells.findIndex((cell) => cell.includes(title));
+
+    // One row each, in document order, whatever the plan is doing beside them.
+    expect(at('Section one')).toBeGreaterThanOrEqual(0);
+    expect(at('Subsection')).toBe(at('Section one') + 1);
+    expect(at('Section two')).toBe(at('Section one') + 2);
+
+    // The indent is the only thing on screen that says the `###` belongs to
+    // the `##` above it.
+    const column = (title: string) => cells[at(title)]!.indexOf(title);
+    expect(column('Subsection')).toBe(column('Section one') + 2);
+    expect(column('Section two')).toBe(column('Section one'));
+
+    // The column costs the document width rather than the frame's: every row
+    // still closes in the same place.
+    expect(new Set(rows.map((row) => row.length)).size).toBe(1);
+    app.unmount();
+  });
+
+  it('is not drawn on a narrow terminal, which keeps the whole width for the plan', async () => {
+    const wide = 'w'.repeat(80);
+    const id = capture({
+      text: ['# Narrow', '', '## Section one', wide, ''].join('\n'),
+      source: 'test',
+    }).planId;
+    const app = mount(id, null, 1, [1], 100);
+    await app.ready();
+    await app.frame('## Section one');
+
+    const frame = app.stdout.lastFrame;
+    // Once, in the document. With the outline it would also be in the margin.
+    expect(frame.split('Section one')).toHaveLength(2);
+    // 80 columns of plan, drawn whole — the width the outline would have taken.
+    expect(frame).toContain(wide);
+    app.unmount();
+  });
+
+  it('picks out the section the cursor is in, and no other', async () => {
+    setColorEnabled(true);
+    const app = mount(seed(), null, 1, [1], 140);
+    await app.ready();
+    await app.frame('## Context');
+
+    // The cursor opens on the `#` title, which is above every section.
+    expect(lastRaw(app.stdout)).not.toContain(`${SIGNAL}  Context`);
+
+    await app.press(DOWN);
+    await app.press(DOWN);
+    await app.frame('space collapse');
+    const raw = lastRaw(app.stdout);
+    expect(raw).toContain(`${SIGNAL}  Context`);
+    expect(raw).toContain(`${DIM}  Approach`);
+    expect(raw).toContain(`${DIM}  Rollout`);
+
+    // Standing inside the section, not on its heading, keeps it picked out.
+    await app.press(DOWN);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(lastRaw(app.stdout)).toContain(`${SIGNAL}  Context`);
+    app.unmount();
+  });
+
+  it('ends where the hand-off list begins, and the frame still closes', async () => {
+    const app = mount(seed(), null, 1, [1], 140);
+    await app.ready();
+    await app.press('s');
+    await app.frame('Submit');
+
+    const rows = bodyRows(app.stdout.lastFrame);
+    // The list is not a document row, so nothing is drawn beside it — but the
+    // plan above it keeps its column.
+    expect(rows.some((row) => outlineCell(row).includes('Context'))).toBe(true);
+    const list = rows.find((row) => row.includes('Copy reopen command'))!;
+    expect(outlineCell(list)).toBe('');
+    expect(new Set(rows.map((row) => row.length)).size).toBe(1);
+    app.unmount();
+  });
+});
+
+describe('tab jumps between sections', () => {
+  it('goes to the next heading, back with shift, and stops at the ends', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press(TAB);
+    await app.frame('space collapse');
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('## Context');
+
+    await app.press(TAB);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('## Approach');
+
+    await app.press(SHIFT_TAB);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('## Context');
+
+    // Neither direction wraps: `g` and `G` already go to the ends.
+    await app.press(SHIFT_TAB);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('## Context');
+
+    for (let i = 0; i < 3; i++) await app.press(TAB);
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('## Rollout');
+    app.unmount();
+  });
+
+  it('is offered only where there is more than one section to walk', async () => {
+    const app = mount(seed(), null, 1, [1], 200);
+    await app.ready();
+    await app.frame('tab section');
+
+    const id = capture({ text: '# One\n\n## Only\na\n', source: 'test' }).planId;
+    const alone = mount(id, null, 1, [1], 200);
+    await alone.ready();
+    await alone.frame('space collapse');
+    expect(alone.stdout.lastFrame).not.toContain('tab section');
+    app.unmount();
+    alone.unmount();
+  });
+});
+
+describe('ctrl+space folds every section', () => {
+  it('collapses the plan to its sections, and a second press puts it back', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+    const before = bodyRows(app.stdout.lastFrame);
+
+    await app.press(CTRL_SPACE);
+    await app.frame('(space to expand)');
+
+    const frame = app.stdout.lastFrame;
+    for (const heading of ['## Context', '## Approach', '## Rollout']) {
+      expect(frame).toContain(heading);
+    }
+    for (const body of [
+      'The poller reads a snapshot',
+      'Extend the existing',
+      'Deploy behind the',
+    ]) {
+      expect(frame).not.toContain(body);
+    }
+    expect(frame.split('(space to expand)')).toHaveLength(4);
+
+    await app.press(CTRL_SPACE);
+    await app.frame('The poller reads a snapshot');
+    expect(bodyRows(app.stdout.lastFrame)).toEqual(before);
+    app.unmount();
+  });
+
+  it('leaves the cursor on the stand-in row of the section it was in', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    // Inside `## Approach`, not on its heading.
+    await app.press(TAB);
+    await app.press(TAB);
+    await app.press(DOWN);
+    await app.frame('Extend the existing');
+
+    await app.press(CTRL_SPACE);
+    await app.frame('(space to expand)');
+
+    const rows = bodyRows(app.stdout.lastFrame);
+    const heading = rows.findIndex((row) => row.includes('## Approach'));
+    expect(cursorRow(rows)).toBe(rows[heading + 1]);
+    expect(cursorRow(rows)).toContain('(space to expand)');
+    app.unmount();
+  });
+});
+
 describe('j walks the feedback', () => {
   it('steps forward in document order, wrapping at the end', async () => {
     const app = mount(seed(), null, 1);
@@ -2036,7 +2258,21 @@ describe('the keys, and where they sit', () => {
     const keys = hintBar(bodyRows(app.stdout.lastFrame))
       .split(' · ')
       .map((part) => part.split(' ')[0]!);
-    expect(keys).toEqual(['←→', 'd', 'e', 'f', 'j', 'n', 's', 'space', 'v', 'esc', 'ctrl+c', '?']);
+    expect(keys).toEqual([
+      '←→',
+      'd',
+      'e',
+      'f',
+      'j',
+      'n',
+      's',
+      'space',
+      'tab',
+      'v',
+      'esc',
+      'ctrl+c',
+      '?',
+    ]);
     app.unmount();
   });
 
@@ -2124,7 +2360,11 @@ describe('the keys, and where they sit', () => {
       'j',
       'n',
       's',
+      // `ctrl+space` files beside `space` rather than under `c`, which is what
+      // `rank` already does for the paging keys.
       'space',
+      'ctrl+space',
+      'tab',
       'v',
       'esc',
       '?',
