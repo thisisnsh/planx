@@ -233,6 +233,15 @@ PlanX starts execution in a fresh agent session from that stored version, so
 the build begins from the plan you reviewed instead of a summary remembered
 from chat.
 
+### How do I get back into the session that built a plan?
+
+Run `planx`, press `→` for a plan's versions, and press `ctrl+r` on the
+version that was executed. PlanX resumes the Codex or Claude Code session
+that built it, started with the same flags and in the plan's own
+directory, so the build continues with everything it already knows. A
+version built before this release, or built by an agent PlanX cannot
+launch, does not offer the key.
+
 ### What does an empty PlanX review mean?
 
 Submitting without comments, edits, or a plan-wide note means the version was

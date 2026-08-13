@@ -170,18 +170,23 @@ export function replayableArgv(argv: readonly string[]): string[] {
   return out;
 }
 
-/** Which command the review is handing over, and how the agent gets there. */
-export type Intent = 'revise' | 'execute';
+/**
+ * Which command planx is handing over, and how the agent gets there.
+ *
+ * `resume` is the picker's `ctrl+r` rather than the review's hand-off list: back
+ * into the session that built a version, with nothing said to it.
+ */
+export type Intent = 'revise' | 'execute' | 'resume';
 
 export interface LaunchOptions {
   agent: AgentName;
   intent: Intent;
   /** The launch line recorded on the version, replayed in front of everything. */
   argv?: readonly string[];
-  /** The session that captured the version. Required to revise, unused to execute. */
+  /** The session to go back into. Required to revise and to resume, unused to execute. */
   sessionId?: string | null;
-  /** The command planx would otherwise have printed for you to paste. */
-  prompt: string;
+  /** The command planx would otherwise have printed for you to paste. Resume sends none. */
+  prompt?: string;
 }
 
 export interface Launch {
@@ -197,19 +202,32 @@ export interface Launch {
  * history in a session nobody opens again and the revision in a session that
  * has no name — you asked for the one that wrote it, and this is it.
  *
+ * Resuming an execution sends no prompt at all. You are going back into the
+ * conversation that built the plan, and what happens next is yours to type —
+ * re-sending `/planx execute` would have the agent re-read the plan and redo
+ * work it has already done.
+ *
  * Null when the launch cannot work: reviving a session planx was never told
  * about is not something to attempt with a guess.
  */
 export function launchFor(opts: LaunchOptions): Launch | null {
   const argv = replayableArgv(opts.argv ?? []);
+  const prompt = opts.prompt === undefined ? [] : [opts.prompt];
 
-  if (opts.intent === 'execute') return { bin: opts.agent, args: [...argv, opts.prompt] };
+  if (opts.intent === 'resume') {
+    if (!opts.sessionId) return null;
+    // Codex takes `resume` as a subcommand, so its flags go in front of it.
+    return opts.agent === 'codex'
+      ? { bin: 'codex', args: [...argv, 'resume', opts.sessionId] }
+      : { bin: 'claude', args: [...argv, '--resume', opts.sessionId] };
+  }
+
+  if (opts.intent === 'execute') return { bin: opts.agent, args: [...argv, ...prompt] };
   if (!opts.sessionId) return null;
 
-  // Codex takes `resume` as a subcommand, so its flags go in front of it.
   return opts.agent === 'codex'
-    ? { bin: 'codex', args: [...argv, 'resume', opts.sessionId, opts.prompt] }
-    : { bin: 'claude', args: [...argv, '--resume', opts.sessionId, opts.prompt] };
+    ? { bin: 'codex', args: [...argv, 'resume', opts.sessionId, ...prompt] }
+    : { bin: 'claude', args: [...argv, '--resume', opts.sessionId, ...prompt] };
 }
 
 /** The whole command as one line, for the scrollback above the agent's frame. */

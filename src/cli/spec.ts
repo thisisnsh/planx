@@ -77,7 +77,7 @@ export const COMMANDS: CommandSpec[] = [
   {
     name: 'executed',
     group: 'agent',
-    usage: 'planx executed <id> <version>',
+    usage: 'planx executed <id> <version> [--session-id ID] [--agent NAME]',
     summary: 'Record that this version was built.',
     description:
       'Marks the version as the one that was executed, which is what turns its row green in the ' +
@@ -85,8 +85,23 @@ export const COMMANDS: CommandSpec[] = [
       'route reached the build — the agent planx launched, a command you pasted yourself, or ' +
       '`/planx execute` typed from scratch. planx does not mark on launch, because a launch you ' +
       'immediately ctrl+c out of built nothing. Running it twice restamps the time rather than ' +
-      'failing.',
-    examples: ['planx executed guard-clock-a3f9 v3'],
+      'failing, and a second run that names no session keeps the one already stored.',
+    flags: [
+      {
+        name: '--session-id',
+        arg: 'ID',
+        summary: 'The agent session doing the building, so ctrl+r can resume it.',
+      },
+      {
+        name: '--agent',
+        arg: 'NAME',
+        summary: 'Which agent that is, when the process walk cannot say.',
+      },
+    ],
+    examples: [
+      'planx executed guard-clock-a3f9 v3',
+      'planx executed guard-clock-a3f9 v3 --session-id 0f2c…',
+    ],
   },
   {
     name: 'diff',

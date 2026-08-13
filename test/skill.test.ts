@@ -123,6 +123,10 @@ describe('the shipped planx skill', () => {
 
     expect(execute).toContain('planx revise <plan-id> v<n> --executing');
     expect(execute).toContain('planx executed <plan-id> v<n>');
+    // The session doing the building, so the picker can go back into it.
+    expect(execute).toContain('planx executed <plan-id> v<n> --session-id');
+    expect(execute).toContain('$CLAUDE_CODE_SESSION_ID');
+    expect(execute).toContain('$CODEX_THREAD_ID');
     expect(execute).toContain('Never\nsubstitute `latest`');
     // One read for the build: the plan and the feedback arrive together, so
     // execute does not also load the plan through `show`.

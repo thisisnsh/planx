@@ -232,6 +232,7 @@ const RIGHT = '\x1b[C';
 const BACKSPACE = '\x7f';
 const CTRL_A = '\x01';
 const CTRL_D = '\x04';
+const CTRL_R = '\x12';
 const CTRL_C = '\x03';
 /** Option+arrow, as Terminal.app and iTerm each send it. */
 const ALT_LEFT = '\x1b[1;3D';
@@ -3030,7 +3031,31 @@ function mountPicker<T>(
   };
 }
 
-type Pick = { id: string; version: number; row: 'plan' | 'version' };
+type Pick = { id: string; version: number; row: 'plan' | 'version'; action?: 'resume' };
+
+/** One plan with a build to go back into, and one without. */
+function resumableRows(): Array<PickerSection<Pick>> {
+  return [
+    {
+      key: 'plans',
+      items: [
+        {
+          value: { id: 'guard-clock', version: 3, row: 'plan' },
+          label: 'Guard the clock regression',
+          hint: '1h ago   guard-clock',
+          deleteAs: 'guard-clock',
+          resume: { id: 'guard-clock', version: 2, row: 'version', action: 'resume' },
+        },
+        {
+          value: { id: 'rail-frame', version: 1, row: 'plan' },
+          label: 'The annotation rail',
+          hint: '2d ago   rail-frame',
+          deleteAs: 'rail-frame',
+        },
+      ],
+    },
+  ];
+}
 
 /** Two plans, one of them three versions deep. */
 function planItems(): Array<PickerItem<Pick>> {
@@ -3698,6 +3723,48 @@ describe('deleting from the picker', () => {
     await app.press(CTRL_D);
     await new Promise((r) => setTimeout(r, 120));
     expect(app.stdout.lastFrame).not.toContain('cannot be undone');
+    app.unmount();
+  });
+
+  it('offers ctrl+r only where there is a build to go back into', async () => {
+    const app = mountPicker(resumableRows(), () => []);
+    await app.ready();
+    await app.frame('ctrl+r resume');
+
+    // `orderHints` strips the `ctrl+`, so it lands under `r` — after `enter`,
+    // rather than beside the delete it shares a modifier with.
+    const keys = inner(bodyRows(app.stdout.lastFrame).at(-1)!)
+      .split(' · ')
+      .map((part) => part.split(' ')[0]!);
+    expect(keys).toEqual(['↑↓', 'ctrl+d', 'enter', 'ctrl+r', 'ctrl+c']);
+
+    await app.press(DOWN);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(app.stdout.lastFrame).not.toContain('ctrl+r resume');
+    app.unmount();
+  });
+
+  it('hands back the resume rather than the row it sits on', async () => {
+    const app = mountPicker(resumableRows(), () => []);
+    await app.ready();
+    await app.press(CTRL_R);
+
+    expect(await app.chosen).toEqual([
+      { id: 'guard-clock', version: 2, row: 'version', action: 'resume' },
+    ]);
+    app.unmount();
+  });
+
+  it('is inert while a delete is waiting on its word', async () => {
+    const app = mountPicker(resumableRows(), () => []);
+    await app.ready();
+    await app.press(CTRL_D);
+    await app.frame('cannot be undone');
+
+    // The confirmation is still the only question on screen.
+    await app.press(CTRL_R);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(app.stdout.lastFrame).toContain('cannot be undone');
     app.unmount();
   });
 });

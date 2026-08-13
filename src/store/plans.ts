@@ -270,6 +270,7 @@ export function addVersion(
     edits: [],
     session_id: opts.sessionId ?? null,
     agent_argv: [...(opts.agentArgv ?? [])],
+    executed: null,
   };
 
   writeAtomic(paths.versionFile(id, n), body);
@@ -287,17 +288,53 @@ export function addVersion(
 }
 
 /**
- * Record that a version was built.
+ * Record that a version was built, and by which session.
  *
  * Running it twice restamps `at` rather than failing: an execute picked up
  * again after a break should not have to care whether it already said so.
+ *
+ * The agent falls back to the version's own. The executing agent can differ
+ * from the capturing one — a plan written in Claude and built through a custom
+ * `execute_command` that runs Codex is resumed with `codex`, not `claude` — so
+ * a caller that knows better says so.
+ *
+ * **A call that supplies no session id keeps the one already stored.** The
+ * second call may be a paste with no `--session-id` on it, and clearing a
+ * resumable session because someone re-ran the command is a loss with no
+ * upside. Only a call that brings a session id replaces one.
  */
-export function markExecuted(id: string, version: number): PlanMeta {
+export function markExecuted(
+  id: string,
+  version: number,
+  opts: {
+    sessionId?: string | null;
+    agent?: string | null;
+    agentArgv?: readonly string[];
+  } = {},
+): PlanMeta {
   const meta = readMeta(id);
   if (!meta) throw new PlanNotFoundError(id);
 
-  const agent = readVersions(id).versions.find((v) => v.n === version)?.agent ?? null;
-  meta.executed = { version, at: new Date().toISOString(), agent };
+  const versions = readVersions(id);
+  const record = versions.versions.find((v) => v.n === version);
+  const agent = opts.agent ?? record?.agent ?? null;
+  const at = new Date().toISOString();
+
+  if (record) {
+    record.executed = {
+      at,
+      agent,
+      session_id: opts.sessionId ?? record.executed?.session_id ?? null,
+      // The launch line describes the session it started, so it travels with
+      // the session id rather than being replaced on its own.
+      agent_argv: opts.sessionId
+        ? [...(opts.agentArgv ?? [])]
+        : (record.executed?.agent_argv ?? []),
+    };
+    writeVersions(id, versions);
+  }
+
+  meta.executed = { version, at, agent };
   writeMeta(meta);
   reindex(id);
   return meta;

@@ -62,6 +62,35 @@ describe('the command each agent gets', () => {
     }
   });
 
+  it('goes back into the building session with nothing to say to it', () => {
+    // No prompt: re-sending `/planx execute` would have the agent re-read the
+    // plan and redo work it has already done.
+    expect(
+      launchFor({ agent: 'claude', intent: 'resume', argv: ['--model', 'opus'], sessionId: 's-9' }),
+    ).toEqual({ bin: 'claude', args: ['--model', 'opus', '--resume', 's-9'] });
+
+    expect(
+      launchFor({ agent: 'codex', intent: 'resume', argv: ['--model', 'opus'], sessionId: 's-9' }),
+    ).toEqual({ bin: 'codex', args: ['--model', 'opus', 'resume', 's-9'] });
+  });
+
+  it('declines to resume a build with no session recorded', () => {
+    expect(launchFor({ agent: 'claude', intent: 'resume', sessionId: null })).toBe(null);
+  });
+
+  it('replays the recorded launch line into a resume, minus its own selector', () => {
+    // The tab that built the plan was itself started with `--resume`. Replaying
+    // it would collide with the one being added.
+    expect(
+      launchFor({
+        agent: 'claude',
+        intent: 'resume',
+        argv: ['--resume', 'older', '--add-dir', '../shared'],
+        sessionId: 's-9',
+      }),
+    ).toEqual({ bin: 'claude', args: ['--add-dir', '../shared', '--resume', 's-9'] });
+  });
+
   /** A choice between one thing and nothing is not a choice: the caller prints. */
   it('declines to revise a version with no session recorded', () => {
     expect(

@@ -271,6 +271,54 @@ describe('marking a plan executed', () => {
     rebuildIndex();
     expect(listPlans()[0]?.executed).toBe(1);
   });
+
+  it('records the building session on the version, not on the plan', () => {
+    const id = seed();
+    addVersion(id, `${SAMPLE_PLAN}\nrev 2\n`, { agent: 'claude' });
+
+    markExecuted(id, 2, { sessionId: 'sess-2', agent: 'codex', agentArgv: ['--model', 'gpt'] });
+
+    const record = readVersions(id).versions.find((v) => v.n === 2);
+    expect(record?.executed).toMatchObject({
+      session_id: 'sess-2',
+      agent: 'codex',
+      agent_argv: ['--model', 'gpt'],
+    });
+    // Per version: v1 was never built, and marking v2 does not say otherwise.
+    expect(readVersions(id).versions.find((v) => v.n === 1)?.executed).toBeNull();
+
+    // The pointer the index row and the picker's green tone read is unchanged
+    // by any of it, save for naming the agent that did the building.
+    expect(readMeta(id)?.executed).toMatchObject({ version: 2, agent: 'codex' });
+    expect(listPlans()[0]?.executed).toBe(2);
+  });
+
+  it('keeps a stored session when the second call brings none', () => {
+    const id = seed();
+    markExecuted(id, 1, { sessionId: 'sess-1', agent: 'claude', agentArgv: ['--model', 'opus'] });
+
+    // A paste with no `--session-id` on it. Clearing a resumable session
+    // because someone re-ran the command is a loss with no upside.
+    markExecuted(id, 1, { agent: 'claude' });
+    expect(readVersions(id).versions[0]?.executed).toMatchObject({
+      session_id: 'sess-1',
+      agent_argv: ['--model', 'opus'],
+    });
+
+    // One that brings a session id replaces it, launch line and all.
+    markExecuted(id, 1, { sessionId: 'sess-9', agent: 'claude', agentArgv: [] });
+    expect(readVersions(id).versions[0]?.executed).toMatchObject({
+      session_id: 'sess-9',
+      agent_argv: [],
+    });
+  });
+
+  it('falls back to the agent that captured the version', () => {
+    const id = seed();
+    addVersion(id, `${SAMPLE_PLAN}\nrev 2\n`, { agent: 'claude' });
+    markExecuted(id, 2, { sessionId: 'sess-2' });
+    expect(readVersions(id).versions.find((v) => v.n === 2)?.executed?.agent).toBe('claude');
+  });
 });
 
 describe('deleting', () => {

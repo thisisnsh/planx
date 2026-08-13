@@ -76,6 +76,26 @@ export const VersionRecordSchema = z.object({
   session_id: z.string().nullable().default(null),
   /** How that session was started, so the resume lands in the same state. */
   agent_argv: z.array(z.string()).default([]),
+  /**
+   * The session that *built* this version, for resuming.
+   *
+   * Per version, not per plan: `meta.executed` holds one object for the whole
+   * plan, so building v3 after v2 would drop v2's session — and a version you
+   * built a week ago is exactly the one worth getting back into.
+   *
+   * Optional with a default, for the same reason `edits` and `session_id` are:
+   * a store written by this CLI still parses under an older one, so it is a
+   * line in the release notes rather than a `FORMAT_VERSION` bump.
+   */
+  executed: z
+    .object({
+      at: z.string(),
+      agent: z.string().nullable().default(null),
+      session_id: z.string().nullable().default(null),
+      agent_argv: z.array(z.string()).default([]),
+    })
+    .nullable()
+    .default(null),
 });
 export type VersionRecord = z.infer<typeof VersionRecordSchema>;
 

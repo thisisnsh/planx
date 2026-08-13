@@ -181,6 +181,18 @@ describe('the CLI as a real process', () => {
     expect(marked.code).toBe(0);
     expect(marked.stdout).toContain(`Marked ${id} v1 as executed.`);
     expect(inStore(() => readMeta(id))?.executed).toMatchObject({ version: 1 });
+    // Nothing to resume: the run named no session, and the mark still landed.
+    expect(inStore(() => readVersions(id).versions[0])?.executed?.session_id).toBe(null);
+  });
+
+  it('records the building session on the version it built', async () => {
+    const id = await seed();
+    const marked = await cli.run(['executed', id, 'v1', '--session-id', 'abc', '--agent', 'codex']);
+    expect(marked.code).toBe(0);
+    expect(inStore(() => readVersions(id).versions[0])?.executed).toMatchObject({
+      session_id: 'abc',
+      agent: 'codex',
+    });
   });
 
   it('is a no-op when the same content is captured twice', async () => {

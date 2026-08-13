@@ -88,6 +88,8 @@ export interface PlanChoice {
   id: string;
   version: number;
   row: 'plan' | 'version';
+  /** What the key that handed this back meant: `enter` opens, `ctrl+r` resumes. */
+  action: 'open' | 'resume';
 }
 
 /** Versions whose text is still on disk, newest first. */
@@ -95,6 +97,21 @@ function storedVersions(id: string): VersionRecord[] {
   return readVersions(id)
     .versions.filter((v) => readVersionText(id, v.n) !== null)
     .sort((a, b) => b.n - a.n);
+}
+
+/**
+ * What `ctrl+r` on this version would hand back, or null.
+ *
+ * The same rule `versionCommands` applies to the review's hand-off list: a
+ * session planx was never told about, or an agent it cannot start, is an entry
+ * that is not offered rather than a keystroke that fails. What can be launched
+ * stays decided where the launch is built.
+ */
+function resumeChoice(id: string, record: VersionRecord): PlanChoice | null {
+  const executed = record.executed;
+  if (!executed?.session_id) return null;
+  if (!executed.agent || !isAgent(executed.agent)) return null;
+  return { id, version: record.n, row: 'version', action: 'resume' };
 }
 
 /**
@@ -108,33 +125,48 @@ function storedVersions(id: string): VersionRecord[] {
  *
  * Rebuilt from the store rather than patched, so a delete can hand back a list
  * that is simply true.
+ *
+ * A row offers `ctrl+r` when there is an execution session behind it. A version
+ * row answers for its own build; a plan row only where exactly one of its
+ * versions qualifies, because picking silently between two builds is worse than
+ * making you press `→` first.
  */
-export function planSections(): Array<PickerSection<PlanChoice>> {
+export function planSections(offerResume = true): Array<PickerSection<PlanChoice>> {
   const cwd = process.cwd();
   const plans = listPlans();
-  const item = (plan: (typeof plans)[number], here: boolean): PickerItem<PlanChoice> => ({
-    value: { id: plan.id, version: plan.latest, row: 'plan' },
-    label: plan.title,
-    // The directory is redundant on a row already known to be here; elsewhere
-    // it stands in for the id, which is still searchable, just not shown.
-    hint: here
-      ? `${padEnd(ago(plan.updated), 9)}${plan.id}`
-      : `${padEnd(ago(plan.updated), 9)}${plan.cwd ? shortHome(plan.cwd) : plan.id}`,
-    searchable: plan.id,
-    deleteAs: plan.id,
-    // A plan whose latest version is newer than the one that was built goes
-    // back to normal: what was executed is no longer the plan. The child row
-    // for that older version stays green, which is where the history is.
-    tone: plan.executed === plan.latest ? 'executed' : undefined,
-    children: storedVersions(plan.id).map((v) => ({
-      value: { id: plan.id, version: v.n, row: 'version' },
-      label: `v${v.n}`,
-      hint: v.n === plan.executed ? `${ago(v.created)} · executed` : ago(v.created),
-      tone: v.n === plan.executed ? ('executed' as const) : undefined,
-      // The latest is the plan itself, so it never offers a delete.
-      deleteAs: v.n === plan.latest ? undefined : `${plan.id} v${v.n}`,
-    })),
-  });
+  const item = (plan: (typeof plans)[number], here: boolean): PickerItem<PlanChoice> => {
+    const versions = storedVersions(plan.id);
+    const resumable = offerResume
+      ? versions.map((v) => resumeChoice(plan.id, v)).filter((r) => r !== null)
+      : [];
+    return {
+      value: { id: plan.id, version: plan.latest, row: 'plan', action: 'open' },
+      label: plan.title,
+      // The directory is redundant on a row already known to be here; elsewhere
+      // it stands in for the id, which is still searchable, just not shown.
+      hint: here
+        ? `${padEnd(ago(plan.updated), 9)}${plan.id}`
+        : `${padEnd(ago(plan.updated), 9)}${plan.cwd ? shortHome(plan.cwd) : plan.id}`,
+      searchable: plan.id,
+      deleteAs: plan.id,
+      // A plan whose latest version is newer than the one that was built goes
+      // back to normal: what was executed is no longer the plan. The child row
+      // for that older version stays green, which is where the history is.
+      tone: plan.executed === plan.latest ? 'executed' : undefined,
+      // With two builds behind it the plan row would have to choose between
+      // them, so it offers nothing and leaves the choice to the version rows.
+      resume: resumable.length === 1 ? resumable[0]! : undefined,
+      children: versions.map((v) => ({
+        value: { id: plan.id, version: v.n, row: 'version', action: 'open' as const },
+        label: `v${v.n}`,
+        hint: v.n === plan.executed ? `${ago(v.created)} · executed` : ago(v.created),
+        tone: v.n === plan.executed ? ('executed' as const) : undefined,
+        // The latest is the plan itself, so it never offers a delete.
+        deleteAs: v.n === plan.latest ? undefined : `${plan.id} v${v.n}`,
+        resume: offerResume ? (resumeChoice(plan.id, v) ?? undefined) : undefined,
+      })),
+    };
+  };
 
   const here = plans.filter((p) => p.cwd === cwd).map((p) => item(p, true));
   const elsewhere = plans.filter((p) => p.cwd !== cwd).map((p) => item(p, false));
@@ -170,9 +202,13 @@ export function planSections(): Array<PickerSection<PlanChoice>> {
  * confirmation the picker draws is the only thing between a keystroke and a
  * plan that is gone. That is the direct cost of dropping `clean` and `restore`,
  * and it is why the confirmation names its target in full.
+ *
+ * `offerResume` is off wherever the answer is being used for something else:
+ * a picker that is answering *which plan do I diff* has no business handing the
+ * terminal to an agent.
  */
-async function pickPlan(ctx: Ctx): Promise<PlanChoice | null> {
-  const sections = planSections();
+async function pickPlan(ctx: Ctx, offerResume = true): Promise<PlanChoice | null> {
+  const sections = planSections(offerResume);
   if (!sections.length) throw new Error('planx: no plans stored yet.');
   if (!isInteractive()) {
     throw new Error('planx: name a plan. `planx list` shows what is stored.');
@@ -186,7 +222,7 @@ async function pickPlan(ctx: Ctx): Promise<PlanChoice | null> {
     onDelete: (item) => {
       if (item.value.row === 'plan') purgePlan(item.value.id);
       else removeVersions(item.value.id, [item.value.version]);
-      return planSections();
+      return planSections(offerResume);
     },
   });
   return chosen ?? null;
@@ -308,10 +344,21 @@ export function cmdRevise(ctx: Ctx): number {
  * The skill runs this before it starts building rather than planx marking on
  * launch: a launch you immediately ctrl+c out of built nothing, and a plan
  * drawn as executed when it was not is worse than one drawn as not yet.
+ *
+ * The session it names is what `ctrl+r` in the picker goes back into. The
+ * launch line is not a flag: like `cmdCapture`, this reads it off planx's own
+ * process tree, because it is a fact about planx's parents rather than
+ * something the agent knows about itself. The agent found there fills in when
+ * `--agent` is absent.
  */
 export function cmdExecuted(ctx: Ctx): number {
   const { id, version } = requirePlanAndVersion(ctx, 'planx executed <id> <version>');
-  markExecuted(id, version);
+  const here = agentProcess();
+  markExecuted(id, version, {
+    sessionId: one(ctx.args, '--session-id'),
+    agent: one(ctx.args, '--agent') ?? here.agent,
+    agentArgv: here.argv,
+  });
 
   if (ctx.json) {
     ctx.out(JSON.stringify({ plan_id: id, version }, null, 2));
@@ -343,7 +390,7 @@ export async function cmdDiff(ctx: Ctx): Promise<number> {
   // interactive path is a loop and picks inside it.
   if (!printOnly) return reviewLoop(ctx, named ? resolvePlanRef(named) : null);
 
-  const id = named ? resolvePlanRef(named) : ((await pickPlan(ctx))?.id ?? null);
+  const id = named ? resolvePlanRef(named) : ((await pickPlan(ctx, false))?.id ?? null);
   if (!id) return 1;
 
   const [, refA, refB] = ctx.args.positionals;
@@ -400,6 +447,9 @@ async function reviewLoop(ctx: Ctx, named: string | null): Promise<number> {
       if (returning) clearScreen();
       const chosen = await pickPlan(ctx);
       if (!chosen) return 0;
+      // `ctrl+r` is not a plan to review. planx becomes the session that built
+      // this version and never comes back to the list.
+      if (chosen.action === 'resume') return resumeExecution(ctx, chosen.id, chosen.version);
       opened = { id: chosen.id, version: chosen.version };
       pinnedA = null;
     }
@@ -621,6 +671,50 @@ async function handOffToAgent(ctx: Ctx, id: string, result: ReviewResult): Promi
       },
     },
   );
+}
+
+/**
+ * Back into the session that built a version, and become it.
+ *
+ * No prompt goes with it. You are resuming the conversation that implemented
+ * the plan, and what happens next is yours to type — re-sending `/planx
+ * execute` would have the agent re-read the plan and redo work it has done.
+ *
+ * The whole command is printed first, flags included, so what was started and
+ * what it was granted is on the scrollback above the agent's first frame. A
+ * machine without that binary on its `PATH` still ends up with the line.
+ */
+async function resumeExecution(ctx: Ctx, id: string, version: number): Promise<number> {
+  const executed = readVersions(id).versions.find((v) => v.n === version)?.executed ?? null;
+  const agent = executed?.agent && isAgent(executed.agent) ? executed.agent : null;
+  const launch = agent
+    ? launchFor({
+        agent,
+        intent: 'resume',
+        argv: executed?.agent_argv ?? [],
+        sessionId: executed?.session_id ?? null,
+      })
+    : null;
+
+  // The picker does not offer `ctrl+r` on a row that cannot produce one, so
+  // this is the store having changed under a list already on screen.
+  if (!launch) {
+    ctx.err(red(`planx: ${id} v${version} has no execution session to resume.`));
+    return 1;
+  }
+
+  const line = launchLine(launch);
+  ctx.out(`${dim('Running')}  ${yellow(line)}`);
+  ctx.out('');
+  return runAgent(launch, {
+    cwd: readMeta(id)?.cwd || null,
+    onFallback: (cwd) => ctx.out(dim(`Its directory is gone — running in ${cwd} instead.`)),
+    onMissing: (missing) => {
+      ctx.err(red(`planx: ${missing} is not on your PATH, so there is nothing here to start.`));
+      ctx.out(handOffLine('Resume it yourself', line, yellow));
+      ctx.out('');
+    },
+  });
 }
 
 /** `no feedback`, `1 feedback`, `2 feedbacks` — the review's own word for it. */

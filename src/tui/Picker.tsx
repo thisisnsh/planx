@@ -35,6 +35,14 @@ export interface PickerItem<T> {
    * Absent means the row cannot be deleted, and `ctrl+d` is not offered on it.
    */
   deleteAs?: string;
+  /**
+   * A second value this row can hand back, reached with ctrl+r.
+   *
+   * The picker stays ignorant of what a resume is: it hands back a different
+   * value for a different key, the way `deleteAs` gives `ctrl+d` something to
+   * point at. Absent means the key is not offered here.
+   */
+  resume?: T;
 }
 
 export interface PickerSection<T> {
@@ -412,6 +420,11 @@ export function Picker<T>({
     if (key.ctrl && input === 'd' && here?.kind === 'item' && here.item.deleteAs) {
       return setConfirming({ target: here.item.deleteAs, typed: '' });
     }
+    // `ctrl+r` for the same reason, and more of it: a bare `r` would be
+    // swallowed anywhere in a query rather than only at the front of one.
+    if (key.ctrl && input === 'r' && here?.kind === 'item' && here.item.resume) {
+      return onDone([here.item.resume]);
+    }
 
     if (key.backspace || key.delete) {
       const nextQuery = query.slice(0, -1);
@@ -466,6 +479,9 @@ export function Picker<T>({
     }
   }
   if (here?.kind === 'item' && here.item.deleteAs) hints.push(['ctrl+d', 'delete']);
+  // `orderHints` strips the `ctrl+`, so this lands under `r` — after `enter`,
+  // rather than beside the delete it happens to share a modifier with.
+  if (here?.kind === 'item' && here.item.resume) hints.push(['ctrl+r', 'resume']);
 
   const drawn = [
     `  ${bold(title)}`,

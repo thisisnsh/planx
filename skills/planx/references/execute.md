@@ -52,13 +52,25 @@ with these. Address each one in the code as you implement the plan around it.
 ## Say that you are building it
 
 ```bash
-planx executed <plan-id> v<n>
+planx executed <plan-id> v<n> --session-id "$CLAUDE_CODE_SESSION_ID"
 ```
 
 Before the first edit, whichever route reached here — the agent planx launched
 from the review, a command pasted in by hand, or `/planx execute` typed from
 scratch. That is what makes the mark true rather than a guess about what a
 launch turned into.
+
+The session id is what lets the picker start you again later, with the build
+still in context. Pass whichever row is yours:
+
+| agent | pass |
+| --- | --- |
+| Claude Code | `--session-id "$CLAUDE_CODE_SESSION_ID"` |
+| Codex | `--session-id "$CODEX_THREAD_ID"` |
+| neither variable is set | `--agent <your agent>`, and no `--session-id` |
+
+The mark lands either way. Without a session id the row simply offers no
+resume.
 
 ## Execute it
 
