@@ -369,6 +369,33 @@ body {
   border-right: 0;
 }
 
+.hero-stat {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  /* Padding, not margin: `.planx-site p` sets margin-top: 0 at a higher specificity. */
+  padding-top: 40px;
+}
+
+.hero-stat strong {
+  color: var(--px-green);
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.hero-stat span {
+  color: var(--px-muted);
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .manifesto {
   position: relative;
   overflow: hidden;
@@ -773,26 +800,6 @@ body {
   flex-wrap: wrap;
   align-items: center;
   gap: 26px;
-}
-
-.support-stat,
-.hero-stat {
-  margin: 0;
-  color: var(--px-muted);
-  font-size: 0.7rem;
-  letter-spacing: 0.01em;
-}
-
-.support-stat strong,
-.hero-stat strong {
-  color: var(--px-green);
-  font-weight: 700;
-}
-
-.hero-stat {
-  position: relative;
-  z-index: 2;
-  margin-top: 26px;
 }
 
 .faq {

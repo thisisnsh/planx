@@ -6,7 +6,7 @@ const copied = ref(false);
 const installCommand = 'npm install --global @thisisnsh/planx';
 
 const repoUrl = 'https://github.com/thisisnsh/planx';
-const downloads = ref<string | null>(null);
+const downloads = ref<number | null>(null);
 
 // The first @thisisnsh/planx release. Downloads before this date do not exist.
 const firstPublish = '2026-08-01';
@@ -50,7 +50,7 @@ async function fetchTotalDownloads(): Promise<number> {
 onMounted(async () => {
   try {
     const total = await fetchTotalDownloads();
-    if (total > 0) downloads.value = total.toLocaleString('en-US');
+    if (total > 0) downloads.value = total;
   } catch {
     // The count is supporting detail; leave it out rather than showing an error.
     downloads.value = null;
@@ -268,7 +268,8 @@ function closeMenu(): void {
           </div>
 
           <p v-if="downloads" class="hero-stat">
-            <strong>{{ downloads }}</strong> downloads on npm
+            <strong>{{ downloads.toLocaleString('en-US') }}</strong>
+            <span>Downloads</span>
           </p>
         </div>
 
@@ -513,9 +514,6 @@ function closeMenu(): void {
             <a class="button button-primary" :href="repoUrl">
               <span aria-hidden="true">★</span> Star on GitHub
             </a>
-            <p v-if="downloads" class="support-stat">
-              <strong>{{ downloads }}</strong> downloads on npm
-            </p>
           </div>
         </div>
       </section>
