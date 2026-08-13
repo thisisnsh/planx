@@ -721,6 +721,80 @@ body {
   font: 700 0.69rem/1.4 var(--px-mono);
 }
 
+.support {
+  padding-block: 120px;
+  border-bottom: 1px solid var(--px-line);
+}
+
+.support-card {
+  position: relative;
+  overflow: hidden;
+  padding: 68px 72px;
+  border: 1px solid rgba(255, 212, 0, 0.32);
+  background:
+    radial-gradient(ellipse at 78% 0%, rgba(255, 212, 0, 0.12), transparent 58%), var(--px-panel);
+}
+
+.support-card::after {
+  position: absolute;
+  top: -46%;
+  right: -2%;
+  color: rgba(255, 212, 0, 0.06);
+  content: '★';
+  font-size: 30rem;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.support-card h2 {
+  position: relative;
+  z-index: 1;
+  max-width: 780px;
+  margin-bottom: 22px;
+  font-size: clamp(1.7rem, 2.9vw, 2.9rem);
+  line-height: 1.12;
+  letter-spacing: -0.055em;
+}
+
+.support-card > p {
+  position: relative;
+  z-index: 1;
+  max-width: 640px;
+  margin: 0 0 38px;
+  color: var(--px-muted);
+  font-size: 0.8rem;
+  line-height: 1.8;
+}
+
+.support-actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 26px;
+}
+
+.support-stat,
+.hero-stat {
+  margin: 0;
+  color: var(--px-muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.01em;
+}
+
+.support-stat strong,
+.hero-stat strong {
+  color: var(--px-green);
+  font-weight: 700;
+}
+
+.hero-stat {
+  position: relative;
+  z-index: 2;
+  margin-top: 26px;
+}
+
 .faq {
   display: grid;
   grid-template-columns: 0.58fr 1.42fr;
@@ -950,6 +1024,18 @@ body {
   .faq {
     gap: 45px;
   }
+
+  .support {
+    padding-block: 90px;
+  }
+
+  .support-card {
+    padding: 48px 40px;
+  }
+
+  .support-card::after {
+    font-size: 20rem;
+  }
 }
 
 @media (max-width: 700px) {
@@ -1080,6 +1166,24 @@ body {
 
   .install-panel {
     box-shadow: 12px 12px 0 rgba(12, 66, 47, 0.2);
+  }
+
+  .support {
+    padding-block: 72px;
+  }
+
+  .support-card {
+    padding: 40px 26px;
+  }
+
+  .support-card::after {
+    display: none;
+  }
+
+  .support-actions {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 18px;
   }
 
   .command {

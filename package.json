@@ -45,6 +45,7 @@
     "test:watch": "vitest",
     "docs:dev": "vitepress dev site",
     "docs:build": "vitepress build site",
+    "docs:og": "node scripts/generate-og.js",
     "release:staging": "node scripts/release-staging.js",
     "remove:staging": "node scripts/remove-staging.js",
     "postinstall": "node scripts/postinstall.js",

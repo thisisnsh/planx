@@ -1,9 +1,61 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onMounted, ref } from 'vue';
 
 const menuOpen = ref(false);
 const copied = ref(false);
 const installCommand = 'npm install --global @thisisnsh/planx';
+
+const repoUrl = 'https://github.com/thisisnsh/planx';
+const downloads = ref<string | null>(null);
+
+// The first @thisisnsh/planx release. Downloads before this date do not exist.
+const firstPublish = '2026-08-01';
+
+function shiftMonths(date: Date, months: number): Date {
+  const next = new Date(date);
+  next.setUTCMonth(next.getUTCMonth() + months);
+  return next;
+}
+
+function isoDay(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+// npm's point endpoint silently clamps any range longer than 18 months, so walk
+// the package lifetime in shorter windows and add the results together.
+async function fetchTotalDownloads(): Promise<number> {
+  const today = new Date();
+  let cursor = new Date(`${firstPublish}T00:00:00Z`);
+  let total = 0;
+
+  while (cursor <= today) {
+    const windowEnd = shiftMonths(cursor, 12);
+    const end = windowEnd > today ? today : windowEnd;
+
+    const response = await fetch(
+      `https://api.npmjs.org/downloads/point/${isoDay(cursor)}:${isoDay(end)}/@thisisnsh/planx`,
+    );
+    if (!response.ok) throw new Error(`npm registry responded ${response.status}`);
+
+    const payload = (await response.json()) as { downloads?: number };
+    total += payload.downloads ?? 0;
+
+    cursor = new Date(end);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  return total;
+}
+
+onMounted(async () => {
+  try {
+    const total = await fetchTotalDownloads();
+    if (total > 0) downloads.value = total.toLocaleString('en-US');
+  } catch {
+    // The count is supporting detail; leave it out rather than showing an error.
+    downloads.value = null;
+  }
+});
 
 const faq = [
   {
@@ -189,8 +241,8 @@ function closeMenu(): void {
         <a href="#features" @click="closeMenu">Features</a>
         <a href="#install" @click="closeMenu">Install</a>
         <a href="#faq" @click="closeMenu">FAQ</a>
-        <a class="github-link" href="https://github.com/thisisnsh/planx">
-          GitHub <span aria-hidden="true">↗</span>
+        <a class="github-link" :href="repoUrl">
+          <span aria-hidden="true">★</span> Star on GitHub
         </a>
       </nav>
     </header>
@@ -210,10 +262,14 @@ function closeMenu(): void {
           </p>
           <div class="hero-actions">
             <a class="button button-primary" href="#install">Install PlanX</a>
-            <a class="button button-quiet" href="https://github.com/thisisnsh/planx">
-              View on GitHub <span aria-hidden="true">↗</span>
+            <a class="button button-quiet" :href="repoUrl">
+              <span aria-hidden="true">★</span> Star on GitHub
             </a>
           </div>
+
+          <p v-if="downloads" class="hero-stat">
+            <strong>{{ downloads }}</strong> downloads on npm
+          </p>
         </div>
 
         <div class="hero-art">
@@ -445,6 +501,25 @@ function closeMenu(): void {
         </div>
       </section>
 
+      <section class="support section-shell" aria-labelledby="support-title">
+        <div class="support-card">
+          <p class="section-label">Support the project</p>
+          <h2 id="support-title">If PlanX saved you from a plan you didn't read, star it.</h2>
+          <p>
+            PlanX is free, MIT licensed, and built in the open. A star is the clearest signal that
+            this workflow is worth continuing, and it is how most people find the project.
+          </p>
+          <div class="support-actions">
+            <a class="button button-primary" :href="repoUrl">
+              <span aria-hidden="true">★</span> Star on GitHub
+            </a>
+            <p v-if="downloads" class="support-stat">
+              <strong>{{ downloads }}</strong> downloads on npm
+            </p>
+          </div>
+        </div>
+      </section>
+
       <section id="faq" class="faq section-shell" aria-labelledby="faq-title">
         <div class="faq-heading">
           <p class="section-label">PlanX FAQ</p>
@@ -468,6 +543,7 @@ function closeMenu(): void {
           <a href="https://www.npmjs.com/package/@thisisnsh/planx">npm</a>
           <a href="https://github.com/thisisnsh/planx/blob/main/CONTRIBUTING.md">Contribute</a>
           <a href="https://github.com/thisisnsh/planx">GitHub</a>
+          <a :href="repoUrl">Star the repo ★</a>
         </nav>
       </div>
       <div class="footer-meta section-shell">
