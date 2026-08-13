@@ -7,7 +7,7 @@ Production is never published by hand.
 | Trigger | Publishes | npm tag | Who gets it |
 | --- | --- | --- | --- |
 | `npm run release:staging` (local) | `1.2.0-staging.47` | `staging` | `@staging` installers, dogfooding |
-| `npm run remove:staging <n>` (local) | unpublishes `1.2.0-staging.<n>` | `staging` repointed | — |
+| `npm run remove:staging <n>` (local) | unpublishes `1.2.0-staging.<n>`, or all of them with `--all` | `staging` repointed | — |
 | GitHub Release published | `1.2.0` | `latest` | everyone |
 
 **Merging to `main` publishes nothing.** Most merges are not a build anyone
@@ -51,17 +51,22 @@ A broken dogfood build should not stay installable:
 ```bash
 npm run remove:staging 47            # or the full 1.2.0-staging.47
 npm run remove:staging               # lists what is published
+npm run remove:staging -- --all      # every published staging build
 ```
 
 It only accepts `<base>-staging.<n>`, so it cannot be pointed at a real release
-whatever you type after it, and it confirms before deleting. After the
-unpublish it repoints the `staging` tag at the newest surviving staging build,
-or removes the tag if that was the last one — a tag pointing at a version that
-no longer exists makes `npm install @thisisnsh/planx@staging` fail outright.
+whatever you type after it, and it confirms before deleting — `--all` asks you
+to type `yes` in full, and refuses outright if that would take the package's
+last published version with it. After the unpublish it repoints the `staging`
+tag at the newest surviving staging build, or removes the tag if that was the
+last one — a tag pointing at a version that no longer exists makes
+`npm install @thisisnsh/planx@staging` fail outright.
 
 Unpublishing only works within 72 hours of the publish. After that, deprecate
-the version instead. Either way npm never accepts that version number again, so
-the next `release:staging` moves on to `-staging.<n+1>`.
+the version instead. `--all` therefore usually clears only the recent builds
+and reports the rest as still published, with the `npm deprecate` line for each.
+Either way npm never accepts a removed version number again, so the next
+`release:staging` moves on to `-staging.<n+1>` rather than refilling the gap.
 
 ## 3. Cutting a release
 
