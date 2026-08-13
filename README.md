@@ -19,9 +19,8 @@ versioned artifact you can actually review:
 - Edit what is already decided.
 - Execute only the version you approve.
 
-If PlanX makes a plan easier to review,
-[star the repo](https://github.com/thisisnsh/planx) — it is the clearest signal
-that this workflow is worth continuing.
+If PlanX makes a plan easier for you to review,
+[star the repo](https://github.com/thisisnsh/planx).
 
 ## Install
 
