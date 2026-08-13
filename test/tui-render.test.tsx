@@ -2889,7 +2889,7 @@ describe('the defaults screen', () => {
     expect(frame).toContain('execute');
     expect(frame).toContain('(not set)');
     // The prompt is spelt for the agent the stored command actually runs.
-    expect(frame).toContain('Runs: codex exec --full-auto "\\$planx revise <id>"');
+    expect(frame).toContain('Runs: codex exec --full-auto "\\$planx revise <id> v<n>"');
     expect(frame).toContain('Your own command for the revise hand-off.');
     expect(frame).toContain('↑↓ choose');
     expect(frame).toContain('⌫ clear');
@@ -2928,7 +2928,7 @@ describe('the defaults screen', () => {
     await app.press(ESC);
 
     await waitFor(() => app.stdout.lastFrame.includes('⌫ clear'));
-    expect(app.stdout.lastFrame).toContain('Runs: codex exec "\\$planx revise <id>"');
+    expect(app.stdout.lastFrame).toContain('Runs: codex exec "\\$planx revise <id> v<n>"');
     expect(app.saves).toEqual([]);
     app.unmount();
   });

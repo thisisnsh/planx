@@ -3,6 +3,8 @@ import type { EditRecord, Feedback } from '../store/types.js';
 interface PresentOptions {
   planId: string;
   version: number;
+  /** The stored version, verbatim — the text the next version is edited from. */
+  text: string;
   feedback: Feedback[];
   /** Lines the reviewer rewrote in place, as the version records them. */
   edits?: readonly EditRecord[];
@@ -40,13 +42,15 @@ export interface CarriedComment {
  * reviewer now hands over a command instead, so the same payload is assembled
  * on demand.
  *
- * Not the plan itself. It used to emit the whole thing as a fenced skeleton on
- * every call, which for a plan of any size dwarfed the feedback it exists to
- * deliver — and the agent that wrote the plan already has it. What survives is
- * the quoted lines each comment is anchored to: one to three lines apiece, and
- * the only thing that makes a line number mean anything after a revision has
- * moved it. A session that genuinely does not have the plan runs
- * `planx show <id> --plain`.
+ * The plan comes with it, verbatim. It used to be left out — the agent that
+ * wrote the plan already has it, and re-sending it costs more than the feedback
+ * this exists to deliver. But an agent working from the copy in its context
+ * retypes the plan into `capture`, and retyped prose comes back re-wrapped:
+ * paragraphs nobody touched land in the reviewer's diff with their line breaks
+ * moved. The diff is the product here, so a few thousand tokens a round is the
+ * cheaper side of that trade. The quoted lines each comment is anchored to stay
+ * as well — they are what makes a line number mean anything once a revision has
+ * moved it.
  */
 export function presentResume(opts: ResumeOptions): string {
   const edits = collapseEdits(opts.edits ?? []);
@@ -57,6 +61,7 @@ export function presentResume(opts: ResumeOptions): string {
     const out = [
       `## planx — ${opts.planId} v${opts.version}`,
       '',
+      ...planSection(opts),
       `No review of v${opts.version} yet. Ask the user to run \`planx\` and review it,`,
       'then to paste back the command it prints. Do not revise in the meantime —',
       'there is nothing to revise towards.',
@@ -69,7 +74,7 @@ export function presentResume(opts: ResumeOptions): string {
     return out.join('\n');
   }
 
-  const out: string[] = [`## planx — ${opts.planId} v${opts.version}`, ''];
+  const out: string[] = [`## planx — ${opts.planId} v${opts.version}`, '', ...planSection(opts)];
 
   // Above what was asked: this is the one part of the review that is already
   // settled, and reading it first is what stops the agent rewriting it.
@@ -109,6 +114,40 @@ export function presentResume(opts: ResumeOptions): string {
   out.push(`${lead} Then run:`);
   out.push(`  planx capture --plan-id ${opts.planId} --parent v${opts.version} --stdin`, '');
   return out.join('\n');
+}
+
+/**
+ * The stored version, to edit from.
+ *
+ * Fenced and byte-exact, because the next version is this text with the asked-for
+ * changes made to it — not this text rewritten from memory. The instruction above
+ * the fence is about line breaks specifically: an agent re-emitting a paragraph
+ * it did not touch will re-wrap it, and every moved break is a row the reviewer
+ * has to read in a diff that promised to show them what changed.
+ */
+function planSection(opts: PresentOptions): string[] {
+  return [
+    `### The plan as it stands (v${opts.version})`,
+    '',
+    'Edit this text. Every line you are not changing comes through byte for byte —',
+    'same words, same line breaks, same wrapping. Re-wrap only the paragraphs you',
+    'actually rewrote.',
+    '',
+    ...fenced(opts.text, 'markdown'),
+    '',
+  ];
+}
+
+/**
+ * A fenced block that survives its contents.
+ *
+ * Plans are full of ```ts blocks, so the fence has to be longer than the longest
+ * backtick run inside — the same problem `code` solves for one line.
+ */
+function fenced(text: string, info: string): string[] {
+  const longest = Math.max(2, ...[...text.matchAll(/`+/g)].map((m) => m[0].length));
+  const fence = '`'.repeat(longest + 1);
+  return [`${fence}${info}`, ...text.replace(/\r\n/g, '\n').replace(/\n$/, '').split('\n'), fence];
 }
 
 /**

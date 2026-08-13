@@ -28,7 +28,7 @@ export const DEFAULT_FIELDS: readonly DefaultField[] = [
     label: 'revise',
     summary: 'Your own command for the revise hand-off.',
     flag: '--revise',
-    sample: 'revise <id>',
+    sample: 'revise <id> v<n>',
   },
   {
     key: 'execute_command',

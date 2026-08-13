@@ -2,29 +2,33 @@
 
 Load a stored plan and implement it **in this session**.
 
-## Load it
+## Load it, with the feedback
 
 ```bash
-planx show <plan-id> [version] --plain
+planx revise <plan-id> v<n> --executing
 ```
 
-Defaults to the latest version, which is the one to build. If the user did not
-name a plan, run `planx list --json` and pick from the titles; if it is
-ambiguous, ask.
+Always, and before the first edit. One read returns both halves of what you are
+building: the plan itself, under `### The plan as it stands`, and every comment
+left on it. `--executing` is that same payload with a closing that says what you
+are doing — it never tells you to capture.
+
+**The version is required, and it is the one the user handed you.** `/planx
+execute <id> v<n>` names the version they reviewed and chose to build. Pass it
+through to every command here, this one and `planx executed` alike. Never
+substitute `latest`: a revise running in another session can capture a newer
+version between their review and your first edit, and building that one means
+building a plan nobody has read. If you arrived with no version at all, run
+`planx list --json`, take the latest, and say which version you are building.
+
+If the user did not name a plan, run `planx list --json` and pick from the
+titles; if it is ambiguous, ask.
 
 `Execute plan in a new session` starts an agent with none of the planning
 conversation in it, so that read is not optional — do it before anything else.
 Revising resumes the session that wrote the plan and already has it; executing
-does not.
-
-## Read the feedback
-
-```bash
-planx revise <plan-id> --executing
-```
-
-Always, and before the first edit. `--executing` is the same feedback with a
-closing that says what you are doing: it never tells you to capture.
+does not. (`planx show <plan-id> v<n> --plain` returns the plan on its own,
+without the feedback. Executing wants both, so it is not the one to reach for.)
 
 If it says **no review yet**, say so in one line and ask whether to proceed
 anyway — an unreviewed plan running by accident is exactly what planx exists to
@@ -38,8 +42,8 @@ with these. Address each one in the code as you implement the plan around it.
   about the whole plan, so it is a constraint on the whole build rather than a
   comment on one line.
 - The **edited lines** under `### Edited by the reviewer` are already in the
-  text `planx show` returned. They are what the reviewer settled on, not work to
-  do — reproduce them, do not re-litigate them.
+  plan text above them. They are what the reviewer settled on, not work to do —
+  build them, do not re-litigate them.
 - A comment that **asks a question** is answered in the chat, not built.
 - A comment that cannot be satisfied without changing the plan is where you stop
   and say so. That is a planning round, and it goes back through review.

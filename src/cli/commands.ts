@@ -263,8 +263,7 @@ export function cmdCapture(ctx: Ctx): number {
  * from the store on demand — one read, no waiting, safe to run twice.
  */
 export function cmdRevise(ctx: Ctx): number {
-  const id = resolvePlanRef(requirePositional(ctx, 0, 'planx revise <id> [version]'));
-  const version = resolveVersionRef(id, ctx.args.positionals[1]);
+  const { id, version } = requirePlanAndVersion(ctx, 'planx revise <id> <version> [--executing]');
   const text = requireVersionText(id, version);
 
   const history = listFeedback(id);
@@ -277,7 +276,7 @@ export function cmdRevise(ctx: Ctx): number {
   const edits = collapseEdits(readVersions(id).versions.find((v) => v.n === version)?.edits ?? []);
 
   if (ctx.json) {
-    ctx.out(JSON.stringify({ plan_id: id, version, feedback, carried, edits }, null, 2));
+    ctx.out(JSON.stringify({ plan_id: id, version, text, feedback, carried, edits }, null, 2));
     return 0;
   }
 
@@ -285,6 +284,7 @@ export function cmdRevise(ctx: Ctx): number {
     presentResume({
       planId: id,
       version,
+      text,
       feedback,
       carried,
       edits,
@@ -304,8 +304,7 @@ export function cmdRevise(ctx: Ctx): number {
  * drawn as executed when it was not is worse than one drawn as not yet.
  */
 export function cmdExecuted(ctx: Ctx): number {
-  const id = resolvePlanRef(requirePositional(ctx, 0, 'planx executed <id> [version]'));
-  const version = resolveVersionRef(id, ctx.args.positionals[1]);
+  const { id, version } = requirePlanAndVersion(ctx, 'planx executed <id> <version>');
   markExecuted(id, version);
 
   if (ctx.json) {
@@ -552,9 +551,9 @@ function versionCommands(id: string, records: readonly VersionRecord[]): Command
       return launch && launchLine(launch);
     };
     out[record.n] = {
-      revise: line('revise', `/planx revise ${id}`),
+      revise: line('revise', `/planx revise ${id} v${record.n}`),
       execute: line('execute', `/planx execute ${id} v${record.n}`),
-      customRevise: custom(defaults.revise_command, `revise ${id}`),
+      customRevise: custom(defaults.revise_command, `revise ${id} v${record.n}`),
       customExecute: custom(defaults.execute_command, `execute ${id} v${record.n}`),
     };
   }
@@ -678,7 +677,7 @@ export function closingBlock(
 
   if (carried === true) {
     lines.push(
-      handOffLine('Revise this plan in your agent', `/planx revise ${planId}`, yellow),
+      handOffLine('Revise this plan in your agent', `/planx revise ${planId} v${version}`, yellow),
       handOffLine('Execute it in your agent', `/planx execute ${planId} v${version}`, blue),
     );
   } else if (carried === false) {
@@ -695,8 +694,7 @@ export function closingBlock(
 /* ---------------------------------------------------------------- show */
 
 export function cmdShow(ctx: Ctx): number {
-  const id = resolvePlanRef(requirePositional(ctx, 0, 'planx show <id> [version]'));
-  const version = resolveVersionRef(id, ctx.args.positionals[1]);
+  const { id, version } = requirePlanAndVersion(ctx, 'planx show <id> <version>');
   const text = requireVersionText(id, version);
 
   if (ctx.json) {
@@ -979,6 +977,32 @@ function requirePositional(ctx: Ctx, index: number, usage: string): string {
   const value = ctx.args.positionals[index];
   if (!value) throw new Error(`planx: missing argument.\n  usage: ${usage}`);
   return value;
+}
+
+/**
+ * The version, named rather than assumed.
+ *
+ * Defaulting to latest is the wrong default for the agent protocol. Every one of
+ * these commands arrives as a line the reviewer copied out of a review of one
+ * particular version, and by the time it runs the plan may have another — a
+ * revise that captured while the user was reading, a second agent on the same
+ * plan. An omitted version silently retargets the newest, which is how an agent
+ * ends up building a version nobody reviewed.
+ *
+ * `latest` still resolves; it just has to be said. Naming it is a decision, and
+ * a decision is what was missing.
+ */
+function requirePlanAndVersion(ctx: Ctx, usage: string): { id: string; version: number } {
+  const id = resolvePlanRef(requirePositional(ctx, 0, usage));
+  const ref = ctx.args.positionals[1];
+  if (!ref) {
+    throw new Error(
+      `planx: missing version.\n  usage: ${usage}\n` +
+        `  name the version you mean — \`v${latestVersion(id)}\` is the newest of ${id}.\n` +
+        '  `latest` works too, when latest is genuinely what you want.',
+    );
+  }
+  return { id, version: resolveVersionRef(id, ref) };
 }
 
 export function ago(iso: string): string {

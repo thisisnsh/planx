@@ -5,17 +5,26 @@ The user has reviewed a version and passed the command back. Pick it up.
 ## 1. Read what they asked for
 
 ```bash
-planx revise <plan-id>
+planx revise <plan-id> v<n>
 ```
 
-One read with everything asked of the plan: the comments, quoted against the
-lines they refer to, every line the user rewrote by hand, and anything still
-unaddressed from an earlier version. It waits for nothing and is safe to run
-twice.
+**The version is required, and it is the one the user handed you.** The command
+they pasted names it. Pass that version through unchanged — do not drop it, and
+do not substitute `latest`: a plan can gain a version between the review and
+this command, and `latest` would quietly point you at one nobody reviewed. If
+you genuinely arrived here with no version — the user typed `/planx revise <id>`
+from scratch — run `planx list --json`, take the latest from it, and say which
+version you are working on in your reply.
 
-It does **not** return the plan. You wrote it, so you have it. If you no longer
-have it in context, run `planx show <plan-id> --plain` — do not assume `revise`
-will hand it to you.
+One read with everything asked of the plan: the stored version verbatim, the
+comments quoted against the lines they refer to, every line the user rewrote by
+hand, and anything still unaddressed from an earlier version. It waits for
+nothing and is safe to run twice.
+
+**Revise the text it returns, not the copy in your context.** The two are not
+the same document even when they say the same thing — yours has been through
+your own paraphrase of it. Work from the fenced text under
+`### The plan as it stands`.
 
 If it says **no review yet**, stop and tell the user. Do not revise — there is
 nothing to revise towards.
@@ -54,10 +63,20 @@ liberally, and nothing deeper — those three are exactly what the review can
 fold, and flattening a structured plan into long `##` runs takes the folds away
 from the reader who was using them.
 
-**Hard-wrap the plan to 80 physical characters per line.** This applies to the
-captured plan only, not conversation in chat. Preserve indentation, headings,
-fences and list structure; prefer vertical lists to wide tables; split a command
-or a code line only where its syntax stays valid.
+**A line you are not changing keeps the bytes it already has.** Same words, same
+line breaks, same wrapping, same blank lines around it. The user reads the next
+version as a diff against this one, so anything you re-emit differently is a row
+they have to read and rule out. A paragraph whose words you did not change must
+not come back re-wrapped — that is the most common way to fill a diff with
+nothing.
+
+**Hard-wrap to 80 physical characters, and re-wrap only what you rewrote.** The
+80-column rule governs lines you are writing; it is not licence to re-flow a
+paragraph that already satisfies it. When an edit does force a re-wrap, keep it
+inside the paragraph you edited rather than letting it run on into the next one.
+This applies to the captured plan only, not conversation in chat. Preserve
+indentation, headings, fences and list structure; prefer vertical lists to wide
+tables; split a command or a code line only where its syntax stays valid.
 
 ## 3. Capture it
 

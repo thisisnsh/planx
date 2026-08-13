@@ -218,16 +218,49 @@ describe('the review hand-off across two processes', () => {
     expect(result.stdout).toContain(`planx capture --plan-id ${id} --parent v1 --stdin`);
   });
 
-  it('carries the feedback and the lines it quotes, but not the plan', async () => {
+  it('carries the plan, the feedback, and the lines it quotes', async () => {
     const id = await seed();
     review(id, 1, { comments: [[3, 3, 'Say more here.']] });
 
     const result = await cli.run(['revise', id, 'v1']);
     expect(result.stdout).toContain('Say more here.');
     expect(result.stdout).toContain('> ## Context');
-    expect(result.stdout).not.toContain('The plan as it stands');
-    // A session that genuinely does not have the plan asks for it.
-    expect((await cli.run(['show', id, 'v1', '--plain'])).stdout).toContain('## Rollout');
+    // The plan itself, so the next version is edited from these bytes rather
+    // than retyped — and the quotes stay, to place the comments against it.
+    expect(result.stdout).toContain('### The plan as it stands (v1)');
+    expect(result.stdout).toContain('## Rollout');
+  });
+
+  /**
+   * The version is the whole point of the hand-off line. A command copied out
+   * of a review of v2 that resolves to "whatever is newest" builds v3 the
+   * moment another session captures one — so an omitted version is an error,
+   * and `latest` is available for saying it on purpose.
+   */
+  it('refuses to guess the version on the agent commands', async () => {
+    const id = await seed();
+    await cli.run(['capture', '--plan-id', id, '--parent', 'v1', '--stdin'], PLAN_V2);
+
+    for (const command of [
+      ['revise', id],
+      ['show', id],
+      ['executed', id],
+    ]) {
+      const result = await cli.run(command);
+      expect(result.code, command.join(' ')).not.toBe(0);
+      expect(result.stderr).toContain('missing version');
+      // Naming the newest is what makes the error actionable rather than a rule.
+      expect(result.stderr).toContain('`v2` is the newest');
+    }
+  });
+
+  it('takes an explicit latest, and a version by name', async () => {
+    const id = await seed();
+    await cli.run(['capture', '--plan-id', id, '--parent', 'v1', '--stdin'], PLAN_V2);
+
+    expect((await cli.run(['show', id, 'latest', '--plain'])).code).toBe(0);
+    expect((await cli.run(['revise', id, 'v1'])).stdout).toContain('v1');
+    expect((await cli.run(['executed', id, 'v2'])).stdout).toContain('v2');
   });
 
   it('says there is nothing to revise towards before any review', async () => {

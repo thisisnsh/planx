@@ -189,6 +189,7 @@ describe('what the agent sees', () => {
     return presentResume({
       planId,
       version,
+      text,
       feedback: history.filter((f) => f.version === version),
       carried: carriedOver(history, version, text),
     });
@@ -354,8 +355,8 @@ describe('the review hand-off', () => {
     expect(handOffLine('Reopen it in your terminal', 'planx guard-clock-a3f9 v3')).toBe(
       'Reopen it in your terminal:  planx guard-clock-a3f9 v3',
     );
-    expect(handOffLine('Revise this plan in your agent', '/planx revise guard-clock-a3f9')).toBe(
-      'Revise this plan in your agent:  /planx revise guard-clock-a3f9',
+    expect(handOffLine('Revise this plan in your agent', '/planx revise guard-clock-a3f9 v3')).toBe(
+      'Revise this plan in your agent:  /planx revise guard-clock-a3f9 v3',
     );
   });
 
@@ -393,7 +394,7 @@ describe('the review hand-off', () => {
     setColorEnabled(false);
     expect(closingBlock('guard-clock-a3f9', 3, true)).toEqual([
       'Reopen it in your terminal:  planx guard-clock-a3f9 v3',
-      'Revise this plan in your agent:  /planx revise guard-clock-a3f9',
+      'Revise this plan in your agent:  /planx revise guard-clock-a3f9 v3',
       'Execute it in your agent:  /planx execute guard-clock-a3f9 v3',
       '',
     ]);
@@ -403,7 +404,7 @@ describe('the review hand-off', () => {
     setColorEnabled(false);
     expect(closingBlock('guard-clock-a3f9', 3, true, 'Copied to your clipboard.')).toEqual([
       'Reopen it in your terminal:  planx guard-clock-a3f9 v3',
-      'Revise this plan in your agent:  /planx revise guard-clock-a3f9',
+      'Revise this plan in your agent:  /planx revise guard-clock-a3f9 v3',
       'Execute it in your agent:  /planx execute guard-clock-a3f9 v3',
       'Copied to your clipboard.',
       '',
@@ -430,7 +431,7 @@ describe('the review hand-off', () => {
     expect(reopen).not.toContain(`\x1b[2mplanx guard-clock-a3f9 v3\x1b[22m`);
     // Truecolor, not a palette slot: planx has one yellow and one blue, and
     // they are the same wherever they are drawn.
-    expect(revise).toContain(yellow('/planx revise guard-clock-a3f9'));
+    expect(revise).toContain(yellow('/planx revise guard-clock-a3f9 v3'));
     expect(execute).toContain(blue('/planx execute guard-clock-a3f9 v3'));
     expect(revise).toContain('\x1b[38;2;255;212;0m');
     // The labels are grey on every line, so the command is what stands out.

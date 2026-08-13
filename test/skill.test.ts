@@ -9,6 +9,7 @@ const SKILL_DIR = join(ROOT, 'skills', 'planx');
 const router = readFileSync(join(SKILL_DIR, 'SKILL.md'), 'utf8');
 const plan = readFileSync(join(SKILL_DIR, 'references', 'plan.md'), 'utf8');
 const revise = readFileSync(join(SKILL_DIR, 'references', 'revise.md'), 'utf8');
+const execute = readFileSync(join(SKILL_DIR, 'references', 'execute.md'), 'utf8');
 const handoff = 'Plan created. Exit the agent, then run `planx <plan-id> v<n>`';
 
 // There is no size budget here on purpose. File size was the wrong proxy for
@@ -88,8 +89,12 @@ describe('the shipped planx skill', () => {
   });
 
   it('keeps the incremental revision safety contracts', () => {
-    expect(revise).toContain('planx revise <plan-id>');
-    expect(revise).toContain('planx show <plan-id> --plain');
+    expect(revise).toContain('planx revise <plan-id> v<n>');
+    // The version is the reviewed one, carried through. Resolving it to latest
+    // is how an agent revises a version nobody has read.
+    expect(revise).toContain('The version is required, and it is the one the user handed you');
+    expect(revise).toContain('do not substitute `latest`');
+    expect(revise).toContain('The plan as it stands');
     expect(revise).toContain('no review yet');
     expect(revise).toContain('reviewed with nothing to change');
     expect(revise).toContain('--parent v<n> --stdin');
@@ -97,9 +102,32 @@ describe('the shipped planx skill', () => {
     expect(revise).toContain('$CODEX_THREAD_ID');
     expect(revise).toContain('captured plan only, not conversation');
     expect(revise).toContain('80 physical');
+    // The wrap rule on its own reads as licence to re-wrap anything, which
+    // fills the diff the whole tool exists to show with untouched paragraphs.
+    expect(revise).toContain('keeps the bytes it already has');
+    expect(revise).toContain('re-wrap only what you rewrote');
     expect(revise).toContain('Do not summarise them back to the user');
     expect(revise).toContain('still unaddressed from earlier versions');
     expect(revise.match(/Plan created\. Exit/gu)).toHaveLength(1);
+  });
+
+  /**
+   * `planx revise|show|executed` all require a version now, and the reviewed
+   * version is the one to pass. An agent that drops it or reaches for `latest`
+   * builds whatever was captured most recently, which on a plan with a revise
+   * running elsewhere is a version nobody has read.
+   */
+  it('carries the reviewed version through every branch that has one', () => {
+    expect(router).toContain('A version in the invocation travels with it');
+    expect(router).toContain('Nothing on any branch defaults to latest');
+
+    expect(execute).toContain('planx revise <plan-id> v<n> --executing');
+    expect(execute).toContain('planx executed <plan-id> v<n>');
+    expect(execute).toContain('Never\nsubstitute `latest`');
+    // One read for the build: the plan and the feedback arrive together, so
+    // execute does not also load the plan through `show`.
+    expect(execute).toContain('The plan as it stands');
+    expect(execute).not.toMatch(/^planx show/mu);
   });
 
   it('hands review to the terminal as the last agent output', () => {

@@ -4,7 +4,7 @@ description: >-
   Plan something as a reviewable artifact the user annotates, or revise or
   execute a plan they already have. Use for /planx and anything mentioning
   planx.
-argument-hint: <task> | revise <id> | execute <id>
+argument-hint: <task> | revise <id> v<n> | execute <id> v<n>
 ---
 
 # planx
@@ -24,6 +24,11 @@ Match on what followed `/planx`:
 | `/planx <anything else>` | read `references/plan.md` |
 
 Read only the file for the branch you took.
+
+**A version in the invocation travels with it.** `revise` and `execute` both
+arrive as `<id> v<n>` — the version the user reviewed. Every planx command you
+run on that branch names it. Nothing on any branch defaults to latest, because
+latest can move between the review and the command.
 
 Bare `/planx` does not print a menu of the branches. The `argument-hint` in the
 front matter already showed them, in the slash menu, before enter was pressed —

@@ -35,11 +35,21 @@ function reviseText(planId: string, version: number, executing = false): string 
   return presentResume({
     planId,
     version,
+    text,
     feedback: history.filter((f) => f.version === version),
     carried: carriedOver(history, version, text),
     edits: readVersions(planId).versions.find((v) => v.n === version)?.edits ?? [],
     executing,
   });
+}
+
+/** The plan back out of the fence `presentResume` wraps it in. */
+function fencedBody(out: string): string {
+  const lines = out.split('\n');
+  const open = lines.findIndex((line) => /^`{3,}markdown$/.test(line));
+  const fence = lines[open]!.replace('markdown', '');
+  const close = lines.indexOf(fence, open + 1);
+  return lines.slice(open + 1, close).join('\n');
 }
 
 function comment(planId: string, version: number, from: number, to: number, body: string) {
@@ -61,17 +71,47 @@ describe('revise', () => {
     expect(out).not.toContain('planx capture');
   });
 
-  // The agent that wrote the plan already has it, and for a plan of any size
-  // re-sending it dwarfs the feedback this exists to deliver.
-  it('sends the feedback and not the plan', () => {
+  // An agent revising from the copy in its context retypes the plan, and
+  // retyped prose comes back re-wrapped: paragraphs nobody touched land in the
+  // reviewer's diff with their line breaks moved. It gets the stored bytes.
+  it('sends the plan with the feedback', () => {
     const { planId, version } = capture({ text: PLAN, title: 'p' });
     comment(planId, version, 7, 7, 'Wrong layer.');
 
     const out = reviseText(planId, version);
-    expect(out).not.toContain('The plan as it stands');
-    expect(out).not.toContain('````');
+    expect(out).toContain('### The plan as it stands (v1)');
+    expect(out).toContain('same words, same line breaks, same wrapping');
     expect(out).toContain('Wrong layer.');
     expect(out).toContain(`planx capture --plan-id ${planId} --parent v1`);
+  });
+
+  it('reproduces the stored version byte for byte', () => {
+    const { planId, version } = capture({ text: PLAN, title: 'p' });
+    comment(planId, version, 7, 7, 'Wrong layer.');
+
+    const body = fencedBody(reviseText(planId, version));
+    expect(body).toBe(PLAN.replace(/\n$/, ''));
+  });
+
+  // A plan of any size has fenced code in it, and a three-backtick fence would
+  // close on the first one — handing back a plan that is truncated exactly
+  // where it stopped being copyable.
+  it('fences wide enough to survive the code blocks inside the plan', () => {
+    const withCode = `# Fences\n\n## Approach\n\n\`\`\`ts\nconst n = 1;\n\`\`\`\n\nDone.\n`;
+    const { planId, version } = capture({ text: withCode, title: 'p' });
+    comment(planId, version, 1, 1, 'Wrong layer.');
+
+    expect(fencedBody(reviseText(planId, version))).toBe(withCode.replace(/\n$/, ''));
+  });
+
+  // Nothing to revise towards still needs the plan: `--executing` takes this
+  // same branch on an unreviewed plan, and that agent is about to build it.
+  it('sends the plan even when no one has reviewed it', () => {
+    const { planId, version } = capture({ text: PLAN, title: 'p' });
+
+    const out = reviseText(planId, version);
+    expect(out).toContain('No review of v1 yet');
+    expect(fencedBody(out)).toBe(PLAN.replace(/\n$/, ''));
   });
 
   // The quoted lines are what make a line number mean anything once a revision
