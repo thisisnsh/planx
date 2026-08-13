@@ -40,6 +40,18 @@ describe('planSections', () => {
     expect(sections.map((s) => s.key)).toEqual(['elsewhere']);
   });
 
+  it('folds elsewhere behind the plans from here, and only when there are any', () => {
+    capture({ text: SAMPLE_PLAN, source: 'test', cwd: '/elsewhere' });
+
+    // On its own it is the list, so there is nothing to fold it behind.
+    expect(planSections().find((s) => s.key === 'elsewhere')!.defaultCollapsed).toBe(false);
+
+    capture({ text: SAMPLE_PLAN.replace('10%', '20%'), source: 'test', cwd: process.cwd() });
+    const sections = planSections();
+    expect(sections.find((s) => s.key === 'here')!.defaultCollapsed).toBeUndefined();
+    expect(sections.find((s) => s.key === 'elsewhere')!.defaultCollapsed).toBe(true);
+  });
+
   it('shows the directory, not the id, in the hint for an elsewhere plan', () => {
     capture({ text: SAMPLE_PLAN, source: 'test', cwd: '/elsewhere' });
 

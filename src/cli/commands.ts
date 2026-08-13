@@ -150,6 +150,12 @@ export function planSections(): Array<PickerSection<PlanChoice>> {
           {
             key: 'elsewhere',
             label: 'Elsewhere',
+            // Every plan planx has ever stored, in front of the handful from
+            // the directory you are standing in: the list opens on the plans
+            // for the work in hand, and `→` is one key away from the rest.
+            // With nothing captured here there is nothing to fold behind, so
+            // the section is the list and opens as one.
+            defaultCollapsed: here.length > 0,
             items: elsewhere,
           } satisfies PickerSection<PlanChoice>,
         ]

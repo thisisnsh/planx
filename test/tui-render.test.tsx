@@ -3236,17 +3236,18 @@ describe('the picker says what was built', () => {
   });
 });
 
-describe('the picker grouped into sections', () => {
-  function planIn(id: string, label: string): PickerItem<Pick> {
-    return {
-      value: { id, version: 1, row: 'plan' },
-      label,
-      hint: '1h ago',
-      searchable: id,
-      deleteAs: id,
-    };
-  }
+/** A leaf plan row, for the tests about grouping rather than versions. */
+function planIn(id: string, label: string): PickerItem<Pick> {
+  return {
+    value: { id, version: 1, row: 'plan' },
+    label,
+    hint: '1h ago',
+    searchable: id,
+    deleteAs: id,
+  };
+}
 
+describe('the picker grouped into sections', () => {
   it('draws a header above each populated section', async () => {
     const app = mountPicker([
       { key: 'here', label: 'This directory', items: [planIn('guard-clock', 'Guard the clock')] },
@@ -3338,6 +3339,178 @@ describe('the picker grouped into sections', () => {
     expect(app.stdout.lastFrame).toContain('Alpha plan');
     expect(app.stdout.lastFrame).not.toContain('Elsewhere');
     expect(app.stdout.lastFrame).not.toContain('Beta plan');
+    app.unmount();
+  });
+});
+
+describe('folding a picker section', () => {
+  /** One plan here, two elsewhere — enough for a fold to be worth drawing. */
+  function twoSections(defaultCollapsed = false): Array<PickerSection<Pick>> {
+    return [
+      { key: 'here', label: 'This directory', items: [planIn('guard-clock', 'Guard the clock')] },
+      {
+        key: 'elsewhere',
+        label: 'Elsewhere',
+        defaultCollapsed,
+        items: [planIn('rail-frame', 'The annotation rail'), planIn('beta-plan', 'Beta plan')],
+      },
+    ];
+  }
+
+  /**
+   * The row the cursor is on, or `undefined` on a folded header.
+   *
+   * A header carries no cursor column — the mark would sit two columns left of
+   * every other one on the screen — so it says where it is by being painted,
+   * and the bar's `→ show section` is what the tests below read instead.
+   */
+  function marked(frame: string): string | undefined {
+    return bodyRows(frame).find((row) => row.includes('❯'));
+  }
+
+  it('← folds the section the cursor is standing in, → brings it back', async () => {
+    const app = mountPicker(twoSections());
+    await app.ready();
+
+    // Onto a plan in the second section, which is the one being folded.
+    await app.press(DOWN);
+    await app.frame('The annotation rail');
+
+    await app.press(LEFT);
+    await app.frame('2 hidden');
+    expect(app.stdout.lastFrame).not.toContain('The annotation rail');
+    expect(app.stdout.lastFrame).not.toContain('Beta plan');
+    // The section above it is untouched: one fold, not all of them.
+    expect(app.stdout.lastFrame).toContain('Guard the clock');
+
+    // The rows it was standing on are gone, so the cursor lands on the one that
+    // now stands for them — the only header it can reach.
+    expect(marked(app.stdout.lastFrame)).toBeUndefined();
+    expect(app.stdout.lastFrame).toContain('→ show section');
+
+    await app.press(RIGHT);
+    await app.frame('The annotation rail');
+    expect(app.stdout.lastFrame).not.toContain('2 hidden');
+    // And onto the first row it brought back, not left on the header.
+    expect(marked(app.stdout.lastFrame)).toContain('The annotation rail');
+    app.unmount();
+  });
+
+  it('opens with a section already folded when it asks to be', async () => {
+    const app = mountPicker(twoSections(true));
+    await app.ready();
+
+    expect(app.stdout.lastFrame).toContain('Elsewhere');
+    expect(app.stdout.lastFrame).toContain('2 hidden');
+    expect(app.stdout.lastFrame).not.toContain('The annotation rail');
+    // The cursor opens on the plan that is here, not on the fold.
+    expect(marked(app.stdout.lastFrame)).toContain('Guard the clock');
+    app.unmount();
+  });
+
+  it('paints the folded header it is standing on, having no mark to put there', async () => {
+    setColorEnabled(true);
+    const app = mountPicker(twoSections(true));
+    await app.ready();
+    await app.press(DOWN);
+    await app.frame('→ show section');
+
+    const raw = app.stdout.frames.join('');
+    expect(raw).toMatch(/\x1b\[7m[^\n]*Elsewhere {2}2 hidden/);
+    setColorEnabled(false);
+    app.unmount();
+  });
+
+  it('says which way the fold goes, on the row it goes there from', async () => {
+    const app = mountPicker(twoSections(true));
+    await app.ready();
+    expect(app.stdout.lastFrame).toContain('← hide section');
+
+    // On the folded header the only direction left is open, and enter says the
+    // same thing rather than choosing a plan that is not there.
+    await app.press(DOWN);
+    await app.frame('→ show section');
+    expect(app.stdout.lastFrame).toContain('enter show section');
+    expect(app.stdout.lastFrame).not.toContain('enter open');
+    expect(app.stdout.lastFrame).not.toContain('← hide section');
+    app.unmount();
+  });
+
+  it('offers ← for one thing at a time: the versions, then the section', async () => {
+    const app = mountPicker([{ key: 'here', label: 'This directory', items: planItems() }]);
+    await app.ready();
+    expect(app.stdout.lastFrame).toContain('← hide section');
+
+    // With the versions open, ← is theirs.
+    await app.press(RIGHT);
+    await app.frame('← collapse');
+    expect(app.stdout.lastFrame).not.toContain('← hide section');
+
+    // Closing them hands the key back to the section, which is still standing.
+    await app.press(LEFT);
+    await app.frame('← hide section');
+    expect(app.stdout.lastFrame).not.toContain('v3');
+    expect(app.stdout.lastFrame).toContain('Guard the clock regression');
+    app.unmount();
+  });
+
+  it('offers no fold where there is no header to fold to', async () => {
+    const app = mountPicker(planRows());
+    await app.ready();
+
+    expect(app.stdout.lastFrame).not.toContain('← hide section');
+
+    // And ← on the unlabeled section does nothing rather than emptying the list.
+    const before = bodyRows(app.stdout.lastFrame);
+    await app.press(LEFT);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(bodyRows(app.stdout.lastFrame)).toEqual(before);
+    app.unmount();
+  });
+
+  it('enter on a folded header opens the section instead of picking nothing', async () => {
+    const app = mountPicker(twoSections(true));
+    await app.ready();
+
+    await app.press(DOWN);
+    await app.frame('→ show section');
+    await app.press(ENTER);
+    await app.frame('The annotation rail');
+
+    // The picker is still up: enter answered the header, not the question.
+    expect(app.stdout.lastFrame).toContain('Which plan?');
+    app.unmount();
+  });
+
+  it('reaches into a folded section to filter, and folds it again after', async () => {
+    const app = mountPicker(twoSections(true));
+    await app.ready();
+    expect(app.stdout.lastFrame).not.toContain('Beta plan');
+
+    // A match you cannot see is worse than a section you have to fold again.
+    await app.press('beta');
+    await app.frame('Beta plan');
+    expect(app.stdout.lastFrame).not.toContain('2 hidden');
+
+    for (let i = 0; i < 4; i++) await app.press(BACKSPACE);
+    await app.frame('2 hidden');
+    expect(app.stdout.lastFrame).not.toContain('Beta plan');
+    app.unmount();
+  });
+
+  it('steps over an open header and onto a folded one', async () => {
+    const app = mountPicker(twoSections(true));
+    await app.ready();
+
+    // Down from the last plan here lands on the fold, not past it.
+    await app.press(DOWN);
+    await app.frame('→ show section');
+    expect(marked(app.stdout.lastFrame)).toBeUndefined();
+
+    // And up goes back to the plan, stepping over "This directory".
+    await app.press(UP);
+    await app.frame('← hide section');
+    expect(marked(app.stdout.lastFrame)).toContain('Guard the clock');
     app.unmount();
   });
 });

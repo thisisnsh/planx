@@ -44,6 +44,13 @@ export interface PickerSection<T> {
   /** Dim divider row drawn above the section. Omitted entirely when the
    *  section has no label and is the only section (a plain flat list). */
   label?: string;
+  /**
+   * Open the list with this section folded to its header.
+   *
+   * Only honoured where there is a `label` to fold to — a section with no
+   * header row has nothing left to stand for it, and nothing to press `→` on.
+   */
+  defaultCollapsed?: boolean;
   /** A section with nothing in it — no items, and after a filter, no matches
    *  either — disappears entirely, header included. */
   items: Array<PickerItem<T>>;
@@ -65,8 +72,19 @@ export interface PickerProps<T> {
 
 /** One drawn row: a section header, a top-level item, or a child of one. */
 type Row<T> =
-  | { kind: 'header'; sectionKey: string; label: string }
+  | { kind: 'header'; sectionKey: string; label: string; collapsed: boolean; held: number }
   | { kind: 'item'; item: PickerItem<T>; parent: number; child: boolean; sectionKey: string };
+
+/**
+ * Rows the cursor is allowed to stop on.
+ *
+ * An open section's header is a divider and is stepped over. A collapsed one is
+ * the only row its section has left, so it has to be reachable — there would
+ * otherwise be no way back to what it is holding.
+ */
+function selectable<T>(row: Row<T> | undefined): boolean {
+  return row?.kind === 'item' || (row?.kind === 'header' && row.collapsed);
+}
 
 /**
  * A delete waiting on the word.
@@ -121,11 +139,18 @@ function confirmRows(state: Confirming): string[] {
  * show — no items, or none of them matching — drops out entirely, header
  * included, the same way the plain "no matches" line stands in for the
  * filtered list as a whole.
+ *
+ * A collapsed section keeps its header and drops its items, and a filter
+ * reaches into it anyway: a match you cannot see is worse than a section you
+ * have to fold again, and the collapsed set is kept for when the query clears.
+ * Its items still spend their `parent` indices while folded, so expanding a
+ * section does not renumber the trees in the sections below it.
  */
 function flatten<T>(
   sections: Array<PickerSection<T>>,
   expanded: ReadonlySet<number>,
   query: string,
+  collapsed: ReadonlySet<string> = new Set(),
 ): Array<Row<T>> {
   const rows: Array<Row<T>> = [];
   let parent = 0;
@@ -138,7 +163,20 @@ function flatten<T>(
       : section.items;
     if (!items.length) continue;
 
-    if (section.label) rows.push({ kind: 'header', sectionKey: section.key, label: section.label });
+    const shut = !query && Boolean(section.label) && collapsed.has(section.key);
+    if (section.label) {
+      rows.push({
+        kind: 'header',
+        sectionKey: section.key,
+        label: section.label,
+        collapsed: shut,
+        held: items.length,
+      });
+    }
+    if (shut) {
+      parent += items.length;
+      continue;
+    }
     for (const item of items) {
       rows.push({ kind: 'item', item, parent, child: false, sectionKey: section.key });
       // A filter draws every match collapsed: it is for finding a plan, and
@@ -156,12 +194,13 @@ function flatten<T>(
   return rows;
 }
 
-/** The nearest `kind: 'item'` row past `cursor` in `direction`, or `cursor`
- *  unchanged when there is none — a header is stepped over, never landed on. */
+/** The nearest selectable row past `cursor` in `direction`, or `cursor`
+ *  unchanged when there is none — an open header is stepped over, never
+ *  landed on. */
 function stepCursor<T>(rows: Array<Row<T>>, cursor: number, direction: 1 | -1): number {
   let i = cursor + direction;
   while (i >= 0 && i < rows.length) {
-    if (rows[i]!.kind === 'item') return i;
+    if (selectable(rows[i])) return i;
     i += direction;
   }
   return cursor;
@@ -169,18 +208,24 @@ function stepCursor<T>(rows: Array<Row<T>>, cursor: number, direction: 1 | -1): 
 
 /** The first selectable row — where the cursor opens, and where it lands
  *  after a filter changes what is visible. */
-function firstItemIndex<T>(rows: Array<Row<T>>): number {
-  const index = rows.findIndex((row) => row.kind === 'item');
+function firstSelectable<T>(rows: Array<Row<T>>): number {
+  const index = rows.findIndex((row) => selectable(row));
   return index === -1 ? 0 : index;
 }
 
-/** `index`, pulled onto the nearest item row — what a delete leaves the
+/** `index`, pulled onto the nearest selectable row — what a delete leaves the
  *  cursor on, since the row it pointed at may now be gone. */
-function clampToItem<T>(rows: Array<Row<T>>, index: number): number {
+function clampToSelectable<T>(rows: Array<Row<T>>, index: number): number {
   const bounded = Math.max(0, Math.min(index, rows.length - 1));
-  if (rows[bounded]?.kind === 'item') return bounded;
+  if (selectable(rows[bounded])) return bounded;
   const forward = stepCursor(rows, bounded, 1);
-  return rows[forward]?.kind === 'item' ? forward : firstItemIndex(rows);
+  return selectable(rows[forward]) ? forward : firstSelectable(rows);
+}
+
+/** The sections that open folded — `defaultCollapsed`, honoured only where
+ *  there is a header row left to unfold them from. */
+function initialCollapsed<T>(sections: Array<PickerSection<T>>): Set<string> {
+  return new Set(sections.filter((s) => s.defaultCollapsed && s.label).map((s) => s.key));
 }
 
 /**
@@ -190,6 +235,11 @@ function clampToItem<T>(rows: Array<Row<T>>, index: number): number {
  * version number reachable on a narrow terminal — the old single row put the
  * version in the middle of a grey column and truncated it away first — and it
  * is what gives `ctrl+d` something specific to point at.
+ *
+ * Sections fold on the same two keys, so a list that is mostly plans from
+ * somewhere else can be put away without filtering it out one letter at a
+ * time. A folded section keeps its header, says how many rows it is holding,
+ * and is the one header the cursor can land on.
  *
  * Filtering is a fuzzy subsequence match, so `gcr` finds
  * guard-clock-regression. Every printable character goes to it — deleting is
@@ -219,11 +269,17 @@ export function Picker<T>({
   const leaving = useDoubleCtrlC({ onExit: onQuit });
   const [sections, setSections] = useState(initial);
   const [query, setQuery] = useState('');
-  const [cursor, setCursor] = useState(() => firstItemIndex(flatten(initial, new Set(), '')));
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => initialCollapsed(initial));
+  const [cursor, setCursor] = useState(() =>
+    firstSelectable(flatten(initial, new Set(), '', initialCollapsed(initial))),
+  );
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set());
   const [confirming, setConfirming] = useState<Confirming | null>(null);
 
-  const rows = useMemo(() => flatten(sections, expanded, query), [sections, expanded, query]);
+  const rows = useMemo(
+    () => flatten(sections, expanded, query, collapsed),
+    [sections, expanded, query, collapsed],
+  );
 
   const here = rows[cursor];
 
@@ -258,13 +314,44 @@ export function Picker<T>({
     setCursor(rows.findIndex((row) => row.kind === 'item' && row.parent === parent && !row.child));
   }
 
+  /** The header row a section folds to, or -1 for a section that has none. */
+  function headerIndex(sectionKey: string): number {
+    return rows.findIndex((row) => row.kind === 'header' && row.sectionKey === sectionKey);
+  }
+
+  /**
+   * Fold a section from a row inside it, the way the review folds a heading
+   * from a line under it — the alternative is scrolling back to the header
+   * first, on a list where the header is the one row the cursor cannot reach.
+   */
+  function hideSection(sectionKey: string) {
+    const header = headerIndex(sectionKey);
+    if (header === -1) return;
+    setCollapsed((set) => new Set(set).add(sectionKey));
+    // Onto the row that now stands for everything the section was holding.
+    // Rows below it move; the header itself does not.
+    setCursor(header);
+  }
+
+  /** Unfold a section from its header, onto the first row it brings back. */
+  function showSection(sectionKey: string) {
+    setCollapsed((set) => {
+      const next = new Set(set);
+      next.delete(sectionKey);
+      return next;
+    });
+    setCursor(headerIndex(sectionKey) + 1);
+  }
+
   function remove(item: PickerItem<T>) {
     const next = onDelete?.(item) ?? sections;
     setSections(next);
     // Every index into the old list is suspect once a row has gone, and there
     // is nothing worth salvaging: you deleted the thing you were looking at.
+    // What is folded is not an index and survives — the section keys are the
+    // same ones, and reopening a section you closed is not what a delete means.
     setExpanded(new Set());
-    setCursor((c) => clampToItem(flatten(next, new Set(), query), c));
+    setCursor((c) => clampToSelectable(flatten(next, new Set(), query, collapsed), c));
     setConfirming(null);
   }
 
@@ -297,15 +384,28 @@ export function Picker<T>({
     if (key.upArrow || (key.ctrl && input === 'p')) {
       return setCursor((c) => stepCursor(rows, c, -1));
     }
+    // `→` opens the nearest thing that is shut, `←` shuts the nearest thing
+    // that is open: a section from its own header, then a plan's versions, then
+    // the section the plan is standing in. One pair of keys down the whole
+    // tree, rather than a second pair for sections that would have to be
+    // explained on the bar.
     if (key.rightArrow) {
+      if (here?.kind === 'header') return showSection(here.sectionKey);
       if (!here || here.kind !== 'item' || here.child || !here.item.children?.length) return;
       return setExpanded((set) => new Set(set).add(here.parent));
     }
     if (key.leftArrow) {
-      if (!here || here.kind !== 'item' || !expanded.has(here.parent)) return;
-      return collapse(here.parent);
+      if (!here || here.kind !== 'item') return;
+      if (expanded.has(here.parent)) return collapse(here.parent);
+      return hideSection(here.sectionKey);
     }
-    if (key.return) return onDone(here?.kind === 'item' ? [here.item.value] : []);
+    // On a folded header enter opens the section rather than choosing nothing:
+    // the row names a section, and a picker that quit empty-handed on the one
+    // row that is not a plan would be answering a question nobody asked.
+    if (key.return) {
+      if (here?.kind === 'header') return showSection(here.sectionKey);
+      return onDone(here?.kind === 'item' ? [here.item.value] : []);
+    }
     // `ctrl+d`, not `d`. A bare letter opened the confirmation before the
     // filter ever saw it, so no plan whose name starts with `d` could be
     // filtered for — and finding a plan is what the list is for.
@@ -316,12 +416,12 @@ export function Picker<T>({
     if (key.backspace || key.delete) {
       const nextQuery = query.slice(0, -1);
       setQuery(nextQuery);
-      return setCursor(firstItemIndex(flatten(sections, expanded, nextQuery)));
+      return setCursor(firstSelectable(flatten(sections, expanded, nextQuery, collapsed)));
     }
     if (input && !key.ctrl && !key.meta) {
       const nextQuery = query + input;
       setQuery(nextQuery);
-      return setCursor(firstItemIndex(flatten(sections, expanded, nextQuery)));
+      return setCursor(firstSelectable(flatten(sections, expanded, nextQuery, collapsed)));
     }
   });
 
@@ -342,7 +442,7 @@ export function Picker<T>({
 
   const hints: Hint[] = [
     ['↑↓', 'choose'],
-    ['enter', enterLabel],
+    ['enter', here?.kind === 'header' ? 'show section' : enterLabel],
     ['ctrl+c', 'exit'],
   ];
   // The tree is the only thing on this screen with no key on the bar saying it
@@ -353,9 +453,17 @@ export function Picker<T>({
   const open =
     here?.kind === 'item' &&
     rows.some((row) => row.kind === 'item' && row.parent === here.parent && row.child);
-  if (!query && here?.kind === 'item') {
+  if (here?.kind === 'header') {
+    hints.push(['→', 'show section']);
+  } else if (!query && here?.kind === 'item') {
     if (open) hints.push(['←', 'collapse']);
-    else if (!here.child && here.item.children?.length) hints.push(['→', 'versions']);
+    else {
+      if (!here.child && here.item.children?.length) hints.push(['→', 'versions']);
+      // Only where there is a header to fold to. `←` is the same key that
+      // closes a plan's versions, so it is offered for one thing at a time:
+      // the versions while they are open, the section once they are not.
+      if (headerIndex(here.sectionKey) !== -1) hints.push(['←', 'hide section']);
+    }
   }
   if (here?.kind === 'item' && here.item.deleteAs) hints.push(['ctrl+d', 'delete']);
 
@@ -365,11 +473,18 @@ export function Picker<T>({
     '',
     ...visible.flatMap((row) => {
       const active = rows.indexOf(row) === cursor;
-      // A header carries no cursor column of its own — the cursor can never
-      // reach one — so it sits at the same left margin as the title and
-      // subtitle above it, not indented out to the item rows.
+      // A header carries no cursor column of its own — an open one cannot be
+      // reached, and a folded one is painted rather than marked — so it sits at
+      // the same left margin as the title and subtitle above it, not indented
+      // out to the item rows. The `❯` would otherwise appear and disappear two
+      // columns left of every other one on the screen.
       if (row.kind !== 'item') {
-        return [`  ${dim(truncate(row.label, inner - 2))}`];
+        // What the fold is holding, said in numbers: a section that took its
+        // rows away with it and left nothing in their place reads as plans
+        // that are gone rather than plans that are folded.
+        const held = row.collapsed ? `  ${row.held} hidden` : '';
+        const line = `${truncate(row.label, Math.max(1, inner - 2 - held.length))}${held}`;
+        return [`  ${active ? inverse(signal(padEnd(line, inner - 2))) : dim(line)}`];
       }
       const indent = row.child ? '   ' : '';
       const mark = active ? '❯ ' : '  ';
