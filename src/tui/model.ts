@@ -226,23 +226,17 @@ export function buildModel(opts: BuildModelOptions): ReviewModel {
  * needs every heading with its level, to work out where a section ends. Both
  * track fenced code the same way, so a `# comment` inside a fence is not a
  * heading in either.
- *
- * Exported because the outline in ./outline.ts is a list of the same headings
- * this folds: two answers to "what is a section" would be two lists that
- * disagree the first time a plan puts a `##` inside a fenced block.
  */
-export interface Heading {
+interface Heading {
   /** 1-based, in the version under review. */
   line: number;
   level: number;
-  /** The title itself, with its `#` marks and the space after them gone. */
-  text: string;
 }
 
 const FENCE = /^\s*(`{3,}|~{3,})/;
 const HEADING = /^(#{1,6})\s+\S/;
 
-export function headingsIn(lines: readonly string[]): Heading[] {
+function headingsIn(lines: readonly string[]): Heading[] {
   const out: Heading[] = [];
   let inFence = false;
   for (let i = 0; i < lines.length; i++) {
@@ -253,9 +247,7 @@ export function headingsIn(lines: readonly string[]): Heading[] {
     }
     if (inFence) continue;
     const match = HEADING.exec(text);
-    if (match) {
-      out.push({ line: i + 1, level: match[1]!.length, text: text.slice(match[1]!.length).trim() });
-    }
+    if (match) out.push({ line: i + 1, level: match[1]!.length });
   }
   return out;
 }
