@@ -14,13 +14,13 @@ export type Hint = [key: string, what: string];
 /**
  * Sortable form of a key.
  *
- * `ctrl+d` sits beside `d` — a reader looking for the paging keys looks under
+ * `ctrl+j` sits beside `j` — a reader looking for the paging keys looks under
  * the letter, not under the `ctrl+` prefix — and case is not a distinction
  * anybody is scanning for. `esc`, `ctrl+c` and `?` are pinned to the end
  * because they are the three keys that mean the same thing on every screen
  * and never need finding.
  *
- * `ctrl+c` does not sort under `c` beside `ctrl+d` for that reason: `ctrl+d`
+ * `ctrl+c` does not sort under `c` beside `ctrl+j` for that reason: `ctrl+j`
  * is a paging key you look for under its letter, and `ctrl+c` is one of the
  * three that end the line together.
  */

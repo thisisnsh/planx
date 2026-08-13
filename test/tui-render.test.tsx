@@ -2115,13 +2115,12 @@ describe('the keys, and where they sit', () => {
       '←→',
       '↑↓',
       'd',
-      'ctrl+d ctrl+u',
       'e',
       'f',
-      'ctrl+f ctrl+b',
       'g G',
       'h',
       'j',
+      'ctrl+j ctrl+k',
       'n',
       's',
       'space',
@@ -2495,11 +2494,11 @@ describe('getting around a long plan', () => {
     app.unmount();
   });
 
-  it('ctrl+d moves half a screen without leaving the plan', async () => {
+  it('ctrl+j moves a whole screen without leaving the plan', async () => {
     const app = mount(seedLongPlan(), null, 1);
     await app.ready();
 
-    await app.press('\x04'); // ctrl-d
+    await app.press('\x0a'); // ctrl-j, a linefeed on the wire
     await new Promise((r) => setTimeout(r, 120));
     expect(app.stdout.lastFrame).not.toContain('# A long plan');
     expect(app.stdout.lastFrame).toContain('step ');

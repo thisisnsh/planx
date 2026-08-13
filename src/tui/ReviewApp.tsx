@@ -430,7 +430,7 @@ export function ReviewApp(props: ReviewAppProps) {
    * A screenful, or half of one — the viewport moves with the cursor.
    *
    * `move` only scrolls when the cursor would leave the screen, which is right
-   * for an arrow key and wrong for a pager: the first ctrl+d from the top of a
+   * for an arrow key and wrong for a pager: the first ctrl+j from the top of a
    * plan would move the cursor into the middle of an unchanged screen and look
    * like nothing happened.
    */
@@ -905,18 +905,19 @@ export function ReviewApp(props: ReviewAppProps) {
       // again starts back at one row.
       heldArrow.current = null;
 
-      // Half a screen and a whole one, the keys every pager already uses. On a
-      // Mac keyboard PageUp is fn+arrow, which in practice means it does not
-      // exist, and Ink redraws in place so the terminal's own scrollback shows
-      // stale frames rather than more plan.
-      if (key.ctrl && (input === 'd' || input === 'f')) {
-        return page(input === 'd' ? Math.floor(bodyHeight / 2) : bodyHeight);
-      }
-      if (key.ctrl && (input === 'u' || input === 'b')) {
-        return page(input === 'u' ? -Math.floor(bodyHeight / 2) : -bodyHeight);
-      }
-      if (key.pageDown) return page(Math.floor(bodyHeight / 2));
-      if (key.pageUp) return page(-Math.floor(bodyHeight / 2));
+      // A screen at a time, on the two letters that sit next to each other and
+      // already mean down and up. On a Mac keyboard PageUp is fn+arrow, which in
+      // practice means it does not exist, and Ink redraws in place so the
+      // terminal's own scrollback shows stale frames rather than more plan.
+      //
+      // ctrl+j is a linefeed on the wire, which Ink reports as a bare `\n` with
+      // no ctrl flag; enter is a carriage return and stays its own key, so the
+      // two do not collide. Terminals that speak the kitty protocol send the
+      // modified letter instead, so both spellings are taken.
+      if (input === '\n' || (key.ctrl && input === 'j')) return page(bodyHeight);
+      if (key.ctrl && input === 'k') return page(-bodyHeight);
+      if (key.pageDown) return page(bodyHeight);
+      if (key.pageUp) return page(-bodyHeight);
       if (input === 'g') return jumpTo(0);
       if (input === 'G') return jumpTo(rows.length - 1);
 
@@ -1561,7 +1562,7 @@ interface HintContext {
  * rather than bound to an apology. Showing keys that refuse to work teaches the
  * wrong thing.
  *
- * `g G ctrl+d ctrl+u` are gone from here and stay in `?`. They are the keys you
+ * `g G ctrl+j ctrl+k` are gone from here and stay in `?`. They are the keys you
  * already know from every pager, and they were the third of the line that
  * never changed — a hint that is always true is a hint nobody is reading. `h`
  * joins them for the same reason: folding every note at once is a thing you do
@@ -1727,8 +1728,7 @@ const HELP: Array<[Hint, 'always' | 'versioned']> = [
   [['e', 'edit the line, or every line of the selection, in place'], 'always'],
   [['f', 'add feedback on the selection, or edit the note under the cursor'], 'always'],
   [['g G', 'the top and the bottom of the plan'], 'always'],
-  [['ctrl+d ctrl+u', 'half a screen down or up'], 'always'],
-  [['ctrl+f ctrl+b', 'a whole screen down or up'], 'always'],
+  [['ctrl+j ctrl+k', 'a whole screen down or up'], 'always'],
   [['h', 'fold or unfold every note at once'], 'always'],
   [['j', 'the next feedback on this version, wrapping at the end'], 'always'],
   [['n', 'add or edit the note about the whole plan'], 'always'],
@@ -1749,7 +1749,7 @@ const HELP: Array<[Hint, 'always' | 'versioned']> = [
  */
 const HELP_EXIT: Hint = ['ctrl+c', 'leave planx — twice'];
 
-/** Wide enough for `ctrl+d ctrl+u`, the longest key column, plus a gap. */
+/** Wide enough for `ctrl+j ctrl+k`, the longest key column, plus a gap. */
 const HELP_KEY_WIDTH = 15;
 
 function helpLines(width: number, canDiff: boolean): string[] {

@@ -126,7 +126,7 @@ describe('walking into notes', () => {
   });
 
   // A pager moves the viewport, so it travels in drawn rows and settles where
-  // it lands. Counting stops instead would send ctrl+d past the bottom of the
+  // it lands. Counting stops instead would send ctrl+j past the bottom of the
   // screen on any plan carrying a few notes.
   it('pages by rows, then settles off any edge it lands on', () => {
     expect(run([{ type: 'move', delta: 4 }], ANNOTATED).cursor).toBe(6);
@@ -258,10 +258,10 @@ describe('the order every list of keys is printed in', () => {
   it('files a modified key under its letter, not under the ctrl+ prefix', () => {
     const keys: Hint[] = [
       ['g G', 'ends'],
-      ['ctrl+d ctrl+u', 'half a screen'],
+      ['ctrl+j ctrl+k', 'a whole screen'],
       ['f', 'feedback'],
     ];
-    expect(orderHints(keys).map(([key]) => key)).toEqual(['ctrl+d ctrl+u', 'f', 'g G']);
+    expect(orderHints(keys).map(([key]) => key)).toEqual(['f', 'g G', 'ctrl+j ctrl+k']);
   });
 
   it('joins them into the grey line under the frame', () => {
