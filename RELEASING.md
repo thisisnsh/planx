@@ -7,6 +7,7 @@ Production is never published by hand.
 | Trigger | Publishes | npm tag | Who gets it |
 | --- | --- | --- | --- |
 | `npm run release:staging` (local) | `1.2.0-staging.47` | `staging` | `@staging` installers, dogfooding |
+| `npm run remove:staging <n>` (local) | unpublishes `1.2.0-staging.<n>` | `staging` repointed | — |
 | GitHub Release published | `1.2.0` | `latest` | everyone |
 
 **Merging to `main` publishes nothing.** Most merges are not a build anyone
@@ -42,6 +43,25 @@ refuses a dirty tree, runs typecheck, tests and build, picks the next free
 keeps resolving to the last real release. There is no provenance on a staging
 build: that needs a CI OIDC token, and signed provenance is a property of the
 release build.
+
+### Removing a staging build
+
+A broken dogfood build should not stay installable:
+
+```bash
+npm run remove:staging 47            # or the full 1.2.0-staging.47
+npm run remove:staging               # lists what is published
+```
+
+It only accepts `<base>-staging.<n>`, so it cannot be pointed at a real release
+whatever you type after it, and it confirms before deleting. After the
+unpublish it repoints the `staging` tag at the newest surviving staging build,
+or removes the tag if that was the last one — a tag pointing at a version that
+no longer exists makes `npm install @thisisnsh/planx@staging` fail outright.
+
+Unpublishing only works within 72 hours of the publish. After that, deprecate
+the version instead. Either way npm never accepts that version number again, so
+the next `release:staging` moves on to `-staging.<n+1>`.
 
 ## 3. Cutting a release
 
