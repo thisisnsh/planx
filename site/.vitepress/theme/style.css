@@ -341,6 +341,15 @@ body {
   max-width: 720px;
 }
 
+/* The install panel repeats in the hero, where the green offset shadow of the
+   install section would disappear against the dark background. */
+.hero-art .install-panel {
+  width: calc(100% + 80px);
+  max-width: 720px;
+  border: 1px solid rgba(255, 212, 0, 0.28);
+  box-shadow: 0 30px 70px rgba(4, 7, 11, 0.48);
+}
+
 .hero-principles {
   position: absolute;
   right: 0;
@@ -945,7 +954,8 @@ body {
     justify-self: center;
   }
 
-  .screen-hero {
+  .screen-hero,
+  .hero-art .install-panel {
     width: 100%;
     max-width: none;
     margin-inline: auto;

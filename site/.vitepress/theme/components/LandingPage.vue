@@ -2,7 +2,8 @@
 import { onMounted, ref } from 'vue';
 
 const menuOpen = ref(false);
-const copied = ref(false);
+// The install panel appears twice, so track which copy button was pressed.
+const copied = ref<'hero' | 'install' | null>(null);
 const installCommand = 'npm install --global @thisisnsh/planx';
 
 const repoUrl = 'https://github.com/thisisnsh/planx';
@@ -200,13 +201,15 @@ const faq = [
   },
 ];
 
-async function copyInstall(): Promise<void> {
+async function copyInstall(source: 'hero' | 'install'): Promise<void> {
   try {
     await navigator.clipboard.writeText(installCommand);
-    copied.value = true;
-    window.setTimeout(() => (copied.value = false), 1600);
+    copied.value = source;
+    window.setTimeout(() => {
+      if (copied.value === source) copied.value = null;
+    }, 1600);
   } catch {
-    copied.value = false;
+    copied.value = null;
   }
 }
 
@@ -274,15 +277,19 @@ function closeMenu(): void {
         </div>
 
         <div class="hero-art">
-          <figure class="screen screen-hero">
-            <img
-              src="/images/planx-view.png"
-              width="1340"
-              height="556"
-              alt="PlanX terminal interface showing a reviewable plan with version history"
-              fetchpriority="high"
-            />
-          </figure>
+          <div class="install-panel">
+            <div class="command" aria-label="Install command">
+              <code><span>$</span> {{ installCommand }}</code>
+              <button type="button" @click="copyInstall('hero')">
+                {{ copied === 'hero' ? 'Copied!' : 'Copy' }}
+              </button>
+            </div>
+            <div class="start-commands">
+              <p><span>Codex</span><code>$planx &lt;task&gt;</code></p>
+              <p><span>Claude Code</span><code>/planx &lt;task&gt;</code></p>
+            </div>
+            <p class="requirement">Node.js 20.19+ · MIT licensed · open source</p>
+          </div>
         </div>
 
         <div class="hero-principles" aria-label="PlanX capabilities">
@@ -472,8 +479,8 @@ function closeMenu(): void {
           <div class="install-panel">
             <div class="command" aria-label="Install command">
               <code><span>$</span> {{ installCommand }}</code>
-              <button type="button" @click="copyInstall">
-                {{ copied ? 'Copied!' : 'Copy' }}
+              <button type="button" @click="copyInstall('install')">
+                {{ copied === 'install' ? 'Copied!' : 'Copy' }}
               </button>
             </div>
             <div class="start-commands">
