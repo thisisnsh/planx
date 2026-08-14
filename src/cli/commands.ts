@@ -295,7 +295,29 @@ export function cmdCapture(ctx: Ctx): number {
   return 0;
 }
 
-/* -------------------------------------------------------------- revise */
+/* ------------------------------------------------------ revise / execute */
+
+/**
+ * Everything asked of one version, read once.
+ *
+ * `revise` and `execute` return the same payload and differ only in what they
+ * close on, so they read it through one function rather than keeping two copies
+ * that can drift in exactly the way merging the commands exists to stop.
+ */
+function resumePayload(id: string, version: number) {
+  const text = requireVersionText(id, version);
+  const history = listFeedback(id);
+  return {
+    text,
+    // Feedback on this version is what is actionable. Anything older was
+    // retired by the capture that produced a newer version.
+    feedback: history.filter((f) => f.version === version),
+    carried: carriedOver(history, version, text),
+    // What the reviewer rewrote by hand, one record per line — the same ones
+    // the edited section is rendered from.
+    edits: collapseEdits(readVersions(id).versions.find((v) => v.n === version)?.edits ?? []),
+  };
+}
 
 /**
  * Pick a plan back up: what was asked of it, and what the reviewer rewrote.
@@ -303,68 +325,67 @@ export function cmdCapture(ctx: Ctx): number {
  * This is what replaced `await`. The reviewer hands over a command instead of
  * the agent blocking on a queue, so everything the agent needs is assembled
  * from the store on demand — one read, no waiting, safe to run twice.
+ *
+ * A version nobody has reviewed comes back all the same, with the plan and no
+ * feedback in it. What the revision is towards, in that case, is what the user
+ * asked for in the chat.
  */
 export function cmdRevise(ctx: Ctx): number {
-  const { id, version } = requirePlanAndVersion(ctx, 'planx revise <id> <version> [--executing]');
-  const text = requireVersionText(id, version);
-
-  const history = listFeedback(id);
-  // Feedback on this version is what is actionable. Anything older was retired
-  // by the capture that produced a newer version.
-  const feedback = history.filter((f) => f.version === version);
-  const carried = carriedOver(history, version, text);
-  // What the reviewer rewrote by hand, one record per line — the same ones the
-  // section below is rendered from.
-  const edits = collapseEdits(readVersions(id).versions.find((v) => v.n === version)?.edits ?? []);
+  const { id, version } = requirePlanAndVersion(ctx, 'planx revise <id> <version>');
+  const payload = resumePayload(id, version);
 
   if (ctx.json) {
-    ctx.out(JSON.stringify({ plan_id: id, version, text, feedback, carried, edits }, null, 2));
+    ctx.out(JSON.stringify({ plan_id: id, version, ...payload }, null, 2));
     return 0;
   }
 
-  ctx.out(
-    presentResume({
-      planId: id,
-      version,
-      text,
-      feedback,
-      carried,
-      edits,
-      executing: has(ctx.args, '--executing'),
-    }),
-  );
+  ctx.out(presentResume({ planId: id, version, ...payload, executing: false }));
   return 0;
 }
 
-/* ------------------------------------------------------------- executed */
-
 /**
- * Mark the version that was built.
+ * Hand the plan over to be built, and mark the version that is being built.
  *
- * The skill runs this before it starts building rather than planx marking on
- * launch: a launch you immediately ctrl+c out of built nothing, and a plan
- * drawn as executed when it was not is worse than one drawn as not yet.
+ * One command for what used to be a read called `revise --executing` followed
+ * by a write called `executed`. The mark comes from here rather than from the
+ * launch: a launch you immediately ctrl+c out of built nothing, and a plan drawn
+ * as executed when it was not is worse than one drawn as not yet. Running from
+ * here also makes it true whichever route reached the build — the agent planx
+ * launched, a command pasted somewhere by hand, or `/planx execute` typed from
+ * scratch.
  *
- * The session it names is what `ctrl+r` in the picker goes back into. The
- * launch line is not a flag: like `cmdCapture`, this reads it off planx's own
- * process tree, because it is a fact about planx's parents rather than
- * something the agent knows about itself. The agent found there fills in when
- * `--agent` is absent.
+ * The session it names is what `ctrl+r` in the picker goes back into. The launch
+ * line is not a flag: like `cmdCapture`, this reads it off planx's own process
+ * tree, because it is a fact about planx's parents rather than something the
+ * agent knows about itself. The agent found there fills in when `--agent` is
+ * absent.
+ *
+ * `--no-mark` is there because merging the read into the mark makes looking a
+ * write. It is the only way left to see this payload without turning a picker
+ * row green.
  */
-export function cmdExecuted(ctx: Ctx): number {
-  const { id, version } = requirePlanAndVersion(ctx, 'planx executed <id> <version>');
-  const here = agentProcess();
-  markExecuted(id, version, {
-    sessionId: one(ctx.args, '--session-id'),
-    agent: one(ctx.args, '--agent') ?? here.agent,
-    agentArgv: here.argv,
-  });
+export function cmdExecute(ctx: Ctx): number {
+  const { id, version } = requirePlanAndVersion(ctx, 'planx execute <id> <version>');
+  // Before the mark, so a version whose text is gone fails without having
+  // recorded a build of it.
+  const payload = resumePayload(id, version);
+
+  const executed = !has(ctx.args, '--no-mark');
+  if (executed) {
+    const here = agentProcess();
+    markExecuted(id, version, {
+      sessionId: one(ctx.args, '--session-id'),
+      agent: one(ctx.args, '--agent') ?? here.agent,
+      agentArgv: here.argv,
+    });
+  }
 
   if (ctx.json) {
-    ctx.out(JSON.stringify({ plan_id: id, version }, null, 2));
+    ctx.out(JSON.stringify({ plan_id: id, version, ...payload, executed }, null, 2));
     return 0;
   }
-  ctx.out(green(`Marked ${bold(id)} v${version} as executed.`));
+
+  ctx.out(presentResume({ planId: id, version, ...payload, executing: true }));
   return 0;
 }
 

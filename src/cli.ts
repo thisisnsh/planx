@@ -9,7 +9,7 @@ import {
   cmdDefaults,
   cmdDiff,
   cmdDoctor,
-  cmdExecuted,
+  cmdExecute,
   cmdList,
   cmdRemoveSkills,
   cmdRevise,
@@ -59,8 +59,8 @@ async function dispatch(name: string, ctx: Ctx): Promise<number> {
       return cmdCapture(ctx);
     case 'revise':
       return cmdRevise(ctx);
-    case 'executed':
-      return cmdExecuted(ctx);
+    case 'execute':
+      return cmdExecute(ctx);
     case 'diff':
       return cmdDiff(ctx);
     case 'defaults':

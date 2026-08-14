@@ -112,7 +112,7 @@ describe('the shipped planx skill', () => {
   });
 
   /**
-   * `planx revise|show|executed` all require a version now, and the reviewed
+   * `planx revise|show|execute` all require a version now, and the reviewed
    * version is the one to pass. An agent that drops it or reaches for `latest`
    * builds whatever was captured most recently, which on a plan with a revise
    * running elsewhere is a version nobody has read.
@@ -121,10 +121,11 @@ describe('the shipped planx skill', () => {
     expect(router).toContain('A version in the invocation travels with it');
     expect(router).toContain('Nothing on any branch defaults to latest');
 
-    expect(execute).toContain('planx revise <plan-id> v<n> --executing');
-    expect(execute).toContain('planx executed <plan-id> v<n>');
-    // The session doing the building, so the picker can go back into it.
-    expect(execute).toContain('planx executed <plan-id> v<n> --session-id');
+    // One command for the read and the mark, and the session doing the
+    // building goes with it so the picker can go back into it.
+    expect(execute).toContain('planx execute <plan-id> v<n> --session-id');
+    expect(execute).not.toContain('planx executed');
+    expect(execute).not.toContain('--executing');
     expect(execute).toContain('$CLAUDE_CODE_SESSION_ID');
     expect(execute).toContain('$CODEX_THREAD_ID');
     expect(execute).toContain('Never\nsubstitute `latest`');

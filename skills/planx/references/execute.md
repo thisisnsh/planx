@@ -2,20 +2,25 @@
 
 Load a stored plan and implement it **in this session**.
 
-## Load it, with the feedback
+## Take the plan, and say you are building it
 
 ```bash
-planx revise <plan-id> v<n> --executing
+planx execute <plan-id> v<n> --session-id "$CLAUDE_CODE_SESSION_ID"
 ```
 
-Always, and before the first edit. One read returns both halves of what you are
-building: the plan itself, under `### The plan as it stands`, and every comment
-left on it. `--executing` is that same payload with a closing that says what you
-are doing — it never tells you to capture.
+Always, and before the first edit. One command does both halves: it marks the
+version as the one being built, and it returns what you are building — the plan
+itself, under `### The plan as it stands`, every comment left on it, and every
+line the reviewer rewrote by hand. It closes on the instruction to build, and it
+never tells you to capture.
+
+The mark comes from here rather than from the launch, whichever route reached
+this point — the agent planx launched from the review, a command pasted in by
+hand, or `/planx execute` typed from scratch. A launch you immediately ctrl+c
+out of built nothing, so what makes the mark true is you being about to build.
 
 **The version is required, and it is the one the user handed you.** `/planx
-execute <id> v<n>` names the version they reviewed and chose to build. Pass it
-through to every command here, this one and `planx executed` alike. Never
+execute <id> v<n>` names the version they reviewed and chose to build. Never
 substitute `latest`: a revise running in another session can capture a newer
 version between their review and your first edit, and building that one means
 building a plan nobody has read. If you arrived with no version at all, run
@@ -30,9 +35,25 @@ Revising resumes the session that wrote the plan and already has it; executing
 does not. (`planx show <plan-id> v<n> --plain` returns the plan on its own,
 without the feedback. Executing wants both, so it is not the one to reach for.)
 
-If it says **no review yet**, say so in one line and ask whether to proceed
-anyway — an unreviewed plan running by accident is exactly what planx exists to
-prevent.
+If it says **no review yet**, say so to the user in one line and build the plan
+as it stands. Nobody has looked at it, so there is nothing to work from beyond
+the plan itself.
+
+### Which agent you are
+
+The session id is what lets the picker start you again later, with the build
+still in context. Pass whichever row is yours:
+
+| agent | pass |
+| --- | --- |
+| Claude Code | `--session-id "$CLAUDE_CODE_SESSION_ID"` |
+| Codex | `--session-id "$CODEX_THREAD_ID"` |
+| neither variable is set | `--agent <your agent>`, and no `--session-id` |
+
+The mark lands either way. Without a session id the row simply offers no
+resume.
+
+## Work the comments into the build
 
 Comments are **worked into the build**, not bounced back. The reviewer can hand
 a plan on with its feedback still open, and doing so is them saying: build it,
@@ -48,29 +69,6 @@ with these. Address each one in the code as you implement the plan around it.
 - A comment that cannot be satisfied without changing the plan is where you stop
   and say so. That is a planning round, and it goes back through review.
 - Executing never captures a version, whatever the feedback says.
-
-## Say that you are building it
-
-```bash
-planx executed <plan-id> v<n> --session-id "$CLAUDE_CODE_SESSION_ID"
-```
-
-Before the first edit, whichever route reached here — the agent planx launched
-from the review, a command pasted in by hand, or `/planx execute` typed from
-scratch. That is what makes the mark true rather than a guess about what a
-launch turned into.
-
-The session id is what lets the picker start you again later, with the build
-still in context. Pass whichever row is yours:
-
-| agent | pass |
-| --- | --- |
-| Claude Code | `--session-id "$CLAUDE_CODE_SESSION_ID"` |
-| Codex | `--session-id "$CODEX_THREAD_ID"` |
-| neither variable is set | `--agent <your agent>`, and no `--session-id` |
-
-The mark lands either way. Without a session id the row simply offers no
-resume.
 
 ## Execute it
 

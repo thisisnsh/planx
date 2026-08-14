@@ -50,7 +50,7 @@ export const COMMANDS: CommandSpec[] = [
   {
     name: 'revise',
     group: 'agent',
-    usage: 'planx revise <id> <version> [--executing] [--json]',
+    usage: 'planx revise <id> <version> [--json]',
     summary: 'Pick a plan back up: the feedback left on it.',
     description:
       'One read with everything asked of the plan: the stored version verbatim, each comment ' +
@@ -58,34 +58,29 @@ export const COMMANDS: CommandSpec[] = [
       'comes back so the next one is edited from the stored bytes rather than retyped from ' +
       'memory, which re-wraps untouched paragraphs into the diff. Comments left on an ' +
       'earlier version whose quoted text is still ' +
-      'present word for word are reported as probably never addressed. Safe to run twice; it ' +
+      'present word for word are reported as probably never addressed. A version nobody has ' +
+      'reviewed comes back all the same, saying so — what the revision is towards there is what ' +
+      'the user asked for in the chat. Safe to run twice; it ' +
       'waits for nothing. The version is required, not defaulted: this command arrives as a ' +
       'line copied out of a review of one particular version, and by the time it runs the plan ' +
       'may have a newer one. Say `latest` when latest is what you mean.',
-    flags: [
-      {
-        name: '--executing',
-        summary: 'For a reader about to build the plan: close on that, not on capture.',
-      },
-    ],
-    examples: [
-      'planx revise guard-clock-a3f9 v3',
-      'planx revise guard-clock-a3f9 v3 --executing',
-      'planx revise guard-clock-a3f9 latest',
-    ],
+    examples: ['planx revise guard-clock-a3f9 v3', 'planx revise guard-clock-a3f9 latest'],
   },
   {
-    name: 'executed',
+    name: 'execute',
     group: 'agent',
-    usage: 'planx executed <id> <version> [--session-id ID] [--agent NAME]',
-    summary: 'Record that this version was built.',
+    usage: 'planx execute <id> <version> [--session-id ID] [--agent NAME] [--no-mark]',
+    summary: 'Hand the plan over to be built, and mark the version being built.',
     description:
-      'Marks the version as the one that was executed, which is what turns its row green in the ' +
-      'picker. The execute skill runs it before its first edit, so the mark is true whichever ' +
-      'route reached the build — the agent planx launched, a command you pasted yourself, or ' +
-      '`/planx execute` typed from scratch. planx does not mark on launch, because a launch you ' +
-      'immediately ctrl+c out of built nothing. Running it twice restamps the time rather than ' +
-      'failing, and a second run that names no session keeps the one already stored.',
+      'Everything `revise` returns — the stored version verbatim, the comments, the lines the ' +
+      'reviewer rewrote, anything still unaddressed from earlier — closing on the instruction ' +
+      'to build it rather than to revise and capture. It also marks the version as the one that ' +
+      'was executed, which is what turns its row green in the picker. The execute skill runs it ' +
+      'before its first edit, so the mark is true whichever route reached the build — the agent ' +
+      'planx launched, a command you pasted yourself, or `/planx execute` typed from scratch. ' +
+      'planx does not mark on launch, because a launch you immediately ctrl+c out of built ' +
+      'nothing. Running it twice restamps the time rather than failing, and a second run that ' +
+      'names no session keeps the one already stored.',
     flags: [
       {
         name: '--session-id',
@@ -97,10 +92,11 @@ export const COMMANDS: CommandSpec[] = [
         arg: 'NAME',
         summary: 'Which agent that is, when the process walk cannot say.',
       },
+      { name: '--no-mark', summary: 'Print the hand-off without recording a build.' },
     ],
     examples: [
-      'planx executed guard-clock-a3f9 v3',
-      'planx executed guard-clock-a3f9 v3 --session-id 0f2c…',
+      'planx execute guard-clock-a3f9 v3 --session-id 0f2c…',
+      'planx execute guard-clock-a3f9 v3 --no-mark',
     ],
   },
   {
@@ -159,7 +155,7 @@ export const COMMANDS: CommandSpec[] = [
     usage: 'planx show <id> <version> [--plain|--rich]',
     summary: 'Print a stored version of a plan.',
     description:
-      'The version is required, as it is on `revise` and `executed` — a plan reference with no ' +
+      'The version is required, as it is on `revise` and `execute` — a plan reference with no ' +
       'version means whatever was captured most recently, which is not what a command written ' +
       'against a reviewed version meant. `latest` says it explicitly.',
     examples: ['planx show guard-clock-a3f9 v3 --plain', 'planx show guard-clock-a3f9 latest'],

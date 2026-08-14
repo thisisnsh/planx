@@ -27,7 +27,7 @@ export const PlanMetaSchema = z.object({
   /**
    * The version that was actually built, and when.
    *
-   * Written by `planx executed`, which the execute skill runs before its first
+   * Written by `planx execute`, which the execute skill runs before its first
    * edit — so it is true whichever route reached the build: the agent planx
    * launched, a command pasted somewhere by hand, or `/planx execute` typed
    * from scratch.

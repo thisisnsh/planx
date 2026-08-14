@@ -213,13 +213,14 @@ describe('what the agent sees', () => {
     expect(text).toContain(`planx capture --plan-id ${planId} --parent v1 --stdin`);
   });
 
-  it('tells the agent to build it when the review asked for nothing', () => {
+  it('says the review asked for nothing, and revises from the chat instead', () => {
     const { planId } = seed();
     submitFeedback({ planId, version: 1, annotations: [] });
 
     const text = resumeOf(planId, 1);
-    expect(text).toContain('Reviewed with nothing to change. Implement it as written.');
-    expect(text).not.toContain('planx capture');
+    expect(text).toContain('Reviewed with nothing to change — no feedback on v1.');
+    expect(text).toContain('user asked for in the chat');
+    expect(text).toContain(`planx capture --plan-id ${planId} --parent v1 --stdin`);
   });
 });
 

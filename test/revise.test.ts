@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { cmdExecute } from '../src/cli/commands.js';
 import { capture } from '../src/protocol/capture.js';
 import { carriedOver, presentResume } from '../src/protocol/present.js';
 import { buildAnnotation, submitFeedback } from '../src/protocol/submit.js';
-import { readVersions, readVersionText, rewriteVersion } from '../src/store/plans.js';
+import { readMeta, readVersions, readVersionText, rewriteVersion } from '../src/store/plans.js';
 import { normalizedLines } from '../src/store/text.js';
 import { listFeedback } from '../src/store/feedback.js';
 import { tempStore } from './helpers.js';
@@ -29,7 +30,16 @@ afterEach(() => {
 });
 
 /** What `cmdRevise` assembles, without going through the CLI. */
-function reviseText(planId: string, version: number, executing = false): string {
+function reviseText(planId: string, version: number): string {
+  return resumeText(planId, version, false);
+}
+
+/** The same payload `cmdExecute` prints, minus the mark it writes. */
+function executeText(planId: string, version: number): string {
+  return resumeText(planId, version, true);
+}
+
+function resumeText(planId: string, version: number, executing: boolean): string {
   const text = readVersionText(planId, version)!;
   const history = listFeedback(planId);
   return presentResume({
@@ -62,13 +72,15 @@ function comment(planId: string, version: number, from: number, to: number, body
 }
 
 describe('revise', () => {
-  it('says there is nothing to revise towards before any review', () => {
+  it('says nobody has reviewed it, and revises anyway', () => {
     const { planId, version } = capture({ text: PLAN, title: 'p' });
     const out = reviseText(planId, version);
 
     expect(out).toContain('No review of v1 yet');
-    // Must not invite a revision when no one has asked for one.
-    expect(out).not.toContain('planx capture');
+    // It does not refuse. What the revision is towards, with no feedback on the
+    // version, is whatever the user asked for in the chat.
+    expect(out).toContain('user asked for in the chat');
+    expect(out).toContain(`planx capture --plan-id ${planId} --parent v1`);
   });
 
   // An agent revising from the copy in its context retypes the plan, and
@@ -104,13 +116,13 @@ describe('revise', () => {
     expect(fencedBody(reviseText(planId, version))).toBe(withCode.replace(/\n$/, ''));
   });
 
-  // Nothing to revise towards still needs the plan: `--executing` takes this
-  // same branch on an unreviewed plan, and that agent is about to build it.
+  // No feedback still needs the plan: `execute` reaches this same state on an
+  // unreviewed version, and that agent is about to build it.
   it('sends the plan even when no one has reviewed it', () => {
     const { planId, version } = capture({ text: PLAN, title: 'p' });
 
     const out = reviseText(planId, version);
-    expect(out).toContain('No review of v1 yet');
+    expect(out).toContain('there is no feedback to work from');
     expect(fencedBody(out)).toBe(PLAN.replace(/\n$/, ''));
   });
 
@@ -140,45 +152,140 @@ describe('revise', () => {
 });
 
 /**
- * Executing a plan that still carries comments is supported, and the last thing
- * an agent about to build it reads must not be an instruction to revise and
- * capture. `--executing` is the same feedback with a different closing.
+ * The half `revise` does not have. Merging the read into the mark makes looking
+ * a write, which is the whole reason `--no-mark` exists.
  */
-describe('revise for a reader about to build it', () => {
-  it('closes on the build instruction and never names planx capture', () => {
+describe('execute marks the version it hands over', () => {
+  function run(planId: string, version: number, ...flags: string[]): string[] {
+    const out: string[] = [];
+    cmdExecute({
+      args: {
+        positionals: [planId, `v${version}`],
+        values: new Map(),
+        bools: new Set(flags),
+        unknown: [],
+      },
+      json: false,
+      mode: 'plain',
+      version: '9.9.9',
+      out: (line) => out.push(line),
+      err: () => {},
+    });
+    return out;
+  }
+
+  it('records the build, and hands over the same payload revise does', () => {
     const { planId, version } = capture({ text: PLAN, title: 'p' });
     comment(planId, version, 7, 7, 'Wrong layer.');
 
-    const out = reviseText(planId, version, true);
-    // Same feedback, quoted against the same lines.
-    expect(out).toContain('**Feedback:** Wrong layer.');
-    expect(out).toContain('> Extend the guard in poller.ts.');
-
-    expect(out).toContain('Build the plan, addressing every comment as you go.');
-    expect(out).toContain('Do not capture a new');
-    expect(out).not.toContain('planx capture');
-    expect(out).not.toContain('Revise the plan');
+    const printed = run(planId, version).join('\n');
+    expect(printed).toBe(executeText(planId, version));
+    expect(readMeta(planId)?.executed).toMatchObject({ version: 1 });
   });
 
-  it('says the same thing for a version whose only review is an edited line', () => {
+  it('leaves the store alone with --no-mark', () => {
     const { planId, version } = capture({ text: PLAN, title: 'p' });
-    rewriteVersion(planId, version, [{ line: 7, text: 'Extend the guard on the R2 write path.' }]);
 
-    const out = reviseText(planId, version, true);
-    expect(out).toContain('### Edited by the reviewer');
-    expect(out).toContain('Build the plan, addressing every comment as you go.');
-    expect(out).not.toContain('planx capture');
+    const printed = run(planId, version, '--no-mark').join('\n');
+    expect(printed).toContain('### The plan as it stands (v1)');
+    expect(readMeta(planId)?.executed).toBe(null);
+  });
+});
+
+/**
+ * Three states a version can be in, two commands, six closings.
+ *
+ * The plan, the quoted lines and the carried-over comments are in all six —
+ * only the last block differs. Executing a plan that still carries comments is
+ * supported, and the last thing an agent about to build it reads must not be an
+ * instruction to revise and capture; neither command refuses for want of a
+ * review, because there is always the chat to work from.
+ */
+describe('the six closings', () => {
+  /** Comments, edits, or both. */
+  describe('with something asked of it', () => {
+    it('sends revise to capture', () => {
+      const { planId, version } = capture({ text: PLAN, title: 'p' });
+      comment(planId, version, 7, 7, 'Wrong layer.');
+
+      const out = reviseText(planId, version);
+      expect(out).toContain('Revise the plan addressing every comment.');
+      expect(out).toContain(`planx capture --plan-id ${planId} --parent v1 --stdin`);
+    });
+
+    it('sends execute to the build, with the same feedback in it', () => {
+      const { planId, version } = capture({ text: PLAN, title: 'p' });
+      comment(planId, version, 7, 7, 'Wrong layer.');
+
+      const out = executeText(planId, version);
+      // Same feedback, quoted against the same lines.
+      expect(out).toContain('**Feedback:** Wrong layer.');
+      expect(out).toContain('> Extend the guard in poller.ts.');
+
+      expect(out).toContain('Build the plan, addressing every comment as you go.');
+      expect(out).toContain('Do not capture a new');
+      expect(out).not.toContain('planx capture');
+      expect(out).not.toContain('Revise the plan');
+    });
+
+    it('says the same to execute when the only review is an edited line', () => {
+      const { planId, version } = capture({ text: PLAN, title: 'p' });
+      rewriteVersion(planId, version, [
+        { line: 7, text: 'Extend the guard on the R2 write path.' },
+      ]);
+
+      const out = executeText(planId, version);
+      expect(out).toContain('### Edited by the reviewer');
+      expect(out).toContain('Build the plan, addressing every comment as you go.');
+      expect(out).not.toContain('planx capture');
+    });
   });
 
-  /** Nothing to build against, and nothing to capture either. */
-  it('leaves the unreviewed and the nothing-to-change readings alone', () => {
-    const { planId, version } = capture({ text: PLAN, title: 'p' });
-    expect(reviseText(planId, version, true)).toContain('No review of v1 yet');
+  /** Nobody has opened it. */
+  describe('never reviewed', () => {
+    it('tells revise to work from the chat, and still capture', () => {
+      const { planId, version } = capture({ text: PLAN, title: 'p' });
 
-    submitFeedback({ planId, version, annotations: [] });
-    const out = reviseText(planId, version, true);
-    expect(out).toContain('Reviewed with nothing to change. Implement it as written.');
-    expect(out).not.toContain('planx capture');
+      const out = reviseText(planId, version);
+      expect(out).toContain('No review of v1 yet, so there is no feedback to work from.');
+      expect(out).toContain('user asked for in the chat');
+      expect(out).toContain(`planx capture --plan-id ${planId} --parent v1 --stdin`);
+    });
+
+    it('tells execute to build what is there', () => {
+      const { planId, version } = capture({ text: PLAN, title: 'p' });
+
+      const out = executeText(planId, version);
+      expect(out).toContain('No review of v1 yet, so there is no feedback to work from.');
+      expect(out).toContain('Build the plan');
+      expect(out).toContain('Do not capture a new version.');
+      expect(out).not.toContain('planx capture');
+    });
+  });
+
+  /** Somebody looked and was happy — a different fact from nobody looking. */
+  describe('reviewed, and it asked for nothing', () => {
+    it('says so to revise, which revises from the chat', () => {
+      const { planId, version } = capture({ text: PLAN, title: 'p' });
+      submitFeedback({ planId, version, annotations: [] });
+
+      const out = reviseText(planId, version);
+      expect(out).toContain('Reviewed with nothing to change — no feedback on v1.');
+      expect(out).toContain('user asked for in the chat');
+      expect(out).toContain(`planx capture --plan-id ${planId} --parent v1 --stdin`);
+      // Not the wording for a version nobody has opened.
+      expect(out).not.toContain('No review of v1 yet');
+    });
+
+    it('says so to execute, which builds it as written', () => {
+      const { planId, version } = capture({ text: PLAN, title: 'p' });
+      submitFeedback({ planId, version, annotations: [] });
+
+      const out = executeText(planId, version);
+      expect(out).toContain('Reviewed with nothing to change. Build the plan as written.');
+      expect(out).not.toContain('planx capture');
+      expect(out).not.toContain('No review of v1 yet');
+    });
   });
 });
 

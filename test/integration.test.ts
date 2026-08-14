@@ -175,11 +175,11 @@ describe('the CLI as a real process', () => {
     });
   });
 
-  it('marks a version executed, and says which one', async () => {
+  it('marks a version executed, and hands the plan over', async () => {
     const id = await seed();
-    const marked = await cli.run(['executed', id, 'v1']);
+    const marked = await cli.run(['execute', id, 'v1']);
     expect(marked.code).toBe(0);
-    expect(marked.stdout).toContain(`Marked ${id} v1 as executed.`);
+    expect(marked.stdout).toContain('### The plan as it stands (v1)');
     expect(inStore(() => readMeta(id))?.executed).toMatchObject({ version: 1 });
     // Nothing to resume: the run named no session, and the mark still landed.
     expect(inStore(() => readVersions(id).versions[0])?.executed?.session_id).toBe(null);
@@ -187,7 +187,7 @@ describe('the CLI as a real process', () => {
 
   it('records the building session on the version it built', async () => {
     const id = await seed();
-    const marked = await cli.run(['executed', id, 'v1', '--session-id', 'abc', '--agent', 'codex']);
+    const marked = await cli.run(['execute', id, 'v1', '--session-id', 'abc', '--agent', 'codex']);
     expect(marked.code).toBe(0);
     expect(inStore(() => readVersions(id).versions[0])?.executed).toMatchObject({
       session_id: 'abc',
@@ -256,7 +256,7 @@ describe('the review hand-off across two processes', () => {
     for (const command of [
       ['revise', id],
       ['show', id],
-      ['executed', id],
+      ['execute', id],
     ]) {
       const result = await cli.run(command);
       expect(result.code, command.join(' ')).not.toBe(0);
@@ -272,14 +272,15 @@ describe('the review hand-off across two processes', () => {
 
     expect((await cli.run(['show', id, 'latest', '--plain'])).code).toBe(0);
     expect((await cli.run(['revise', id, 'v1'])).stdout).toContain('v1');
-    expect((await cli.run(['executed', id, 'v2'])).stdout).toContain('v2');
+    expect((await cli.run(['execute', id, 'v2'])).stdout).toContain('v2');
   });
 
-  it('says there is nothing to revise towards before any review', async () => {
+  it('says nobody has reviewed it, and still offers the way forward', async () => {
     const id = await seed();
     const result = await cli.run(['revise', id, 'v1']);
     expect(result.code).toBe(0);
     expect(result.stdout).toContain('No review of v1 yet');
+    expect(result.stdout).toContain(`planx capture --plan-id ${id} --parent v1 --stdin`);
   });
 
   /**
@@ -420,7 +421,7 @@ describe('the generated reference', () => {
     for (const command of [
       'capture',
       'revise',
-      'executed',
+      'execute',
       'diff',
       'defaults',
       'show',

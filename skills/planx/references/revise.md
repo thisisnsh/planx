@@ -26,8 +26,10 @@ the same document even when they say the same thing — yours has been through
 your own paraphrase of it. Work from the fenced text under
 `### The plan as it stands`.
 
-If it says **no review yet**, stop and tell the user. Do not revise — there is
-nothing to revise towards.
+If it says **no review yet**, say so in one line and revise from what the user
+asked for in the chat — that is what the revision is towards when nobody has
+annotated the plan. **If the chat holds no request either, ask rather than
+capturing a version nobody asked for.**
 
 ## 2. Revise
 
@@ -132,6 +134,8 @@ already in context.
 ## A review that asked for nothing
 
 `planx revise` says **reviewed with nothing to change** when the user submitted
-an empty review. That is them saying the plan is fine. Do not write another
-version — report the id and version, and if they asked you to build it, follow
-`references/execute.md`.
+an empty review. That is them saying the plan is fine, so there is nothing in
+the review to revise towards. Say so in one line and revise from what the user
+asked for in the chat since. **If the chat holds no such request, do not write
+another version** — report the id and version, and if they asked you to build
+it, follow `references/execute.md`.

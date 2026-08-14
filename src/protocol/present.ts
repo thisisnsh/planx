@@ -19,10 +19,10 @@ export interface ResumeOptions extends PresentOptions {
   /**
    * The reader is about to build the plan, not revise it.
    *
-   * Same feedback, same quotes, same carried-over section — a different last
-   * line. Executing a plan that still carries comments is supported, and
+   * Same feedback, same quotes, same carried-over section — a different closing
+   * block. Executing a plan that still carries comments is supported, and
    * `Revise the plan addressing every comment. Then run planx capture` is the
-   * wrong instruction for an agent that is about to build it. It was also the
+   * wrong instruction for an agent that is about to build it. It is also the
    * last thing in the output, which is the worst place for a wrong one.
    */
   executing?: boolean;
@@ -54,25 +54,9 @@ export interface CarriedComment {
  */
 export function presentResume(opts: ResumeOptions): string {
   const edits = collapseEdits(opts.edits ?? []);
-
-  // A version nobody has opened. An edit is a review, so a hand-rewritten line
-  // takes this branch off the table however few records there are beside it.
-  if (!opts.feedback.length && !edits.length) {
-    const out = [
-      `## planx — ${opts.planId} v${opts.version}`,
-      '',
-      ...planSection(opts),
-      `No review of v${opts.version} yet. Ask the user to run \`planx\` and review it,`,
-      'then to paste back the command it prints. Do not revise in the meantime —',
-      'there is nothing to revise towards.',
-      '',
-    ];
-    // Except when the last version's notes look skipped. That is precisely the
-    // case where an agent captured a new version, was told nobody has reviewed
-    // it yet, and would otherwise never learn it left something behind.
-    if (opts.carried.length) out.push(...carriedSection(opts.carried));
-    return out.join('\n');
-  }
+  // Submitting edits alone writes an empty feedback record, so the heading is
+  // conditional on there being something under it rather than on the record.
+  const asked = renderAnnotations(opts.feedback);
 
   const out: string[] = [`## planx — ${opts.planId} v${opts.version}`, '', ...planSection(opts)];
 
@@ -80,40 +64,92 @@ export function presentResume(opts: ResumeOptions): string {
   // settled, and reading it first is what stops the agent rewriting it.
   if (edits.length) out.push(...editedSection(edits, opts.version));
 
-  // Submitting edits alone writes an empty feedback record, so the heading is
-  // conditional on there being something under it rather than on the record.
-  const asked = renderAnnotations(opts.feedback);
   if (asked.length) out.push('### What was asked', '', ...asked);
 
+  // Even on a version nobody has opened. That is precisely the case where an
+  // agent captured a new version, was told nobody has reviewed it yet, and
+  // would otherwise never learn what the last one left behind.
   if (opts.carried.length) out.push(...carriedSection(opts.carried));
 
-  // Reviewed, and it asked for nothing. That is the reviewer saying the version
-  // is fine — it is what an empty submit means, and what `a` used to mean.
-  if (!asked.length && !edits.length) {
-    out.push('---', 'Reviewed with nothing to change. Implement it as written.', '');
-    return out.join('\n');
+  out.push('---', ...closing(opts, reviewState(opts.feedback, edits, asked), asked.length > 0), '');
+  return out.join('\n');
+}
+
+/**
+ * What the reviewer has done to this version, as far as the closing cares.
+ *
+ * Three states, and the two empty ones stay apart because they are different
+ * facts: `unreviewed` is nobody having looked, `empty` is somebody looking and
+ * being happy. An edit is a review, so a hand-rewritten line keeps a version out
+ * of both of them however few records sit beside it.
+ */
+type ReviewState = 'unreviewed' | 'empty' | 'asked';
+
+function reviewState(
+  feedback: readonly Feedback[],
+  edits: readonly EditRecord[],
+  asked: readonly string[],
+): ReviewState {
+  if (!feedback.length && !edits.length) return 'unreviewed';
+  if (!asked.length && !edits.length) return 'empty';
+  return 'asked';
+}
+
+/**
+ * The last thing in the output: what to do with everything above it.
+ *
+ * Six blocks — three states by two commands — chosen here rather than by each
+ * path remembering to consult `executing` on its way out. Every one of them is
+ * reached with the plan, the quoted lines and the carried-over comments already
+ * written, because what a state changes is the instruction, never the payload.
+ *
+ * Neither command ever refuses. `revise` with nothing to revise towards revises
+ * from what the user asked for in the chat, and `execute` builds what is there.
+ */
+function closing(opts: ResumeOptions, state: ReviewState, asked: boolean): string[] {
+  const capture = `  planx capture --plan-id ${opts.planId} --parent v${opts.version} --stdin`;
+
+  if (state === 'unreviewed') {
+    return opts.executing
+      ? [
+          `No review of v${opts.version} yet, so there is no feedback to work from. Build the plan`,
+          'as it stands. Do not capture a new version.',
+        ]
+      : [
+          `No review of v${opts.version} yet, so there is no feedback to work from. Revise from`,
+          'what the user asked for in the chat, then run:',
+          capture,
+        ];
   }
 
-  out.push('---');
+  if (state === 'empty') {
+    return opts.executing
+      ? [
+          'Reviewed with nothing to change. Build the plan as written. Do not',
+          'capture a new version.',
+        ]
+      : [
+          `Reviewed with nothing to change — no feedback on v${opts.version}. Revise from what the`,
+          'user asked for in the chat, then run:',
+          capture,
+        ];
+  }
+
   if (opts.executing) {
-    out.push(
+    return [
       'Build the plan, addressing every comment as you go. Do not capture a new',
       'version: the plan is what was reviewed, and the comments are instructions on',
       'top of it for this build.',
-      '',
-    );
-    return out.join('\n');
+    ];
   }
 
   // A version whose only review is a set of edits has no comment to address,
   // and telling the agent to address every comment there sends it looking for
   // one. What it has to do instead is carry the reviewer's words through.
-  const lead = asked.length
+  const lead = asked
     ? 'Revise the plan addressing every comment.'
     : 'Revise the plan, keeping every edited line exactly as it now reads.';
-  out.push(`${lead} Then run:`);
-  out.push(`  planx capture --plan-id ${opts.planId} --parent v${opts.version} --stdin`, '');
-  return out.join('\n');
+  return [`${lead} Then run:`, capture];
 }
 
 /**
