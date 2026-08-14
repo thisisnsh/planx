@@ -2,6 +2,7 @@ import { defineConfig } from 'vitepress';
 
 const description =
   'PlanX is an open-source skill and terminal review interface for versioning, annotating, revising, comparing, approving, and executing AI coding-agent plans.';
+const socialImageUrl = 'https://planx.sh/images/planx-og-20260813.png';
 
 const softwareSchema = JSON.stringify({
   '@context': 'https://schema.org',
@@ -117,7 +118,9 @@ export default defineConfig({
     ['meta', { property: 'og:site_name', content: 'PlanX' }],
     ['meta', { property: 'og:title', content: 'PlanX - Make plans you want to read' }],
     ['meta', { property: 'og:description', content: description }],
-    ['meta', { property: 'og:image', content: 'https://planx.sh/images/og.png' }],
+    ['meta', { property: 'og:image', content: socialImageUrl }],
+    ['meta', { property: 'og:image:url', content: socialImageUrl }],
+    ['meta', { property: 'og:image:secure_url', content: socialImageUrl }],
     ['meta', { property: 'og:image:type', content: 'image/png' }],
     ['meta', { property: 'og:image:width', content: '1200' }],
     ['meta', { property: 'og:image:height', content: '630' }],
@@ -133,7 +136,7 @@ export default defineConfig({
     ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
     ['meta', { name: 'twitter:title', content: 'PlanX - Make plans you want to read' }],
     ['meta', { name: 'twitter:description', content: description }],
-    ['meta', { name: 'twitter:image', content: 'https://planx.sh/images/og.png' }],
+    ['meta', { name: 'twitter:image', content: socialImageUrl }],
     [
       'meta',
       {

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Renders scripts/og-image.html to site/public/images/og.png at 1200x630.
+// Renders scripts/og-image.html to site/public/images/planx-og-20260813.png at 1200x630.
 //
 // Development utility: requires a local Chrome. Override the binary with
 // CHROME_BIN when it is not at the default macOS location.
@@ -14,7 +14,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const source = join(root, 'scripts', 'og-image.html');
-const target = join(root, 'site', 'public', 'images', 'og.png');
+const target = join(root, 'site', 'public', 'images', 'planx-og-20260813.png');
 
 const candidates = [
   process.env.CHROME_BIN,
