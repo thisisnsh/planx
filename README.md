@@ -10,6 +10,10 @@
 Planning is not a ritual you perform to make an agent feel prepared. It is for
 you to decide what will be built.
 
+Plan with one agent and build with another. Claude Code writes the plan, you
+review it, Codex builds it — or any two agents you like, in any order. The plan
+is a stored file rather than a conversation, so it travels.
+
 PlanX turns the giant blob of text you read once and lose in chat into a
 versioned artifact you can actually review:
 
@@ -35,71 +39,118 @@ Claude Code /planx <task>
 ```
 
 PlanX installs its skill into existing Codex and Claude Code installations.
+Full setup detail is in
+[Installation](https://github.com/thisisnsh/planx/wiki/Installation).
 
-![PlanX view](docs/images/legacy/planx-view.png)
+## How it works
 
-## The workflow
+`PLAN → REVIEW → REVISE → EXECUTE → RESUME`
 
-`PLAN → REVIEW → REVISE → EXECUTE`
+This README was planned with PlanX. Every screenshot below is that plan, being
+reviewed.
 
-1. **Plan in an agent.** The agent researches the work and captures a version
-   instead of burying its plan in chat.
-2. **Review outside the agent.** Run `planx`, read the plan, collapse sections,
-   select exact lines, leave feedback, add a whole-plan note, or edit directly.
-3. **Revise with context.** Send the review back to the same agent session, or
-   hand it to another agent. Every revision becomes a new version you can
-   compare.
-4. **Execute what you approved.** Choose an exact reviewed version and let the
-   agent build that version—not a fuzzy recollection of the conversation.
+### 1. Plan with the skill
 
-## What changes when plans become reviewable
+Installing PlanX puts a skill into your existing Codex and Claude Code setups.
+Type `/planx <task>` and the agent researches the work, writes the plan,
+captures it and stops — nothing to paste, nothing to orchestrate.
 
-### Compare without rereading
+```text
+Codex       $planx <task>
+Claude Code /planx <task>
+```
 
-Every revision stays attached to the plan. Word-level diffs show what moved,
-and unchanged sections collapse so your attention goes to the new decisions.
+![Claude Code running the planx skill on a task](docs/images/planx-01-skill.png)
 
-![PlanX diff](docs/images/legacy/planx-diff.png)
+More in [The skill](https://github.com/thisisnsh/planx/wiki/The-Skill).
 
-### Give precise feedback
+### 2. Review what it wrote
 
-Select one line or a range and comment beside the exact text. Add a note for the
-whole plan, or edit a line directly when the right wording is already obvious.
+What comes back is a stored version rather than a message in a scrollback:
+structured markdown with headings that fold, the context the work needs, and the
+checks that prove it at the end. Run `planx` and it is there, with every version
+it has been through.
 
-![PlanX feedback](docs/images/legacy/planx-feedback.png)
+![The PlanX picker with a plan selected and its versions listed beneath it](docs/images/planx-02-picker.png)
 
-### Keep the plan readable
+![A plan version open at its title, context and decisions](docs/images/planx-03-plan.png)
 
-Collapse sections, feedback boxes, and unchanged diff runs without deleting
-their context. Long plans stay navigable from the first proposal to the settled
-version.
+More in [Planning](https://github.com/thisisnsh/planx/wiki/Planning) and
+[Reviewing](https://github.com/thisisnsh/planx/wiki/Reviewing).
 
-![PlanX collapse](docs/images/legacy/planx-collapse.png)
+### 3. Read it without drowning
 
-### Revise without losing context
+Press `space` to collapse the section, feedback box or unchanged diff run under
+the cursor, `h` to fold every comment at once, `j` to jump between comments, and
+`?` for the full key list. A long plan stays walkable instead of becoming a
+scroll.
 
-PlanX records the session that created a version, so revision can return to the
-agent that already researched the repository. Execution opens from the reviewed
-version in a fresh session.
+![A plan with several of its sections folded shut](docs/images/planx-04-collapse.png)
 
-![PlanX session-aware revision and execution](docs/images/legacy/planx-custom.png)
+More in [Reviewing](https://github.com/thisisnsh/planx/wiki/Reviewing).
 
-### Use the agent you want
+### 4. Say exactly what is wrong
 
-You can also configure any agent command that accepts a trailing prompt. That makes
-cross-agent workflows simple: one agent can plan, another can revise, and a
-third can execute. 
+Put the cursor on a line and press `v`, extend the selection with the arrows,
+then press `f`. The comment attaches to those exact lines, not to the plan in
+general. Press `n` for a note about the whole plan, or `e` to rewrite a line
+yourself when the right wording is already obvious.
+
+![A selection across three plan lines with a feedback box open on them](docs/images/planx-05-feedback.png)
+
+More in
+[Feedback and edits](https://github.com/thisisnsh/planx/wiki/Feedback-and-Edits).
+
+### 5. Revise in the same session, or a different agent
+
+Press `s` and pick a hand-off. PlanX can resume the session that wrote the plan,
+so it revises with the repository research still in context — or send the same
+review to another agent entirely, which starts from the plan and your comments
+and nothing else.
+
+![The submit menu listing every hand-off available for the version](docs/images/planx-06-handoff.png)
+
+More in [Hand-offs](https://github.com/thisisnsh/planx/wiki/Hand-offs).
+
+### 6. Compare what actually changed
+
+Each revision is a new version of the same plan. Open it and PlanX shows a
+word-level diff against the one before, with unchanged runs collapsed, so a
+rewritten approach cannot slip past as a wall of re-flowed text.
+
+![A word-level diff between two versions of a plan](docs/images/planx-07-diff.png)
+
+More in
+[Versions and diffs](https://github.com/thisisnsh/planx/wiki/Versions-and-Diffs).
+
+### 7. Build it with any agent, and go back to it
+
+Any agent command that takes a trailing prompt can build the plan. Set them once
+with `planx defaults` — Claude Code to revise, Codex to execute, or whatever
+pair you like — and the review offers them beside the built-in routes. The
+receiving agent needs nothing but the PlanX skill and the version number.
 
 ```bash
 planx defaults
 ```
 
-The receiving agent must have the
-PlanX skill installed.
+![planx defaults configured with Claude Code to revise and Codex to execute](docs/images/planx-08-agents.png)
 
-![PlanX custom-agent configuration](docs/images/legacy/planx-defaults.png)
+Execution starts from the stored version, plus every comment and every line you
+rewrote, rather than a summary somebody remembered from chat. And it records the
+session that ran it: press `ctrl+r` on that version in the picker and PlanX
+starts that Codex or Claude Code session back up — same flags, in the plan's own
+directory, with no prompt attached — so the first thing it hears is whatever you
+type next. You are back in the conversation that wrote the code instead of
+explaining the code to a stranger.
 
-## Other commands 
+![The picker on an executed version, tagged executed, offering ctrl+r resume](docs/images/planx-09-resume.png)
+
+More in [Hand-offs](https://github.com/thisisnsh/planx/wiki/Hand-offs),
+[Custom agents](https://github.com/thisisnsh/planx/wiki/Custom-Agents) and
+[Resuming a build](https://github.com/thisisnsh/planx/wiki/Resuming-a-Build).
+
+## Other commands
 
 Update PlanX and its installed skills with:
 
@@ -121,6 +172,19 @@ Uninstall the best way to plan:
 planx remove-skills
 npm uninstall --global @thisisnsh/planx
 ```
+
+Every command and flag is in the
+[CLI reference](https://github.com/thisisnsh/planx/wiki/CLI-Reference).
+
+## Documentation
+
+Every key, command and flag is written down in the
+[PlanX wiki](https://github.com/thisisnsh/planx/wiki).
+
+[Installation](https://github.com/thisisnsh/planx/wiki/Installation) ·
+[The skill](https://github.com/thisisnsh/planx/wiki/The-Skill) ·
+[Reviewing](https://github.com/thisisnsh/planx/wiki/Reviewing) ·
+[CLI reference](https://github.com/thisisnsh/planx/wiki/CLI-Reference)
 
 <details>
 <summary><strong>SEO section, read if you want</strong></summary>
