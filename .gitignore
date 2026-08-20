@@ -3,10 +3,6 @@ dist/
 *.tsbuildinfo
 .DS_Store
 
-# vitepress
-site/.vitepress/cache/
-site/.vitepress/dist/
-
 # local scratch stores used by `npm run dev -- --dir .planx-dev`
 .planx-dev/
 coverage/

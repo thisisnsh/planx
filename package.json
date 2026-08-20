@@ -11,7 +11,7 @@
     "cli",
     "tui"
   ],
-  "homepage": "https://planx.sh/",
+  "homepage": "https://github.com/thisisnsh/planx",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/thisisnsh/planx.git"
@@ -39,13 +39,10 @@
     "build": "tsc -p tsconfig.build.json && node scripts/chmod-bin.js",
     "dev": "node --experimental-strip-types src/cli.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "prettier --check \"src/**/*.{ts,tsx}\" \"scripts/*.js\" \"test/**/*.{ts,tsx}\" \"site/.vitepress/**/*.{ts,vue,css}\"",
-    "format": "prettier --write \"src/**/*.{ts,tsx}\" \"scripts/*.js\" \"test/**/*.{ts,tsx}\" \"site/.vitepress/**/*.{ts,vue,css}\"",
+    "lint": "prettier --check \"src/**/*.{ts,tsx}\" \"scripts/*.js\" \"test/**/*.{ts,tsx}\"",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\" \"scripts/*.js\" \"test/**/*.{ts,tsx}\"",
     "test": "vitest run",
     "test:watch": "vitest",
-    "docs:dev": "vitepress dev site",
-    "docs:build": "vitepress build site",
-    "docs:og": "node scripts/generate-og.js",
     "release:staging": "node scripts/release-staging.js",
     "remove:staging": "node scripts/remove-staging.js",
     "postinstall": "node scripts/postinstall.js",
@@ -62,7 +59,6 @@
     "@types/react": "^19.2.2",
     "prettier": "^3.6.2",
     "typescript": "^7.0.2",
-    "vitepress": "^1.6.4",
     "vitest": "^4.1.10"
   }
 }
