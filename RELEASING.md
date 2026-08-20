@@ -96,6 +96,18 @@ Either way npm never accepts a removed version number again, so the next
 Release tags must be stable semver versions. Prerelease tags are rejected so a
 prerelease can never move npm's `latest` tag.
 
+### The CLI reference on the wiki
+
+When a release changes the command surface, regenerate the wiki's CLI reference
+and push it:
+
+```bash
+planx __gen-cli-docs > <planx.wiki clone>/CLI-Reference.md
+```
+
+That page is generated output, never hand-written — it comes from
+`src/cli/spec.ts`, which is also what `--help` reads.
+
 ## 4. Version policy
 
 Semver. **Pre-1.0, breaking changes bump the minor.**
