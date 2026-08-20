@@ -329,7 +329,7 @@ policy are available in this repository.
 
 ---
 
-[Website](https://planx.sh) ·
+[Wiki](https://github.com/thisisnsh/planx/wiki) ·
 [Contributing](CONTRIBUTING.md) ·
 [Security](SECURITY.md) ·
 [MIT License](LICENSE)

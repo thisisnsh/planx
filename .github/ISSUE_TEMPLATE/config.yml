@@ -4,7 +4,7 @@ contact_links:
     url: https://github.com/thisisnsh/planx/discussions
     about: Anything that is not a specific bug or a concrete feature request.
   - name: Documentation
-    url: https://planx.sh/
+    url: https://github.com/thisisnsh/planx/wiki
     about: Guides and the full CLI reference.
   - name: Security
     url: https://github.com/thisisnsh/planx/security/advisories/new
