@@ -36,7 +36,7 @@ Claude Code /planx <task>
 
 PlanX installs its skill into existing Codex and Claude Code installations.
 
-![PlanX view](site/public/images/planx-view.png)
+![PlanX view](docs/images/legacy/planx-view.png)
 
 ## The workflow
 
@@ -59,14 +59,14 @@ PlanX installs its skill into existing Codex and Claude Code installations.
 Every revision stays attached to the plan. Word-level diffs show what moved,
 and unchanged sections collapse so your attention goes to the new decisions.
 
-![PlanX diff](site/public/images/planx-diff.png)
+![PlanX diff](docs/images/legacy/planx-diff.png)
 
 ### Give precise feedback
 
 Select one line or a range and comment beside the exact text. Add a note for the
 whole plan, or edit a line directly when the right wording is already obvious.
 
-![PlanX feedback](site/public/images/planx-feedback.png)
+![PlanX feedback](docs/images/legacy/planx-feedback.png)
 
 ### Keep the plan readable
 
@@ -74,7 +74,7 @@ Collapse sections, feedback boxes, and unchanged diff runs without deleting
 their context. Long plans stay navigable from the first proposal to the settled
 version.
 
-![PlanX collapse](site/public/images/planx-collapse.png)
+![PlanX collapse](docs/images/legacy/planx-collapse.png)
 
 ### Revise without losing context
 
@@ -82,7 +82,7 @@ PlanX records the session that created a version, so revision can return to the
 agent that already researched the repository. Execution opens from the reviewed
 version in a fresh session.
 
-![PlanX session-aware revision and execution](site/public/images/planx-custom.png)
+![PlanX session-aware revision and execution](docs/images/legacy/planx-custom.png)
 
 ### Use the agent you want
 
@@ -97,7 +97,7 @@ planx defaults
 The receiving agent must have the
 PlanX skill installed.
 
-![PlanX custom-agent configuration](site/public/images/planx-defaults.png)
+![PlanX custom-agent configuration](docs/images/legacy/planx-defaults.png)
 
 ## Other commands 
 
