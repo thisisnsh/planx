@@ -690,15 +690,34 @@ export function ReviewApp(props: ReviewAppProps) {
   }
 
   /**
+   * The line the cursor is over, looking back past the rows that carry none.
+   *
+   * A collapsed run, a folded section and a note box all stand for lines
+   * without being one, and the nearest line above is where each of them sits in
+   * the document. Answering 0 for them instead would send `j` back to the top
+   * of the plan from halfway down it.
+   */
+  function lineAtCursor(): number {
+    for (let i = Math.min(selection.cursor, rows.length - 1); i >= 0; i--) {
+      const line = rows[i]?.newLine;
+      if (line !== null && line !== undefined) return line;
+    }
+    return 0;
+  }
+
+  /**
    * `j` walks the feedback, forward, wrapping at the end.
    *
    * Forward only: with a wrap there is nothing a backward key would reach that
    * pressing this one again does not, and a second key for the same walk is a
    * letter of the keyboard spent on symmetry.
    *
-   * A comment inside a folded section unfolds it on the way — the alternative
-   * is a key that silently declines to visit feedback you cannot see, which is
-   * exactly the feedback worth being taken to.
+   * A comment hidden inside a folded section or a collapsed run of unchanged
+   * lines is opened up on the way — the alternative is a key that silently
+   * declines to visit feedback you cannot see, which is exactly the feedback
+   * worth being taken to. Silently, because a note nothing has drawn is a note
+   * the jump below cannot find a row for: leaving the run shut is what made the
+   * wrap at the end of a diff look like a dead key.
    */
   function nextFeedback() {
     const ordered = [...annotations].sort(
@@ -711,7 +730,7 @@ export function ReviewApp(props: ReviewAppProps) {
     const index = here === null ? -1 : ordered.findIndex((a) => a.id === here);
     const target =
       index === -1
-        ? (ordered.find((a) => a.anchor.end_line > (row?.newLine ?? 0)) ?? ordered[0]!)
+        ? (ordered.find((a) => a.anchor.end_line > lineAtCursor()) ?? ordered[0]!)
         : ordered[(index + 1) % ordered.length]!;
 
     for (const line of foldedSections) {
@@ -720,8 +739,19 @@ export function ReviewApp(props: ReviewAppProps) {
         setFoldedSections((set) => withoutLine(set, line));
       }
     }
-    // The row it lands on may not exist until the fold above is gone, so the
-    // jump waits for the rows to be rebuilt rather than guessing an index.
+    // A note hangs off the last line it covers, so the run to open is the one
+    // holding that line.
+    const gap = model.blocks.findIndex(
+      (block, at) =>
+        block.kind === 'gap' &&
+        !expandedGaps.has(at) &&
+        block.rows.some((r) => r.newLine === target.anchor.end_line),
+    );
+    if (gap !== -1) setExpandedGaps((set) => new Set(set).add(gap));
+
+    // The row it lands on may not exist until the fold and the run above are
+    // gone, so the jump waits for the rows to be rebuilt rather than guessing
+    // an index.
     setPendingJump(target.id);
   }
 

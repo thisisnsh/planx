@@ -1238,6 +1238,51 @@ describe('j walks the feedback', () => {
     app.unmount();
   });
 
+  /**
+   * The wrap at the end of a diff used to look like a dead key: the note it was
+   * going back to was inside a collapsed run, so nothing had drawn a row for it
+   * and the jump had nowhere to land.
+   */
+  it('expands a collapsed run to reach the feedback inside it', async () => {
+    const body = Array.from({ length: 40 }, (_, i) => `- step ${i + 1}`).join('\n');
+    const text = `# A plan\n\n## Steps\n${body}\n\nTHE LAST LINE\n`;
+    const id = capture({ text, source: 'test' }).planId;
+    capture({
+      text: text.replace('THE LAST LINE', 'THE CHANGED LAST LINE'),
+      planId: id,
+      source: 'test',
+    });
+
+    const doc = readVersionText(id, 2)!.split('\n');
+    submitFeedback({
+      planId: id,
+      version: 2,
+      annotations: [
+        buildAnnotation(doc, 10, 10, 'inside the run', 'a1'),
+        buildAnnotation(doc, 45, 45, 'on the changed line', 'a2'),
+      ],
+    });
+
+    const app = mount(id, 1, 2, [1, 2], 100, 30, listFeedback(id));
+    await app.ready();
+    await app.frame('⋯');
+    expect(app.stdout.lastFrame).not.toContain('inside the run');
+
+    await app.press('j');
+    await app.frame('inside the run');
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('inside the run');
+
+    await app.press('j');
+    await new Promise((r) => setTimeout(r, 120));
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('on the changed line');
+
+    // The last one leads back to the first, run or no run.
+    await app.press('j');
+    await new Promise((r) => setTimeout(r, 120));
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('inside the run');
+    app.unmount();
+  });
+
   it('is offered only where there is feedback to walk', async () => {
     const app = mount(seed(), null, 1);
     await app.ready();
