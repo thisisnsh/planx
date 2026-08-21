@@ -1015,7 +1015,7 @@ export async function cmdUpdate(ctx: Ctx): Promise<number> {
 
   // The one command where waiting on the network is the correct thing to do.
   const latest = await fetchLatest();
-  recordCheck(latest);
+  recordCheck(latest, ctx.version);
   if (latest && !isNewer(latest, ctx.version)) {
     ctx.out(green(`Already on v${ctx.version}, the latest.`));
     return 0;

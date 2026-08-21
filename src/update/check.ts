@@ -148,13 +148,29 @@ export function updateNotice(): UpdateNotice | null {
 
 /* -------------------------------------------------------------- checking */
 
+/**
+ * Does the cached answer name a version `current` has already moved past?
+ *
+ * It is the one answer that cannot be true. Whatever npm calls `latest`, it is
+ * not a release you are running ahead of — so the cache is describing the world
+ * before an upgrade, and nothing it says is worth waiting out the window for.
+ */
+function isSpent(cached: string | null, current: string): boolean {
+  return cached !== null && isNewer(current, cached);
+}
+
 /** Is a background check worth a process right now? */
-export function shouldCheck(interactive: boolean): boolean {
+export function shouldCheck(interactive: boolean, current: string): boolean {
   if (!interactive) return false;
   if (process.env.PLANX_NO_UPDATE_CHECK) return false;
   if (process.env.CI) return false;
   const cached = readCache();
   if (!cached) return true;
+  // Age is the usual question, but an upgrade can leave an answer behind that
+  // is known wrong before it is old — and sitting out the rest of the six hours
+  // on it is how planx goes quiet about the release that lands right after you
+  // upgrade. Ask again now; the answer was spent the moment you installed.
+  if (isSpent(cached.latest, current)) return true;
   const age = Date.now() - Date.parse(cached.checked_at);
   return !Number.isFinite(age) || age > CHECK_EVERY_MS;
 }
@@ -176,8 +192,8 @@ function cliEntry(): string {
  * `--experimental-strip-types`, and `argv[1]` is deliberately not used: npm
  * exposes the binary through a symlink in `node_modules/.bin`.
  */
-export function spawnUpdateCheck(interactive: boolean): void {
-  if (!shouldCheck(interactive)) return;
+export function spawnUpdateCheck(interactive: boolean, current: string): void {
+  if (!shouldCheck(interactive, current)) return;
   try {
     const child = spawn(process.execPath, [...process.execArgv, cliEntry(), '__update-check'], {
       detached: true,
@@ -212,14 +228,18 @@ export async function fetchLatest(): Promise<string | null> {
  *
  * Always stamps `checked_at`, success or not, so an offline machine spawns one
  * process every six hours rather than one on every single run. A failed check
- * keeps whatever the last successful one found rather than forgetting it.
+ * keeps whatever the last successful one found rather than forgetting it —
+ * unless that answer is spent, which is the one case worth dropping to null:
+ * holding it would leave `shouldCheck` asking again on every single run, and a
+ * machine that cannot reach the registry is exactly where that costs the most.
  */
-export function recordCheck(latest: string | null): void {
-  writeCache(latest ?? readCache()?.latest ?? null);
+export function recordCheck(latest: string | null, current: string): void {
+  const kept = readCache()?.latest ?? null;
+  writeCache(latest ?? (isSpent(kept, current) ? null : kept));
 }
 
-export async function runUpdateCheck(): Promise<void> {
-  recordCheck(await fetchLatest());
+export async function runUpdateCheck(current: string): Promise<void> {
+  recordCheck(await fetchLatest(), current);
 }
 
 /**
@@ -238,7 +258,7 @@ export async function runUpdateCheck(): Promise<void> {
  */
 export async function confirmUpdate(current: string): Promise<string | null> {
   const latest = await fetchLatest();
-  recordCheck(latest);
+  recordCheck(latest, current);
   if (!latest) return readUpdate(current);
   return isNewer(latest, current) ? latest : null;
 }

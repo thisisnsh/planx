@@ -100,7 +100,7 @@ describe('readUpdate', () => {
   });
 
   it('is null when a check ran but found nothing', () => {
-    recordCheck(null);
+    recordCheck(null, '0.4.0');
     expect(cache().latest).toBeNull();
     expect(readUpdate('0.4.0')).toBeNull();
   });
@@ -108,28 +108,49 @@ describe('readUpdate', () => {
 
 describe('the spawn gate', () => {
   it('never checks when there is no terminal', () => {
-    expect(shouldCheck(false)).toBe(false);
+    expect(shouldCheck(false, '0.4.0')).toBe(false);
   });
 
   it('checks when nothing has been cached yet', () => {
-    expect(shouldCheck(true)).toBe(true);
+    expect(shouldCheck(true, '0.4.0')).toBe(true);
   });
 
   it('holds off while the cache is fresh, and goes again once it is not', () => {
-    seed('0.4.0');
-    expect(shouldCheck(true)).toBe(false);
+    seed('0.5.0');
+    expect(shouldCheck(true, '0.4.0')).toBe(false);
 
-    seed('0.4.0', new Date(Date.now() - CHECK_EVERY_MS - 1000).toISOString());
-    expect(shouldCheck(true)).toBe(true);
+    seed('0.5.0', new Date(Date.now() - CHECK_EVERY_MS - 1000).toISOString());
+    expect(shouldCheck(true, '0.4.0')).toBe(true);
+  });
+
+  /**
+   * The case an upgrade creates: you install a build that is past whatever the
+   * cache last heard about, and the answer it is holding becomes one npm cannot
+   * possibly still be giving. Waiting out the window on it is how planx goes
+   * silent about the release that lands right after you upgrade.
+   */
+  it('goes again on an answer the running version is past, however fresh', () => {
+    seed('0.10.0');
+    expect(shouldCheck(true, '0.11.0-staging.1')).toBe(true);
+  });
+
+  /**
+   * The other side of that rule, and the one that keeps it from costing a
+   * process per run: after a normal `planx update` the cache names the version
+   * you are on, which is not spent — it is correct, and it is the answer.
+   */
+  it('holds off when the cache names the version already running', () => {
+    seed('0.11.0');
+    expect(shouldCheck(true, '0.11.0')).toBe(false);
   });
 
   it('is silenced by PLANX_NO_UPDATE_CHECK and by CI', () => {
     process.env['PLANX_NO_UPDATE_CHECK'] = '1';
-    expect(shouldCheck(true)).toBe(false);
+    expect(shouldCheck(true, '0.4.0')).toBe(false);
     delete process.env['PLANX_NO_UPDATE_CHECK'];
 
     process.env['CI'] = 'true';
-    expect(shouldCheck(true)).toBe(false);
+    expect(shouldCheck(true, '0.4.0')).toBe(false);
   });
 });
 
@@ -140,7 +161,7 @@ describe('running the check', () => {
       vi.fn(async () => new Response(JSON.stringify({ latest: '0.9.1', staging: '0.9.2-s.1' }))),
     );
 
-    await runUpdateCheck();
+    await runUpdateCheck('0.4.0');
 
     expect(cache().latest).toBe('0.9.1');
     expect(readUpdate('0.4.0')).toBe('0.9.1');
@@ -159,11 +180,32 @@ describe('running the check', () => {
       }),
     );
 
-    await expect(runUpdateCheck()).resolves.toBeUndefined();
+    await expect(runUpdateCheck('0.4.0')).resolves.toBeUndefined();
 
     expect(cache().latest).toBe('0.5.0');
     expect(Date.parse(cache().checked_at)).toBeGreaterThan(0);
-    expect(shouldCheck(true)).toBe(false);
+    expect(shouldCheck(true, '0.4.0')).toBe(false);
+  });
+
+  /**
+   * A spent answer is the exception to keeping what the last check found. It is
+   * known wrong, and holding it would leave the gate above open on every single
+   * run — on a machine that cannot reach the registry, which is where a process
+   * per run costs the most.
+   */
+  it('forgets a spent answer when the network is gone, and goes quiet again', async () => {
+    seed('0.10.0');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('getaddrinfo ENOTFOUND registry.npmjs.org');
+      }),
+    );
+
+    await runUpdateCheck('0.11.0-staging.1');
+
+    expect(cache().latest).toBeNull();
+    expect(shouldCheck(true, '0.11.0-staging.1')).toBe(false);
   });
 
   it('treats a registry error and a junk body as no answer', async () => {
@@ -171,14 +213,14 @@ describe('running the check', () => {
       'fetch',
       vi.fn(async () => new Response('gateway timeout', { status: 504 })),
     );
-    await runUpdateCheck();
+    await runUpdateCheck('0.4.0');
     expect(cache().latest).toBeNull();
 
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => new Response(JSON.stringify({ beta: '1.0.0' }))),
     );
-    await runUpdateCheck();
+    await runUpdateCheck('0.4.0');
     expect(cache().latest).toBeNull();
   });
 });

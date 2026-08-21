@@ -82,7 +82,7 @@ async function dispatch(name: string, ctx: Ctx): Promise<number> {
       ctx.out(generateReference(packageVersion()));
       return 0;
     case '__update-check':
-      await runUpdateCheck();
+      await runUpdateCheck(ctx.version);
       return 0;
     default:
       throw new Error(`planx: unknown command "${name}". Run \`planx --help\`.`);
@@ -216,7 +216,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     const interactive = Boolean(process.stdout.isTTY) && !ctx.json;
     const latest = interactive ? readUpdate(version) : null;
     if (latest) setUpdateNotice(noticeFor(latest));
-    spawnUpdateCheck(interactive);
+    spawnUpdateCheck(interactive, version);
 
     // `planx diff …`, bare `planx`, and the `planx <id>` shorthand all arrive
     // here as the diff command. Printed diffs never ask: a pipe has no answer,
