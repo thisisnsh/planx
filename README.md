@@ -161,12 +161,11 @@ Ask your agent like `/planx help how do I comment on a single line?`
 More in
 [Asking for help](https://github.com/thisisnsh/planx/wiki/Help).
 
-Anything the wiki does not cover goes in
+Anything the wiki does not cover can be asked in
 [Q&A](https://github.com/thisisnsh/planx/discussions/categories/q-a)
 
 Have something PlanX should do? Post it in
-[Ideas](https://github.com/thisisnsh/planx/discussions/categories/ideas), where
-it can be talked through before anyone builds it.
+[Ideas](https://github.com/thisisnsh/planx/discussions/categories/ideas)
 
 ## Liked it?
 
@@ -175,6 +174,8 @@ If PlanX made a plan easier for you to review, please
 
 It tells me the tool is worth continuing, and it is how the next person who is
 tired of losing plans in a scrollback finds it.
+
+Feel free to contact author at `hello at thisisnsh dot com`
 
 ---
 
