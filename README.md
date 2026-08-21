@@ -7,8 +7,9 @@
 
 ## Make plans you want to read
 
-**PlanX is a planning skill for Claude Code and Codex, plus a terminal interface
-for reviewing plans with versions, diffs, inline feedback, direct edits.**
+**PlanX is a planning skill for Claude Code, Codex and other AI coding agents,
+plus a terminal interface for reviewing plans with versions, diffs, inline
+feedback and direct edits.**
 
 Planning is not a ritual you perform to make an agent feel prepared. It is for
 you to decide what will be built.
@@ -34,7 +35,8 @@ review it, Codex builds it — or any two agents you like, in any order.
 npm install --global @thisisnsh/planx
 ```
 
-That installs the `planx` TUI you review plans in, and installs the PlanX skill for Codex and Claude Code.
+That installs the `planx` TUI you review plans in, and automatically installs
+the PlanX skill for detected Claude Code and Codex installations.
 
 Or install the skill on its own with
 [`skills`](https://skills.sh):
@@ -168,7 +170,11 @@ Every key, command and flag is written down in the
 
 ## Questions and ideas
 
-Ask your agent like `/planx help how do I comment on a single line?`
+Not sure what to do with PlanX? Ask your agent `/planx help what can you do?`
+It reads the wiki and gives you the important features and where to start.
+
+You can ask specific questions too, like
+`/planx help how do I comment on a single line?`
 
 More in
 [Asking for help](https://github.com/thisisnsh/planx/wiki/Help).

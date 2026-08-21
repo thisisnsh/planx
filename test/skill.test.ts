@@ -49,6 +49,9 @@ describe('the shipped planx skill', () => {
     // The shipped page table ages; Home is the list that does not.
     expect(help).toContain('If no row fits, fetch `Home.md` first');
     expect(help).toContain('The wiki decides');
+    expect(help).toContain('what PlanX can do, an overview, important features');
+    expect(help).toContain('For a broad question such as *what can you do?*');
+    expect(help).toContain('PLAN → REVIEW → REVISE → EXECUTE → RESUME');
     expect(help).toContain('discussions/categories/q-a');
     expect(help).toContain('Do not fill the gap with a plausible key or flag');
     // Nothing on this branch writes, and it never slides into planning.

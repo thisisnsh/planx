@@ -1,7 +1,7 @@
 {
   "name": "@thisisnsh/planx",
   "version": "0.14.0",
-  "description": "A planning skill for Claude Code and Codex, plus a terminal interface for reviewing plans with versions, diffs, inline feedback, direct edits.",
+  "description": "A planning skill for Claude Code, Codex and other AI coding agents, plus a terminal interface for reviewing plans with versions, diffs, inline feedback and direct edits.",
   "keywords": [
     "claude-code",
     "codex",

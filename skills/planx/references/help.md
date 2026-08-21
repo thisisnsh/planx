@@ -24,6 +24,7 @@ https://raw.githubusercontent.com/wiki/thisisnsh/planx/<Page>.md
 
 | The question is about | Page |
 | --- | --- |
+| what PlanX can do, an overview, important features | `Home` |
 | installing, upgrading, where the skills and store land | `Installation` |
 | invoking the skill, and the branches it dispatches on | `The-Skill` |
 | what the agent does while planning, and plan shape | `Planning` |
@@ -49,6 +50,12 @@ current — the table above ships with the skill and the wiki moves on its own.
 Answer in chat, in a few lines, in the words the wiki uses. Quote keys, flags
 and commands exactly as written — a key that is nearly right sends someone
 pressing it into a screen that does nothing.
+
+For a broad question such as *what can you do?*, give a useful tour rather than
+repeating the page index. Name the `PLAN → REVIEW → REVISE → EXECUTE → RESUME`
+loop, the important review features, support for other agents, and the quickest
+way to start. Keep it selective: the user asked for an orientation, not every
+key and flag.
 
 Link the page you used, in its readable form:
 
