@@ -232,6 +232,30 @@ function seedLongPlan(): string {
     .planId;
 }
 
+/** Sub-sections under one heading, for the jump that has to skip a fold. */
+function seedNestedPlan(): string {
+  return capture({
+    text: [
+      '# Nested plan',
+      '',
+      '## Context',
+      'a line.',
+      '',
+      '## Approach',
+      '### First',
+      'one.',
+      '',
+      '### Second',
+      'two.',
+      '',
+      '## Rollout',
+      'ship it.',
+      '',
+    ].join('\n'),
+    source: 'test',
+  }).planId;
+}
+
 const ESC = '\x1b';
 const ENTER = '\r';
 const SPACE = ' ';
@@ -2359,6 +2383,7 @@ describe('the keys, and where they sit', () => {
     expect(keys).toEqual([
       '←→',
       '↑↓',
+      '[ ]',
       'd',
       'e',
       'f',
@@ -2484,7 +2509,7 @@ describe('the whole-plan note', () => {
     // A plan on v1 has nothing to step back to — the cheapest real status. The
     // note is what the version holds and the status is what just happened, so
     // they are two rows and neither has to wait for the other.
-    await app.press('[');
+    await app.press(LEFT);
     await app.frame('This is the first version.');
     expect(app.stdout.lastFrame).toContain('Global Note: a standing note');
     app.unmount();
@@ -2717,14 +2742,18 @@ describe('the plan, the diff and the versions', () => {
     app.unmount();
   });
 
-  it('still answers to the brackets, which the hints no longer mention', async () => {
+  it('leaves the version alone when the brackets are pressed — they move the cursor now', async () => {
     const app = mount(seedTwoVersions(), null, 2, [1, 2]);
     await app.ready();
     expect(app.stdout.lastFrame).toContain('←→ version');
-    expect(app.stdout.lastFrame).not.toContain('[ ]');
 
+    const before = cursorRow(bodyRows(app.stdout.lastFrame));
     await app.press('[');
-    await app.frame('10% then 50% then 100%');
+    // Both meanings of the key move something, so the regression is silent
+    // unless the version on screen is asserted alongside the cursor.
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).not.toBe(before);
+    expect(frameRows(app.stdout.lastFrame)[0]).toContain('v2');
+    expect(app.stdout.lastFrame).toContain('1% then 10% then 100%');
     app.unmount();
   });
 
@@ -2737,7 +2766,7 @@ describe('the plan, the diff and the versions', () => {
     await app.press(ENTER);
     await app.frame('about v2');
 
-    await app.press('[');
+    await app.press(LEFT);
     await new Promise((r) => setTimeout(r, 120));
     await app.press('f');
     await app.press('about v1');
@@ -2849,6 +2878,169 @@ describe('getting around a long plan', () => {
     clock = 4000;
     await app.press(DOWN);
     expect(lineNow()).toBe(before + 4);
+    app.unmount();
+  });
+});
+
+describe('[ and ] step between sections', () => {
+  it('] takes the next heading, not the next line', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press(']');
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('## Context');
+    app.unmount();
+  });
+
+  it('] from inside a section leaves it for the one below', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press(']');
+    await app.press(DOWN);
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('The poller reads');
+
+    await app.press(']');
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('## Approach');
+    app.unmount();
+  });
+
+  /**
+   * Strictly above is what makes `[` useful from the middle of a section: the
+   * first press is "back to the top of this one", the second is the heading
+   * before it. It is the shape vim's `{` has.
+   */
+  it('[ lands on the heading you are under, then the one before it', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press(']');
+    await app.press(']');
+    await app.press(DOWN);
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('Extend the existing');
+
+    await app.press('[');
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('## Approach');
+
+    await app.press('[');
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('## Context');
+    app.unmount();
+  });
+
+  it('wraps off the last heading without saying anything about it', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    for (let i = 0; i < 3; i++) await app.press(']');
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('## Rollout');
+
+    await app.press(']');
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('# Guard the clock regression');
+    expect(app.stdout.lastFrame).not.toContain('No sections in this version.');
+    app.unmount();
+  });
+
+  it('scrolls the heading it lands on to the top of the body', async () => {
+    const app = mount(seedLongPlan(), null, 1);
+    await app.ready();
+    expect(app.stdout.lastFrame).toContain('# A long plan');
+
+    // `## Steps` is already on screen, so a jump that only kept the cursor
+    // visible would leave the viewport alone and show a title with two lines
+    // of its section under it.
+    await app.press(']');
+    // The blank row the frame pads the body with is not a row of the plan.
+    const drawn = bodyRows(app.stdout.lastFrame).filter((l) => /\d/.test(l));
+    expect(drawn[0]).toContain('## Steps');
+    expect(app.stdout.lastFrame).not.toContain('# A long plan');
+    app.unmount();
+  });
+
+  it('skips the headings a fold took away rather than opening it', async () => {
+    const app = mount(seedNestedPlan(), null, 1);
+    await app.ready();
+
+    await app.press(']');
+    await app.press(']');
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('## Approach');
+
+    await app.press(SPACE);
+    await app.frame('(space to expand)');
+    expect(app.stdout.lastFrame).not.toContain('### First');
+
+    await app.press(']');
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('## Rollout');
+    expect(app.stdout.lastFrame).not.toContain('### First');
+    app.unmount();
+  });
+
+  /**
+   * `v` anchors and every movement extends from it, so this comes free from
+   * routing the jump through `reduceSelection` — and stays true only while it
+   * keeps going through there.
+   */
+  it('extends a live selection to the section boundary', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('v');
+    await app.press(']');
+    // Lines 1 to 3: the span is what `f` and `e` act on, and it is plural.
+    await app.frame('e edit lines');
+
+    await app.press('f');
+    await app.press('down to the heading');
+    await app.press(ENTER);
+    await app.frame('down to the heading');
+
+    const rows = bodyRows(app.stdout.lastFrame);
+    const first = rows.findIndex((l) => l.includes('# Guard the clock regression'));
+    const rail = boxColumn(rows);
+    // The rail runs down every line the selection covered, the blank one
+    // between the title and the heading included, and the box hangs off the last.
+    expect(rows[first]![rail]).toBe('│');
+    expect(rows[first + 1]![rail]).toBe('│');
+    expect(rows[first + 2]).toContain('## Context');
+    expect(rows[first + 2]![rail]).toBe('│');
+    expect(rows[first + 3]).toContain('├─');
+    app.unmount();
+  });
+
+  /**
+   * The conditional shape `j`, `d` and `←→` already use: a plan the key would
+   * decline on does not advertise it. The status line is what is left, because
+   * without it the key is indistinguishable from one that is broken.
+   */
+  it('is off the bar on a plan with no sections, and says so when pressed', async () => {
+    const id = capture({ text: 'just a paragraph.\nand another.\n', source: 'test' }).planId;
+    const app = mount(id, null, 1);
+    await app.ready();
+    await app.frame('n add note');
+    expect(app.stdout.lastFrame).not.toContain('[ ] section');
+
+    await app.press(']');
+    await app.frame('No sections in this version.');
+    app.unmount();
+  });
+
+  it('is on the bar of a plan that has them', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+    await app.frame('[ ] section');
+    app.unmount();
+  });
+
+  it('types itself into a note instead of moving', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('f');
+    await app.press(']after[');
+    await app.frame(']after[');
+
+    await app.press(ESC);
+    await new Promise((r) => setTimeout(r, 60));
+    expect(cursorRow(bodyRows(app.stdout.lastFrame))).toContain('# Guard the clock regression');
     app.unmount();
   });
 });

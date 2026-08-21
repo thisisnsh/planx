@@ -37,6 +37,7 @@ import {
   caretPosition,
   enclosingHeading,
   foldEnd,
+  headingRows,
   wrapComment,
   wrapLines,
   type ViewRow,
@@ -429,6 +430,7 @@ export function ReviewApp(props: ReviewAppProps) {
             diffing: versionA !== null,
             canDiff: previousVersion !== null,
             manyVersions: props.versions.length > 1,
+            manySections: headingRows(rows, model.docLines).length > 1,
           }),
           inner,
         ).map((line) => (line ? dim(line) : ''));
@@ -475,11 +477,23 @@ export function ReviewApp(props: ReviewAppProps) {
     [bodyHeight, rows],
   );
 
+  /**
+   * Land the cursor on a row, and put the viewport where the landing wants it.
+   *
+   * `'top'` scrolls the row it landed on to the top of the body rather than
+   * leaving the offset wherever `scrollFor` would, for the reason `page`
+   * already documents: landing on a heading that happens to sit on the bottom
+   * row shows you a title with none of its section under it.
+   */
   const jumpTo = useCallback(
-    (index: number) => {
+    (index: number, align?: 'top') => {
       setSelection((s) => {
         const next = reduceSelection(s, { type: 'moveTo', index }, rows);
-        setOffset((o) => scrollFor(next.cursor, o, bodyHeight, rows.length));
+        setOffset((o) => {
+          const from =
+            align === 'top' ? Math.min(next.cursor, Math.max(0, rows.length - bodyHeight)) : o;
+          return scrollFor(next.cursor, from, bodyHeight, rows.length);
+        });
         return next;
       });
     },
@@ -778,6 +792,32 @@ export function ReviewApp(props: ReviewAppProps) {
     setPendingJump(target.id);
   }
 
+  /**
+   * The nearest heading below the cursor, or above it — the section motion.
+   *
+   * Strictly below and strictly above, which is what makes `[` useful from the
+   * middle of a section: the first press lands on the heading you are under and
+   * the second on the one before it. It is the shape vim's `{` has, and here it
+   * falls out of the rule rather than being a special case in it.
+   *
+   * It wraps at both ends, silently, the way `j` already does for feedback. The
+   * one case that gets a word is a version with no heading rows drawn at all,
+   * because without it the key is indistinguishable from one that is broken.
+   *
+   * Routed through the same `jumpTo` every other jump uses, so a live selection
+   * extends to the section boundary for free.
+   */
+  function stepSection(delta: 1 | -1) {
+    const stops = headingRows(rows, model.docLines);
+    if (!stops.length) return setStatus('No sections in this version.');
+    const at = selection.cursor;
+    const next =
+      delta > 0
+        ? (stops.find((i) => i > at) ?? stops[0]!)
+        : (stops.findLast((i) => i < at) ?? stops[stops.length - 1]!);
+    jumpTo(next, 'top');
+  }
+
   /** Land on another version, with the document reset under the cursor. */
   function goToVersion(next: number, diffing: boolean) {
     setVersionB(next);
@@ -987,14 +1027,15 @@ export function ReviewApp(props: ReviewAppProps) {
       if (key.pageUp) return page(-bodyHeight);
       if (input === 'g') return jumpTo(0);
       if (input === 'G') return jumpTo(rows.length - 1);
+      // A section at a time, on two unshifted keys that nothing between here
+      // and the terminal wants. Vim's own `[[` / `]]` is a chord, and browse
+      // mode has no pending-key state to hang one on.
+      if (input === '[') return stepSection(-1);
+      if (input === ']') return stepSection(1);
 
       // Right for newer, left for older, the way the versions are numbered.
       if (key.leftArrow) return stepVersion(-1);
       if (key.rightArrow) return stepVersion(1);
-      // The brackets that used to do it still work, undocumented, because
-      // fingers that learned them should not have to unlearn them.
-      if (input === '[') return stepVersion(-1);
-      if (input === ']') return stepVersion(1);
 
       // `v` is what clears a selection now, so esc is free to mean back.
       if (key.escape) return setMode({ kind: 'leave' });
@@ -1651,6 +1692,8 @@ interface HintContext {
   diffing: boolean;
   canDiff: boolean;
   manyVersions: boolean;
+  /** This version draws more than one heading, so `[` and `]` have somewhere to go. */
+  manySections: boolean;
 }
 
 /**
@@ -1757,6 +1800,12 @@ function screenHints(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hi
     if (ctx.canEdit) hints.push(['e', ctx.plural ? 'edit lines' : 'edit line']);
   }
 
+  // Unlike `g G` and `ctrl+j ctrl+k`, which live in `?` only, this one earns a
+  // place on the bar: those two are universal and this is a binding nobody
+  // knows planx has. Previous then next, matching `←→` — and `rank` seats the
+  // pair beside it, at the head of the bar, which is the right seat for the
+  // other movement key.
+  if (ctx.manySections) hints.push(['[ ]', 'section']);
   if (ctx.anyFeedback) hints.push(['j', 'next feedback']);
   if (ctx.canDiff) hints.push(['d', ctx.diffing ? 'hide diff' : 'show diff']);
   if (ctx.manyVersions) hints.push(['←→', 'version']);
@@ -1834,6 +1883,7 @@ function spanSize(rows: readonly ViewRow[], selection: SelectionState): number {
 const HELP: Array<[Hint, 'always' | 'versioned']> = [
   [['←→', 'the previous and next version of the plan'], 'versioned'],
   [['↑↓', 'a row at a time — held, 2 rows after 1.5s and 5 after 4s'], 'always'],
+  [['[ ]', 'the previous and next section title'], 'always'],
   [['d', 'show the diff against the previous version, or hide it'], 'versioned'],
   [['e', 'edit the line, or every line of the selection, in place'], 'always'],
   [['f', 'add feedback on the selection, or edit the note under the cursor'], 'always'],

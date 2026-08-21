@@ -253,6 +253,35 @@ function headingsIn(lines: readonly string[]): Heading[] {
 }
 
 /**
+ * The row indexes, ascending, of every drawn row showing a heading line.
+ *
+ * Every level, `#` through `######` — deliberately wider than what `space`
+ * folds. Folding declines past `####` because a fold that hides three lines
+ * costs more than it saves; jumping has no such floor, since a `#####` is
+ * still a landmark and stopping on one costs nothing.
+ *
+ * Only the headings that are drawn. Fold stand-ins and gap rows are built by
+ * `hiddenLine`, which sets `newLine: null`, so matching on `newLine` alone
+ * already excludes a heading that something is hiding — the jump skips it
+ * rather than opening what hides it. Deletion rows carry `newLine: null` too,
+ * so a heading removed since the previous version is not a stop either.
+ *
+ * Rows and lines rather than the whole model, so it can be tested against
+ * hand-made rows without seeding a plan. Cheap enough to call on each keypress:
+ * plans are kilobytes, and `buildModel` already rebuilds every row from
+ * scratch on every change.
+ */
+export function headingRows(rows: readonly ViewRow[], docLines: readonly string[]): number[] {
+  const lines = new Set(headingsIn(docLines).map((h) => h.line));
+  const out: number[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const line = rows[i]!.newLine;
+    if (line !== null && lines.has(line)) out.push(i);
+  }
+  return out;
+}
+
+/**
  * The last line a fold rooted at `line` would hide, or null when there is
  * nothing to fold there.
  *

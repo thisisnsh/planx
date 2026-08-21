@@ -8,8 +8,7 @@
 ## Make plans you want to read
 
 **PlanX is a planning skill for Claude Code and Codex, plus a terminal interface
-for reviewing an AI agent's plans: versions, diffs, inline feedback, direct
-edits.**
+for reviewing plans with versions, diffs, inline feedback, direct edits.**
 
 Planning is not a ritual you perform to make an agent feel prepared. It is for
 you to decide what will be built.
@@ -43,9 +42,6 @@ Or install the skill on its own with
 ```bash
 npx skills add thisisnsh/planx
 ```
-
-That gets you the skill without the CLI, which is half of PlanX — the first
-`/planx` offers to install the rest.
 
 ## How it works
 
@@ -83,7 +79,9 @@ to collapse the section, feedback box or unchanged diff run under the cursor,
 [`h`](https://github.com/thisisnsh/planx/wiki/Reviewing#reading-a-long-plan) to
 fold every comment at once,
 [`j`](https://github.com/thisisnsh/planx/wiki/Reviewing#reading-a-long-plan) to
-jump between comments, and
+jump between comments,
+[`[` `]`](https://github.com/thisisnsh/planx/wiki/Reviewing#reading-a-long-plan)
+to jump between section titles, and
 [`?`](https://github.com/thisisnsh/planx/wiki/Reviewing#every-key) for the full
 key list. A long plan stays walkable instead of becoming a scroll.
 
