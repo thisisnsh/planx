@@ -1,6 +1,6 @@
 {
   "name": "@thisisnsh/planx",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Turn an agent's plan into a versioned artifact you can annotate, lock, and execute.",
   "keywords": [
     "claude-code",
