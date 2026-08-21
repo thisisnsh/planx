@@ -26,9 +26,11 @@ import { hintLines, orderHints, type Hint } from './hints.js';
 import {
   BOX_PADDING,
   buildModel,
+  caretPosition,
   enclosingHeading,
   foldEnd,
   wrapComment,
+  wrapLines,
   type ViewRow,
 } from './model.js';
 import { pressArrow, type HeldRun } from './repeat.js';
@@ -350,15 +352,24 @@ export function ReviewApp(props: ReviewAppProps) {
 
   // What the version has to say about itself, drawn between the status line and
   // the hints. A function of the version and not of the cursor.
+  //
+  // The note is typed where it is read: the draft replaces the stored text in
+  // the same block, wrapped the same way, with the caret in it. It used to be
+  // written on the status row above while the saved note stayed drawn below,
+  // so editing showed you the note twice — the old one and the one replacing
+  // it — and neither of them where a note lives.
+  const noteDraft = mode.kind === 'note' ? mode.draft : null;
+  const noteCaret = mode.kind === 'note' ? mode.caret : 0;
   const summary = useMemo(
     () =>
       summaryLines({
         count: annotations.length,
         note: general,
+        draft: noteDraft === null ? null : { text: noteDraft, caret: noteCaret },
         edits: shownEdits.size,
         width: inner,
       }),
-    [annotations.length, general, shownEdits.size, inner],
+    [annotations.length, general, noteDraft, noteCaret, shownEdits.size, inner],
   );
 
   const asking = mode.kind === 'leave' || mode.kind === 'handoff';
@@ -375,13 +386,7 @@ export function ReviewApp(props: ReviewAppProps) {
         // this row stays empty while the list is up.
         mode.kind === 'handoff'
         ? ''
-        : statusLine({
-            status,
-            note: mode.kind === 'note' ? mode.draft : '',
-            caret: mode.kind === 'note' ? mode.caret : 0,
-            typing: mode.kind === 'note',
-            width: inner,
-          });
+        : statusLine({ status, width: inner });
 
   /** What sits under the plan, with empty status rows omitted entirely. */
   const tail = [...(message ? [message] : []), ...(asking ? [] : summary)];
@@ -1493,34 +1498,19 @@ const NOTE_LABEL = 'Global Note: ';
 
 interface StatusOptions {
   status: string | null;
-  /** The whole-plan note as it is being typed, while `n` is open. */
-  note: string;
-  /** Where the caret sits in it. */
-  caret: number;
-  typing: boolean;
   width: number;
 }
 
 /**
  * One row, for whatever just happened.
  *
- * It is transient by construction: a status message, or the note while it is
- * being typed, and nothing when neither. What the version *holds* is drawn
- * underneath, in the summary block, where a long note can have as many rows as
- * it needs — this row is where a message that has to be read right now goes,
- * and it cannot be that if something permanent is sitting on it.
- *
- * The whole-plan note is still written here, on one line, with the yellow
- * `Global Note:` label saying which of the two kinds of note it is.
+ * It is transient by construction: a message, and nothing when there is none.
+ * What the version *holds* — its feedback count, its edits, its note — is drawn
+ * underneath, in the summary block, and the note is now typed there too. This
+ * row is where a message that has to be read right now goes, and it cannot be
+ * that if something permanent is sitting on it.
  */
 function statusLine(opts: StatusOptions): string {
-  if (opts.typing) {
-    // The window follows the caret rather than pinning to the tail: with the
-    // caret movable, the end of a long note is no longer the only place you can
-    // be typing.
-    const room = Math.max(8, opts.width - NOTE_LABEL.length);
-    return yellow(`${NOTE_LABEL}${caretLine(opts.note, opts.caret, room)}`);
-  }
   if (opts.status) return signal(truncate(opts.status, opts.width));
   return '';
 }
@@ -1528,6 +1518,11 @@ function statusLine(opts: StatusOptions): string {
 interface SummaryOptions {
   count: number;
   note: string;
+  /**
+   * The note as it is being typed, which stands in for the stored one until
+   * `enter` or `esc` settles it.
+   */
+  draft?: { text: string; caret: number } | null;
   /** Lines rewritten on this version and not yet submitted. */
   edits: number;
   width: number;
@@ -1557,10 +1552,45 @@ function summaryLines(opts: SummaryOptions): string[] {
   if (opts.edits) {
     out.push(dim(`${opts.edits} line${opts.edits === 1 ? '' : 's'} edited on this version.`));
   }
-  if (opts.note.trim()) {
+  // The draft is drawn untrimmed: a trailing space is a keystroke, and a note
+  // that swallows it looks like a keyboard that dropped it.
+  if (opts.draft) {
+    out.push(...noteRows(opts.draft.text, opts.draft.caret, opts.width));
+  } else if (opts.note.trim()) {
     out.push(...wrapComment(`${NOTE_LABEL}${opts.note.trim()}`, opts.width).map((l) => yellow(l)));
   }
   return out;
+}
+
+/**
+ * The note being typed, wrapped where the saved one is read, with the caret in
+ * it.
+ *
+ * Same wrap as the box a comment gets, so the note grows a row at a time as it
+ * is written and the words never run off the right edge. The label is wrapped
+ * with the text rather than printed beside it, which is what lets the caret sit
+ * at any offset in the note and still land on a real column.
+ */
+function noteRows(text: string, caret: number, width: number): string[] {
+  const wrapped = wrapLines(`${NOTE_LABEL}${text}`, width);
+  const at = caretPosition(wrapped, NOTE_LABEL.length + caret);
+  return wrapped.map((line, i) =>
+    yellow(i === at.row ? caretRow(line.text, at.column, width) : line.text),
+  );
+}
+
+/**
+ * One wrapped row with the caret lit on it.
+ *
+ * A caret past the last character of a row that fills the whole width holds on
+ * that last column, the way the note box already does: there is nowhere further
+ * right to go, and a row that shifts sideways for one keystroke is worse than a
+ * caret that stops.
+ */
+function caretRow(text: string, column: number, width: number): string {
+  const padded = padEnd(text, Math.min(column + 1, width));
+  const at = Math.min(column, width - 1);
+  return `${padded.slice(0, at)}${inverse(padded[at] ?? ' ')}${padded.slice(at + 1)}`;
 }
 
 interface HintContext {
@@ -1604,8 +1634,8 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
       ['enter', 'save'],
       ['esc', 'discard'],
     ];
-  // The yellow `Global Note:` label on the row above says what is being typed,
-  // so the hint has nothing left to explain.
+  // The yellow `Global Note:` label on the block below says what is being typed,
+  // and the caret is sitting in it, so the hint has nothing left to explain.
   if (mode.kind === 'note')
     return [
       ['enter', 'save'],

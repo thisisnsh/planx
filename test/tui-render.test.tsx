@@ -2290,6 +2290,70 @@ describe('the whole-plan note', () => {
     app.unmount();
   });
 
+  it('is typed where it is read, as one block rather than two copies of it', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('n');
+    await app.press('ship it behind the flag');
+    await app.press(ENTER);
+    await app.frame('Global Note: ship it behind the flag');
+
+    // Reopening edits it in place: the draft stands where the saved note was
+    // drawn, instead of being typed on the status row with the old text still
+    // sitting underneath it.
+    await app.press('n');
+    await app.press(' today');
+    await app.frame('Global Note: ship it behind the flag today');
+    const labelled = bodyRows(app.stdout.lastFrame).filter((l) => l.includes('Global Note:'));
+    expect(labelled).toHaveLength(1);
+    app.unmount();
+  });
+
+  it('wraps while it is being typed, the way a feedback box does', async () => {
+    const app = mount(seed(), null, 1, [1], 60);
+    await app.ready();
+
+    await app.press('n');
+    await app.press('the rollout section needs to name the flag, and the migration step');
+    await new Promise((r) => setTimeout(r, 200));
+
+    // Still being typed — no enter yet — and already on two rows, neither of
+    // them cut. It used to be one row with a window scrolling under the caret.
+    const rows = bodyRows(app.stdout.lastFrame);
+    expect(rows.find((l) => l.includes('Global Note:'))).not.toContain('…');
+    expect(rows.some((l) => l.includes('migration step'))).toBe(true);
+    app.unmount();
+  });
+
+  it('takes the caret keys feedback takes — option+arrow, ^a and ^e', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+
+    await app.press('n');
+    await app.press('guard the write path');
+    await app.press(ALT_LEFT);
+    await app.press('R2 ');
+    await app.frame('Global Note: guard the write R2 path');
+
+    await app.press(META_B);
+    await app.press(META_B);
+    await app.press('X');
+    await app.frame('Global Note: guard the Xwrite R2 path');
+
+    await app.press(ALT_RIGHT);
+    await app.press('!');
+    await app.frame('Global Note: guard the Xwrite !R2 path');
+
+    await app.press(CTRL_A);
+    await app.press('please ');
+    await app.frame('Global Note: please guard the Xwrite !R2 path');
+    await app.press('\x05'); // ctrl+e
+    await app.press('.');
+    await app.frame('Global Note: please guard the Xwrite !R2 path.');
+    app.unmount();
+  });
+
   it('is shown in full, wrapped, rather than truncated to one row', async () => {
     const app = mount(seed(), null, 1, [1], 60);
     await app.ready();

@@ -419,7 +419,7 @@ export function feedbackRows(id: string, comment: string, opts: BoxOptions): Fee
   // caret lives inside the text now, and needs no column of its own.
   const width = boxWidth - BOX_PADDING;
   const wrapped = comment.length ? wrapLines(comment, width) : [{ text: '', start: 0 }];
-  const at = opts.editing ? caretAt(wrapped, opts.caret ?? 0) : null;
+  const at = opts.editing ? caretPosition(wrapped, opts.caret ?? 0) : null;
   // The first line of the note is the row the cursor stops on; the edges and
   // the lines the text wrapped onto are passed over. They say nothing a cursor
   // resting on them would add, and every one of them was a press.
@@ -442,11 +442,14 @@ export function feedbackRows(id: string, comment: string, opts: BoxOptions): Fee
  * The last row whose text starts at or before the offset. On a wrap boundary
  * that is the row the character *after* the caret is on, which is where a caret
  * belongs and what keeps it inside the box rather than one column past its edge.
+ *
+ * Exported because the whole-plan note is wrapped and typed into the same way,
+ * in the summary block rather than in a box off the rail.
  */
-function caretAt(
+export function caretPosition(
   wrapped: readonly WrappedLine[],
   caret: number,
-): { row: number; column: number } | null {
+): { row: number; column: number } {
   for (let i = wrapped.length - 1; i >= 0; i--) {
     const line = wrapped[i]!;
     if (line.start > caret) continue;
