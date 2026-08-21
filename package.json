@@ -37,7 +37,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node scripts/chmod-bin.js",
-    "dev": "node --experimental-strip-types src/cli.ts",
+    "dev": "npm run build && node dist/cli.js",
     "typecheck": "tsc --noEmit",
     "lint": "prettier --check \"src/**/*.{ts,tsx}\" \"scripts/*.js\" \"test/**/*.{ts,tsx}\"",
     "format": "prettier --write \"src/**/*.{ts,tsx}\" \"scripts/*.js\" \"test/**/*.{ts,tsx}\"",

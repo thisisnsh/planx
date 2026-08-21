@@ -23,9 +23,9 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      # The postinstall only prints a line now, and stays quiet in a planx
-      # checkout besides — but being explicit here means a change to either
-      # can never quietly start mutating a CI runner's home.
+      # The postinstall runs `add-skills`, and stays quiet in a planx checkout
+      # besides — but being explicit here means a change to either can never
+      # quietly start mutating a CI runner's home.
       - run: npm ci
         env:
           PLANX_NO_POSTINSTALL: '1'

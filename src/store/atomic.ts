@@ -21,7 +21,7 @@ export function ensureDir(dir: string): void {
 /**
  * Write via a sibling temp file plus `rename`, which is atomic within a
  * filesystem. A reader either sees the whole old file or the whole new one —
- * never a half-written `locks.json`, which is the file that would hurt most.
+ * never a half-written `index.json`, which is the file that would hurt most.
  */
 export function writeAtomic(file: string, data: string): void {
   ensureDir(dirname(file));

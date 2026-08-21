@@ -24,10 +24,13 @@ detection.
 Always pass `--dir`:
 
 ```bash
-npm run build
-node dist/cli.js --dir .planx-dev capture --stdin < some-plan.md
-node dist/cli.js --dir .planx-dev diff <plan-id>
+npm run dev -- --dir .planx-dev capture --stdin < some-plan.md
+npm run dev -- --dir .planx-dev diff <plan-id>
 ```
+
+`npm run dev` builds first and then runs `dist/cli.js`. There is no
+type-stripping shortcut past the build: the TUI is `.tsx`, and Node will not
+load JSX.
 
 `.planx-dev/` is gitignored. `PLANX_DIR=.planx-dev` works too, and applies to
 every command.
@@ -40,7 +43,7 @@ you are actually using while you work. Use `--local` to install into
 To try the TUI without polluting anything:
 
 ```bash
-npm run build && node dist/cli.js --dir .planx-dev diff
+npm run dev -- --dir .planx-dev diff
 ```
 
 ## The layout

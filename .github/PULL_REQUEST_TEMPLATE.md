@@ -10,8 +10,9 @@
 ## Test evidence
 
 <!-- Paste the relevant output, not just "tests pass". If you changed the
-     locking or the await handshake, say which test covers the new case —
-     those are the two things most likely to break in a way nobody notices. -->
+     capture/submit/revise hand-off or the on-disk format, say which test
+     covers the new case — those are the two things most likely to break in a
+     way nobody notices. -->
 
 ## Checklist
 
