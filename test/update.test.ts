@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { paths } from '../src/store/paths.js';
 import {
   CHECK_EVERY_MS,
+  confirmUpdate,
   isNewer,
   noticeFor,
   readUpdate,
@@ -179,6 +180,47 @@ describe('running the check', () => {
     );
     await runUpdateCheck();
     expect(cache().latest).toBeNull();
+  });
+});
+
+describe('confirming a cached answer before the prompt', () => {
+  /**
+   * The case that started this: a release lands inside the six hours a cached
+   * answer stands for, and the prompt would otherwise offer the version before
+   * it.
+   */
+  it('offers what the registry says now, not what the cache said', async () => {
+    seed('0.10.0');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ latest: '0.11.0' }))),
+    );
+
+    await expect(confirmUpdate('0.10.0-staging.1')).resolves.toBe('0.11.0');
+    expect(cache().latest).toBe('0.11.0');
+  });
+
+  it('says nothing when the fresh answer is the version already running', async () => {
+    seed('0.10.0');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ latest: '0.10.0' }))),
+    );
+
+    await expect(confirmUpdate('0.10.0')).resolves.toBeNull();
+  });
+
+  it('falls back to the cached answer when the registry is unreachable', async () => {
+    seed('0.11.0');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('getaddrinfo ENOTFOUND registry.npmjs.org');
+      }),
+    );
+
+    await expect(confirmUpdate('0.10.0')).resolves.toBe('0.11.0');
+    expect(cache().latest).toBe('0.11.0');
   });
 });
 

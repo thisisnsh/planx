@@ -223,6 +223,27 @@ export async function runUpdateCheck(): Promise<void> {
 }
 
 /**
+ * Confirm a cached answer against the registry before interrupting anyone with it.
+ *
+ * The cache is up to `CHECK_EVERY_MS` old, so the version it names can be a
+ * release behind by the time it is read — and a prompt that stops you to offer
+ * a version that is no longer the latest is worse than one that never asked.
+ * This is the only place on the startup path that waits on the network, and it
+ * only runs once the cache already says there is something to interrupt for:
+ * you were about to be stopped anyway.
+ *
+ * Null means say nothing, including when the fresh answer is that the running
+ * version is already current. A registry that cannot be reached falls back to
+ * the cached answer rather than swallowing an update that is really there.
+ */
+export async function confirmUpdate(current: string): Promise<string | null> {
+  const latest = await fetchLatest();
+  recordCheck(latest);
+  if (!latest) return readUpdate(current);
+  return isNewer(latest, current) ? latest : null;
+}
+
+/**
  * The package root when planx is running from its own checkout, else null.
  *
  * `npm install -g` there would install a *different* planx than the one you

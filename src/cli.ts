@@ -27,6 +27,7 @@ import { setStoreRoot } from './store/paths.js';
 import { PlanNotFoundError, resolvePlanRef, VersionNotFoundError } from './store/plans.js';
 import { clearScreen, isInteractive, runUpdatePrompt } from './tui/run.js';
 import {
+  confirmUpdate,
   noticeFor,
   readUpdate,
   runUpdateCheck,
@@ -227,9 +228,15 @@ export async function main(argv: readonly string[]): Promise<number> {
       !has(args, '--stat') &&
       latest
     ) {
-      const choice = await runUpdatePrompt(latest, version);
-      clearScreen();
-      if (choice === 'update') return cmdUpdate(ctx);
+      // The cached number is good enough to draw on a border, but not to put a
+      // version in front of someone and ask them to install it.
+      const confirmed = await confirmUpdate(version);
+      setUpdateNotice(confirmed ? noticeFor(confirmed) : null);
+      if (confirmed) {
+        const choice = await runUpdatePrompt(confirmed, version);
+        clearScreen();
+        if (choice === 'update') return cmdUpdate(ctx);
+      }
     }
   }
 
