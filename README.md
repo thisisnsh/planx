@@ -141,12 +141,7 @@ planx remove-skills
 npm uninstall --global @thisisnsh/planx
 ```
 
-[`remove-skills`](https://github.com/thisisnsh/planx/wiki/CLI-Reference#planx-remove-skills)
-takes back only what PlanX wrote, and offers to delete the store. Every other
-command and flag —
-[`planx update`](https://github.com/thisisnsh/planx/wiki/CLI-Reference#planx-update),
-[`planx add-skills`](https://github.com/thisisnsh/planx/wiki/CLI-Reference#planx-add-skills),
-[`planx defaults`](https://github.com/thisisnsh/planx/wiki/CLI-Reference#planx-defaults) — is in the
+More in
 [CLI reference](https://github.com/thisisnsh/planx/wiki/CLI-Reference).
 
 ## Documentation
@@ -173,11 +168,12 @@ Have something PlanX should do? Post it in
 [Ideas](https://github.com/thisisnsh/planx/discussions/categories/ideas), where
 it can be talked through before anyone builds it.
 
-## Star the repo
+## Liked it?
 
 If PlanX made a plan easier for you to review, please
-[star it on GitHub](https://github.com/thisisnsh/planx). It takes a second, it
-tells me the tool is worth continuing, and it is how the next person who is
+[star it on GitHub](https://github.com/thisisnsh/planx). 
+
+It tells me the tool is worth continuing, and it is how the next person who is
 tired of losing plans in a scrollback finds it.
 
 ---
