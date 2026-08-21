@@ -5,11 +5,11 @@
 [![ci](https://img.shields.io/github/actions/workflow/status/thisisnsh/planx/ci.yml?branch=main&labelColor=0b0b0c)](https://github.com/thisisnsh/planx/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-ffd400?labelColor=0b0b0c)](LICENSE)
 
-## Make plans you want to read
-
-**PlanX is a planning skill for Claude Code, Codex and other AI coding agents,
+PlanX is a planning skill for Claude Code, Codex and other AI coding agents,
 plus a terminal interface for reviewing plans with versions, diffs, inline
-feedback and direct edits.**
+feedback and direct edits.
+
+## Make plans you want to read
 
 Planning is not a ritual you perform to make an agent feel prepared. It is for
 you to decide what will be built.
