@@ -30,13 +30,13 @@ import { updateNotice, type UpdateNotice } from '../update/check.js';
 export const REPO = 'github.com/thisisnsh/planx';
 
 /**
- * ` Read code & star github.com/thisisnsh/planx ` — the bottom edge of every
+ * ` Star github.com/thisisnsh/planx ` — the bottom edge of every
  * frame.
  *
  * It was a bare `★` before, which reads as decoration next to a URL rather than
  * as the thing it is asking for. The words are the ask.
  */
-export const REPO_FOOTER = ` Read code & star ${REPO} `;
+export const REPO_FOOTER = ` Star ${REPO} `;
 
 /** `│ ` on the left and ` │` on the right of every row. */
 export const FRAME_PADDING = 4;
