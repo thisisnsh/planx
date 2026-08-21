@@ -9,7 +9,7 @@
     {
       "name": "planx",
       "source": "./",
-      "description": "A planning skill for Claude Code and Codex, plus a terminal interface for reviewing an AI agent's plans: versions, diffs, inline feedback, direct edits. Requires the planx CLI: npm install --global @thisisnsh/planx",
+      "description": "A planning skill for Claude Code and Codex, plus a terminal interface for reviewing plans with versions, diffs, inline feedback, direct edits.",
       "version": "0.13.0",
       "author": {
         "name": "thisisnsh",

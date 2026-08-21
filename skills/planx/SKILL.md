@@ -4,10 +4,9 @@ description: >-
   Plan a feature, refactor or migration as a reviewable, versioned artifact the
   user annotates line by line before any code is written, instead of a plan that
   scrolls away in chat. Also revises or executes a plan they already have, or
-  answers a question about how PlanX itself works from its wiki. Requires the
-  planx CLI (`npm install --global @thisisnsh/planx`). Use for /planx, when the
-  user wants to plan work or review and approve a plan before building, and for
-  anything mentioning planx.
+  answers a question about how PlanX itself works from its wiki. Use for /planx,
+  when the user wants to plan work or review and approve a plan before building,
+  and for anything mentioning planx.
 argument-hint: <task> | revise <id> v<n> | execute <id> v<n> | help <question>
 ---
 
