@@ -22,9 +22,6 @@ versioned artifact you can actually review:
 - Edit what is already decided.
 - Execute only the version you approve.
 
-If PlanX makes a plan easier for you to review,
-[star the repo](https://github.com/thisisnsh/planx).
-
 ## Install
 
 ```bash
@@ -186,9 +183,28 @@ Every key, command and flag is written down in the
 [Reviewing](https://github.com/thisisnsh/planx/wiki/Reviewing) ·
 [CLI reference](https://github.com/thisisnsh/planx/wiki/CLI-Reference)
 
+## Questions and ideas
+
+Ask anything in
+[Q&A](https://github.com/thisisnsh/planx/discussions/categories/q-a) — how a key
+works, whether a workflow is supported, why something behaves the way it does.
+
+Have something PlanX should do? Post it in
+[Ideas](https://github.com/thisisnsh/planx/discussions/categories/ideas), where
+it can be talked through before anyone builds it.
+
+## Star the repo
+
+If PlanX made a plan easier for you to review, please
+[star it on GitHub](https://github.com/thisisnsh/planx). It takes a second, it
+tells me the tool is worth continuing, and it is how the next person who is
+tired of losing plans in a scrollback finds it.
+
 ---
 
 [Wiki](https://github.com/thisisnsh/planx/wiki) ·
+[Q&A](https://github.com/thisisnsh/planx/discussions/categories/q-a) ·
+[Ideas](https://github.com/thisisnsh/planx/discussions/categories/ideas) ·
 [Contributing](CONTRIBUTING.md) ·
 [Security](SECURITY.md) ·
 [MIT License](LICENSE)
