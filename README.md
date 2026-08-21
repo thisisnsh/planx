@@ -10,17 +10,15 @@
 Planning is not a ritual you perform to make an agent feel prepared. It is for
 you to decide what will be built.
 
-Plan with one agent and build with another. Claude Code writes the plan, you
-review it, Codex builds it — or any two agents you like, in any order. The plan
-is a stored file rather than a conversation, so it travels.
-
 PlanX turns the giant blob of text you read once and lose in chat into a
 versioned artifact you can actually review:
 
+- Create structured plans.
 - Compare every revision.
-- Comment on exact lines.
-- Edit what is already decided.
-- Execute only the version you approve.
+- Give feedback on exact lines.
+- Execute the version you approve.
+
+PlanX allows you to plan and execute with any agent, like Claude writes the plan, you review it, Codex builds it, or reverse, or any two agents you like.
 
 ## Install
 
@@ -28,14 +26,7 @@ versioned artifact you can actually review:
 npm install --global @thisisnsh/planx
 ```
 
-Start a new agent session, then ask for a reviewable plan:
-
-```text
-Codex       $planx <task>
-Claude Code /planx <task>
-```
-
-PlanX installs its skill into existing Codex and Claude Code installations.
+PlanX installs its skill into existing Codex and Claude Code agents, and the TUI to review plans.
 Full setup detail is in
 [Installation](https://github.com/thisisnsh/planx/wiki/Installation).
 
@@ -43,21 +34,21 @@ Full setup detail is in
 
 `PLAN → REVIEW → REVISE → EXECUTE → RESUME`
 
-This README was planned with PlanX. Every screenshot below is that plan, being
-reviewed.
+> [!NOTE]
+> _Fun fact: This README was recreated using PlanX. Every image below is that plan, being
+reviewed._
 
 ### 1. Plan with the skill
 
-Installing PlanX puts a skill into your existing Codex and Claude Code setups.
-Type `/planx <task>` and the agent researches the work, writes the plan,
-captures it and stops — nothing to paste, nothing to orchestrate.
+Using the planning skill, the agent researches the work, writes the structured plan,
+captures the version and asks you to review the plan.
 
-```text
-Codex       $planx <task>
-Claude Code /planx <task>
+```markdown
+# Codex       
+$planx we need to build something that ...
+# Claude Code 
+/planx we need to create something that ...
 ```
-
-![Claude Code running the planx skill on a task](docs/images/planx-01-skill.png)
 
 More in [The skill](https://github.com/thisisnsh/planx/wiki/The-Skill).
 
@@ -65,10 +56,7 @@ More in [The skill](https://github.com/thisisnsh/planx/wiki/The-Skill).
 
 What comes back is a stored version rather than a message in a scrollback:
 structured markdown with headings that fold, the context the work needs, and the
-checks that prove it at the end. Run `planx` and it is there, with every version
-it has been through.
-
-![The PlanX picker with a plan selected and its versions listed beneath it](docs/images/planx-02-picker.png)
+checks that prove it at the end. 
 
 ![A plan version open at its title, context and decisions](docs/images/planx-03-plan.png)
 
@@ -113,35 +101,22 @@ More in [Hand-offs](https://github.com/thisisnsh/planx/wiki/Hand-offs).
 
 Each revision is a new version of the same plan. Open it and PlanX shows a
 word-level diff against the one before, with unchanged runs collapsed, so a
-rewritten approach cannot slip past as a wall of re-flowed text.
+rewritten approach cannot slip past as a wall of re-flowed text. Press `d` to show/hide diff. 
 
 ![A word-level diff between two versions of a plan](docs/images/planx-07-diff.png)
 
 More in
 [Versions and diffs](https://github.com/thisisnsh/planx/wiki/Versions-and-Diffs).
 
-### 7. Build it with any agent, and go back to it
+### 7. Build it with any agent
 
 Any agent command that takes a trailing prompt can build the plan. Set them once
 with `planx defaults` — Claude Code to revise, Codex to execute, or whatever
 pair you like — and the review offers them beside the built-in routes. The
-receiving agent needs nothing but the PlanX skill and the version number.
-
-```bash
-planx defaults
-```
+receiving agent needs nothing but the PlanX skill.
 
 ![planx defaults configured with Claude Code to revise and Codex to execute](docs/images/planx-08-agents.png)
 
-Execution starts from the stored version, plus every comment and every line you
-rewrote, rather than a summary somebody remembered from chat. And it records the
-session that ran it: press `ctrl+r` on that version in the picker and PlanX
-starts that Codex or Claude Code session back up — same flags, in the plan's own
-directory, with no prompt attached — so the first thing it hears is whatever you
-type next. You are back in the conversation that wrote the code instead of
-explaining the code to a stranger.
-
-![The picker on an executed version, tagged executed, offering ctrl+r resume](docs/images/planx-09-resume.png)
 
 More in [Hand-offs](https://github.com/thisisnsh/planx/wiki/Hand-offs),
 [Custom agents](https://github.com/thisisnsh/planx/wiki/Custom-Agents) and
