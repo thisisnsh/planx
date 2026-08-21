@@ -18,7 +18,8 @@ versioned artifact you can actually review:
 - Give feedback on exact lines.
 - Execute the version you approve.
 
-PlanX allows you to plan and execute with any agent, like Claude writes the plan, you review it, Codex builds it, or reverse, or any two agents you like.
+Plan with one agent and build with another. Claude Code writes the plan, you
+review it, Codex builds it — or any two agents you like, in any order.
 
 ## Install
 
@@ -26,7 +27,9 @@ PlanX allows you to plan and execute with any agent, like Claude writes the plan
 npm install --global @thisisnsh/planx
 ```
 
-PlanX installs its skill into existing Codex and Claude Code agents, and the TUI to review plans.
+That installs the `planx` TUI you review plans in, and runs
+[`planx add-skills`](https://github.com/thisisnsh/planx/wiki/Installation#planx-add-skills),
+which writes the PlanX skill into every Codex and Claude Code install it finds.
 Full setup detail is in
 [Installation](https://github.com/thisisnsh/planx/wiki/Installation).
 
@@ -35,19 +38,17 @@ Full setup detail is in
 `PLAN → REVIEW → REVISE → EXECUTE → RESUME`
 
 > [!NOTE]
-> _Fun fact: This README was recreated using PlanX. Every image below is that plan, being
-reviewed._
+> _Fun fact: this README was recreated using PlanX. Every image below is that
+> plan, being reviewed._
 
 ### 1. Plan with the skill
 
-Using the planning skill, the agent researches the work, writes the structured plan,
-captures the version and asks you to review the plan.
+Using the planning skill, the agent researches the work, writes a structured
+plan, captures it as a version and hands it back for review.
 
-```markdown
-# Codex       
-$planx we need to build something that ...
-# Claude Code 
-/planx we need to create something that ...
+```text
+Codex       $planx we need to build something that ...
+Claude Code /planx we need to create something that ...
 ```
 
 More in [The skill](https://github.com/thisisnsh/planx/wiki/The-Skill).
@@ -56,9 +57,9 @@ More in [The skill](https://github.com/thisisnsh/planx/wiki/The-Skill).
 
 What comes back is a stored version rather than a message in a scrollback:
 structured markdown with headings that fold, the context the work needs, and the
-checks that prove it at the end. 
+checks that prove it at the end.
 
-![A plan version open at its title, context and decisions](docs/images/planx-03-plan.png)
+![Review what it wrote](docs/images/review.png)
 
 More in [Planning](https://github.com/thisisnsh/planx/wiki/Planning) and
 [Reviewing](https://github.com/thisisnsh/planx/wiki/Reviewing).
@@ -70,7 +71,7 @@ the cursor, `h` to fold every comment at once, `j` to jump between comments, and
 `?` for the full key list. A long plan stays walkable instead of becoming a
 scroll.
 
-![A plan with several of its sections folded shut](docs/images/planx-04-collapse.png)
+![Read it without drowning](docs/images/read.png)
 
 More in [Reviewing](https://github.com/thisisnsh/planx/wiki/Reviewing).
 
@@ -81,7 +82,7 @@ then press `f`. The comment attaches to those exact lines, not to the plan in
 general. Press `n` for a note about the whole plan, or `e` to rewrite a line
 yourself when the right wording is already obvious.
 
-![A selection across three plan lines with a feedback box open on them](docs/images/planx-05-feedback.png)
+![Say exactly what is wrong](docs/images/feedback.png)
 
 More in
 [Feedback and edits](https://github.com/thisisnsh/planx/wiki/Feedback-and-Edits).
@@ -93,7 +94,7 @@ so it revises with the repository research still in context — or send the same
 review to another agent entirely, which starts from the plan and your comments
 and nothing else.
 
-![The submit menu listing every hand-off available for the version](docs/images/planx-06-handoff.png)
+![Revise in the same session, or a different agent](docs/images/revise.png)
 
 More in [Hand-offs](https://github.com/thisisnsh/planx/wiki/Hand-offs).
 
@@ -101,9 +102,10 @@ More in [Hand-offs](https://github.com/thisisnsh/planx/wiki/Hand-offs).
 
 Each revision is a new version of the same plan. Open it and PlanX shows a
 word-level diff against the one before, with unchanged runs collapsed, so a
-rewritten approach cannot slip past as a wall of re-flowed text. Press `d` to show/hide diff. 
+rewritten approach cannot slip past as a wall of re-flowed text. Press `d` to
+show or hide the diff.
 
-![A word-level diff between two versions of a plan](docs/images/planx-07-diff.png)
+![Compare what actually changed](docs/images/compare.png)
 
 More in
 [Versions and diffs](https://github.com/thisisnsh/planx/wiki/Versions-and-Diffs).
@@ -111,41 +113,26 @@ More in
 ### 7. Build it with any agent
 
 Any agent command that takes a trailing prompt can build the plan. Set them once
-with `planx defaults` — Claude Code to revise, Codex to execute, or whatever
+with `planx defaults` — one command to revise, another to execute, whichever
 pair you like — and the review offers them beside the built-in routes. The
 receiving agent needs nothing but the PlanX skill.
 
-![planx defaults configured with Claude Code to revise and Codex to execute](docs/images/planx-08-agents.png)
-
+![Build it with any agent](docs/images/build.png)
 
 More in [Hand-offs](https://github.com/thisisnsh/planx/wiki/Hand-offs),
 [Custom agents](https://github.com/thisisnsh/planx/wiki/Custom-Agents) and
 [Resuming a build](https://github.com/thisisnsh/planx/wiki/Resuming-a-Build).
 
-## Other commands
-
-Update PlanX and its installed skills with:
-
-```bash
-planx update
-```
-
-Add skills for all agents or individually
-
-```bash
-planx add-skills
-planx add-skills --agent codex
-planx add-skills --agent claude
-```
-
-Uninstall the best way to plan:
+## Uninstall
 
 ```bash
 planx remove-skills
 npm uninstall --global @thisisnsh/planx
 ```
 
-Every command and flag is in the
+`remove-skills` takes back only what PlanX wrote, and offers to delete the store.
+Every other command and flag — `planx update`, `planx add-skills`,
+`planx defaults` — is in the
 [CLI reference](https://github.com/thisisnsh/planx/wiki/CLI-Reference).
 
 ## Documentation
