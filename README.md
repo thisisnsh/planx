@@ -47,10 +47,10 @@ plan, being reviewed._
 Using the planning skill, the agent researches the work, writes a structured
 plan, captures it as a version and hands it back for review.
 
-![Skill in claude & codex](docs/images/skill.png)
-
 More in
 [The skill](https://github.com/thisisnsh/planx/wiki/The-Skill#invoking-it).
+
+![Skill in claude & codex](docs/images/skill.png)
 
 ### 2. Review what it wrote
 
@@ -58,10 +58,10 @@ What comes back is a stored version rather than a message in a scrollback:
 structured markdown with headings that fold, the context the work needs, and the
 checks that prove it at the end.
 
-![Review what it wrote](docs/images/review.png)
-
 More in [Planning](https://github.com/thisisnsh/planx/wiki/Planning) and
 [Reviewing](https://github.com/thisisnsh/planx/wiki/Reviewing).
+
+![Review what it wrote](docs/images/review.png)
 
 ### 3. Read it without drowning
 
@@ -75,9 +75,9 @@ jump between comments, and
 [`?`](https://github.com/thisisnsh/planx/wiki/Reviewing#every-key) for the full
 key list. A long plan stays walkable instead of becoming a scroll.
 
-![Read it without drowning](docs/images/read.png)
-
 More in [Reviewing](https://github.com/thisisnsh/planx/wiki/Reviewing).
+
+![Read it without drowning](docs/images/read.png)
 
 ### 4. Say exactly what is wrong
 
@@ -91,10 +91,10 @@ for a note about the whole plan, or
 [`e`](https://github.com/thisisnsh/planx/wiki/Feedback-and-Edits#direct-edits) to
 rewrite a line yourself when the right wording is already obvious.
 
-![Say exactly what is wrong](docs/images/feedback.png)
-
 More in
 [Feedback and edits](https://github.com/thisisnsh/planx/wiki/Feedback-and-Edits).
+
+![Say exactly what is wrong](docs/images/feedback.png)
 
 ### 5. Revise in the same session, or a different agent
 
@@ -104,9 +104,9 @@ with the repository research still in context — or send the same review to
 another agent entirely, which starts from the plan and your comments and nothing
 else.
 
-![Revise in the same session, or a different agent](docs/images/revise.png)
-
 More in [Hand-offs](https://github.com/thisisnsh/planx/wiki/Hand-offs).
+
+![Revise in the same session, or a different agent](docs/images/revise.png)
 
 ### 6. Compare what actually changed
 
@@ -116,10 +116,10 @@ rewritten approach cannot slip past as a wall of re-flowed text. Press
 [`d`](https://github.com/thisisnsh/planx/wiki/Versions-and-Diffs#the-diff) to
 show or hide the diff.
 
-![Compare what actually changed](docs/images/compare.png)
-
 More in
 [Versions and diffs](https://github.com/thisisnsh/planx/wiki/Versions-and-Diffs).
+
+![Compare what actually changed](docs/images/compare.png)
 
 ### 7. Build it with any agent
 
@@ -130,11 +130,11 @@ with
 review offers them beside the built-in routes. The receiving agent needs nothing
 but the PlanX skill.
 
-![Build it with any agent](docs/images/build.png)
-
 More in [Hand-offs](https://github.com/thisisnsh/planx/wiki/Hand-offs),
 [Custom agents](https://github.com/thisisnsh/planx/wiki/Custom-Agents) and
 [Resuming a build](https://github.com/thisisnsh/planx/wiki/Resuming-a-Build).
+
+![Build it with any agent](docs/images/build.png)
 
 ## Uninstall
 
@@ -163,21 +163,13 @@ Every key, command and flag is written down in the
 
 ## Questions and ideas
 
-Ask your agent first. `/planx help <question>` — or `$planx help <question>` in
-Codex — sends it to the [wiki](https://github.com/thisisnsh/planx/wiki), and it
-answers in chat with the page it read.
+Ask your agent like `/planx help how do I comment on a single line?`
 
-```
-/planx help how do I comment on a single line?
-```
-
-It only answers questions about PlanX; `/planx help me split the auth module` is
-still a task, and gets planned. More in
+More in
 [Asking for help](https://github.com/thisisnsh/planx/wiki/Help).
 
 Anything the wiki does not cover goes in
-[Q&A](https://github.com/thisisnsh/planx/discussions/categories/q-a) — how a key
-works, whether a workflow is supported, why something behaves the way it does.
+[Q&A](https://github.com/thisisnsh/planx/discussions/categories/q-a)
 
 Have something PlanX should do? Post it in
 [Ideas](https://github.com/thisisnsh/planx/discussions/categories/ideas), where
