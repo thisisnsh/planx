@@ -2,7 +2,13 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { previousStoredVersion } from '../src/cli/commands.js';
 import { StoreCorruptionError } from '../src/store/atomic.js';
-import { defaultConfig, readConfig, writeConfig } from '../src/store/config.js';
+import {
+  defaultConfig,
+  readConfig,
+  readHints,
+  writeConfig,
+  writeHints,
+} from '../src/store/config.js';
 import { readDefaults, writeDefault } from '../src/store/defaults.js';
 import { contentHash, planId, slugify, ulid } from '../src/store/ids.js';
 import { paths } from '../src/store/paths.js';
@@ -478,5 +484,43 @@ describe('the defaults block', () => {
 
   it('trims what it stores, so the stored line is the line it runs', () => {
     expect(writeDefault('revise_command', '  codex exec  ').revise_command).toBe('codex exec');
+  });
+});
+
+/**
+ * The hint rows, remembered across runs.
+ *
+ * A top-level flag rather than a row in the defaults block, and optional with a
+ * default for the same reason that block is: a config written before it existed
+ * still reads, with the bar on.
+ */
+describe('the hints flag', () => {
+  it('reads a config that predates it as shown', () => {
+    writeFileSync(paths.config(), '{"format_version": 1, "render": "plain"}\n');
+    expect(readHints()).toBe(true);
+    expect(readConfig().render).toBe('plain');
+  });
+
+  it('round-trips through the file, both ways', () => {
+    writeHints(false);
+    expect(readHints()).toBe(false);
+    writeHints(true);
+    expect(readHints()).toBe(true);
+  });
+
+  it('leaves the rest of the config alone', () => {
+    writeConfig({ ...defaultConfig(), render: 'plain' });
+    writeDefault('revise_command', 'codex exec');
+    writeHints(false);
+
+    expect(readConfig().render).toBe('plain');
+    expect(readDefaults().revise_command).toBe('codex exec');
+  });
+
+  it('writes a config on the first toggle where there is none', () => {
+    rmSync(paths.config(), { force: true });
+    writeHints(false);
+    expect(existsSync(paths.config())).toBe(true);
+    expect(readHints()).toBe(false);
   });
 });

@@ -16,7 +16,7 @@ import { DEFAULT_FIELDS, type DefaultKey } from '../store/defaults.js';
 import type { Defaults as DefaultValues } from '../store/types.js';
 import { EXIT_PROMPT, useDoubleCtrlC } from './exit.js';
 import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO_FOOTER, topRule } from './frame.js';
-import { hintLines, type Hint } from './hints.js';
+import { HIDE_HINTS, hintFooter, hintLines, isHintToggle, typable, type Hint } from './hints.js';
 
 /** Matches the review's floor and the picker's, so every frame narrows alike. */
 const MIN_WIDTH = 48;
@@ -41,6 +41,12 @@ export interface DefaultsProps {
   onSave: (key: DefaultKey, value: string | null) => void;
   /** What a second ctrl+c does. Defaults to ending the process with 130. */
   onQuit?: () => void;
+  /**
+   * Whether the hint rows are drawn. The store holds the last answer; the
+   * screen owns the live state and reports every change.
+   */
+  hints?: boolean;
+  onHintsChange?: (shown: boolean) => void;
   onDone: () => void;
 }
 
@@ -59,7 +65,15 @@ type Mode = { kind: 'browse' } | { kind: 'editing'; draft: string; caret: number
  * why `esc` leaves without a question — the one screen planx draws where that
  * is true, because it is the one screen with no document behind it.
  */
-export function Defaults({ values, version, onSave, onQuit, onDone }: DefaultsProps) {
+export function Defaults({
+  values,
+  version,
+  onSave,
+  onQuit,
+  hints: hintsShown = true,
+  onHintsChange,
+  onDone,
+}: DefaultsProps) {
   const { exit } = useApp();
   const { stdout } = useStdout();
   // Above the handler below, so it fires while a value is being typed too.
@@ -70,6 +84,7 @@ export function Defaults({ values, version, onSave, onQuit, onDone }: DefaultsPr
   const [mode, setMode] = useState<Mode>({ kind: 'browse' });
   /** The green line the last write left, until the next keystroke. */
   const [saved, setSaved] = useState<string | null>(null);
+  const [showHints, setShowHints] = useState(hintsShown);
 
   const field = DEFAULT_FIELDS[index]!;
   const value = stored[field.key];
@@ -81,6 +96,15 @@ export function Defaults({ values, version, onSave, onQuit, onDone }: DefaultsPr
     onSave(key, settled);
     setSaved(note);
   }
+
+  // The hint rows, away and back — above the handler below, so it fires while a
+  // value is being typed as well as on the list.
+  useInput((input, key) => {
+    if (!isHintToggle(input, key)) return;
+    const next = !showHints;
+    setShowHints(next);
+    onHintsChange?.(next);
+  });
 
   useInput((input, key) => {
     if (mode.kind === 'editing') {
@@ -107,7 +131,10 @@ export function Defaults({ values, version, onSave, onQuit, onDone }: DefaultsPr
         });
       }
       if (input && !key.ctrl && !key.meta) {
-        const text = input.replace(/[\r\n]+/g, ' ');
+        // `0x1f` arrives with `key.ctrl` false, so without this the toggle
+        // would type itself into the command.
+        const text = typable(input.replace(/[\r\n]+/g, ' '));
+        if (!text) return;
         return setMode({
           ...mode,
           draft: `${mode.draft.slice(0, mode.caret)}${text}${mode.draft.slice(mode.caret)}`,
@@ -176,13 +203,21 @@ export function Defaults({ values, version, onSave, onQuit, onDone }: DefaultsPr
         <Text key={i}>{frameLine(line, inner)}</Text>
       ))}
       <Text>{frameLine('', inner)}</Text>
+      {/*
+        An armed ctrl+c takes the bar rather than a row of its own, and takes it
+        whatever the toggle says: hiding it would make the first ctrl+c look
+        like it did nothing. The screen does not scroll, so hiding the rows
+        simply makes the frame shorter.
+      */}
       {(leaving
         ? [`  ${red(EXIT_PROMPT)}`]
-        : hintLines(hints, inner - 2).map((line) => dim(`  ${line}`))
+        : showHints
+          ? hintLines([...hints, HIDE_HINTS], inner - 2).map((line) => dim(`  ${line}`))
+          : []
       ).map((line, i) => (
         <Text key={i}>{frameLine(line, inner)}</Text>
       ))}
-      <Text>{bottomRule(frameWidth, REPO_FOOTER)}</Text>
+      <Text>{bottomRule(frameWidth, REPO_FOOTER, hintFooter(showHints))}</Text>
     </Box>
   );
 }

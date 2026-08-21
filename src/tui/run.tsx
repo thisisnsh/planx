@@ -54,6 +54,12 @@ export interface RunReviewOptions {
   previous: Feedback[];
   /** The launch line for each intent, per version — what the hand-off list shows. */
   commands?: Commands;
+  /**
+   * Whether the hint rows open drawn, and where a press of `ctrl+_` is written
+   * back. The caller owns the store; the screen owns the live state.
+   */
+  hints?: boolean;
+  onHintsChange?: (shown: boolean) => void;
 }
 
 export async function runReview(opts: RunReviewOptions): Promise<ReviewResult> {
@@ -83,6 +89,8 @@ export async function runReview(opts: RunReviewOptions): Promise<ReviewResult> {
         version={opts.version}
         previous={opts.previous}
         commands={opts.commands}
+        hints={opts.hints}
+        onHintsChange={opts.onHintsChange}
         onDone={finish}
       />,
       // ctrl+c is the review's own, twice — see `useDoubleCtrlC`. Ink killing
@@ -236,6 +244,12 @@ export interface RunPickerOptions<T> {
   enterLabel?: string;
   /** planx's own version, for the frame's top edge. */
   version?: string;
+  /**
+   * Whether the hint rows open drawn, and where a press of `ctrl+_` is written
+   * back. The caller owns the store; the screen owns the live state.
+   */
+  hints?: boolean;
+  onHintsChange?: (shown: boolean) => void;
 }
 
 export async function runPicker<T>(opts: RunPickerOptions<T>): Promise<T[]> {
@@ -273,6 +287,12 @@ export interface RunDefaultsOptions {
   version?: string;
   /** Write one field. The screen names the key; the store is the caller's. */
   onSave: (key: DefaultKey, value: string | null) => void;
+  /**
+   * Whether the hint rows open drawn, and where a press of `ctrl+_` is written
+   * back. The caller owns the store; the screen owns the live state.
+   */
+  hints?: boolean;
+  onHintsChange?: (shown: boolean) => void;
 }
 
 /**
@@ -295,7 +315,14 @@ export async function runDefaults(opts: RunDefaultsOptions): Promise<void> {
     };
 
     const instance = render(
-      <Defaults values={opts.values} version={opts.version} onSave={opts.onSave} onDone={finish} />,
+      <Defaults
+        values={opts.values}
+        version={opts.version}
+        onSave={opts.onSave}
+        hints={opts.hints}
+        onHintsChange={opts.onHintsChange}
+        onDone={finish}
+      />,
       // ctrl+c is the screen's own, twice — the same guard every planx frame
       // wears, so leaving means the same keystroke wherever you are.
       { exitOnCtrlC: false },

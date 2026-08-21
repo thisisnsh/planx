@@ -19,7 +19,7 @@ import { carriedOver, collapseEdits, presentResume } from '../protocol/present.j
 import { submitFeedback } from '../protocol/submit.js';
 import { blue, bold, dim, green, padEnd, red, signal, yellow } from '../render/ansi.js';
 import { renderDocument, renderStatLine, renderUnified, type RenderMode } from '../render/diff.js';
-import { ensureConfig } from '../store/config.js';
+import { ensureConfig, readHints, writeHints } from '../store/config.js';
 import { DEFAULT_FIELDS, readDefaults, writeDefault } from '../store/defaults.js';
 import { listFeedback } from '../store/feedback.js';
 import { paths, shortHome } from '../store/paths.js';
@@ -224,6 +224,8 @@ async function pickPlan(ctx: Ctx, offerResume = true): Promise<PlanChoice | null
       else removeVersions(item.value.id, [item.value.version]);
       return planSections(offerResume);
     },
+    hints: readHints(),
+    onHintsChange: writeHints,
   });
   return chosen ?? null;
 }
@@ -521,6 +523,8 @@ export async function runInteractiveReview(
     version: ctx.version,
     previous: listFeedback(id),
     commands: versionCommands(id, records),
+    hints: readHints(),
+    onHintsChange: writeHints,
   });
 
   if (result.action === 'back') return BACK;
@@ -860,6 +864,8 @@ export async function cmdDefaults(ctx: Ctx): Promise<number> {
     values: readDefaults(),
     version: ctx.version,
     onSave: (key, value) => writeDefault(key, value),
+    hints: readHints(),
+    onHintsChange: writeHints,
   });
   return 0;
 }

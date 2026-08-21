@@ -209,6 +209,19 @@ export type Defaults = z.infer<typeof DefaultsSchema>;
 export const ConfigSchema = z.object({
   format_version: formatVersion,
   render: z.enum(['rich', 'plain']).default('rich'),
+  /**
+   * Whether the hint rows are drawn — `ctrl+_` on any screen, remembered here.
+   *
+   * A top-level key rather than a row in `DefaultsSchema`: that block is the
+   * registry of user commands `DEFAULT_FIELDS` drives into flags, `--json` and
+   * the CLI reference, and a boolean about chrome is none of those things.
+   *
+   * Shown is the default, so a config written before this key parses with the
+   * bar on. No `FORMAT_VERSION` bump, for the reason `defaults` already
+   * documents — the one cost is that an older CLI writing the config back drops
+   * the flag and the bar comes back on.
+   */
+  hints: z.boolean().default(true),
   defaults: DefaultsSchema.prefault({}),
 });
 export type Config = z.infer<typeof ConfigSchema>;

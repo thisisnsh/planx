@@ -22,7 +22,15 @@ import { contextSha } from '../store/text.js';
 import type { Annotation, Feedback } from '../store/types.js';
 import { EXIT_PROMPT, useDoubleCtrlC } from './exit.js';
 import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO_FOOTER, topRule } from './frame.js';
-import { hintLines, orderHints, type Hint } from './hints.js';
+import {
+  HIDE_HINTS,
+  hintFooter,
+  hintLines,
+  isHintToggle,
+  orderHints,
+  typable,
+  type Hint,
+} from './hints.js';
 import {
   BOX_PADDING,
   buildModel,
@@ -138,6 +146,13 @@ export interface ReviewAppProps {
    * than being drawn and declining a press.
    */
   commands?: Commands;
+  /**
+   * Whether the hint rows are drawn. The store holds the last answer, so the
+   * choice survives the next `planx`; the screen owns the live state and reports
+   * every change, which keeps the write on the CLI side of the seam.
+   */
+  hints?: boolean;
+  onHintsChange?: (shown: boolean) => void;
   /** What a second ctrl+c does. Defaults to ending the process with 130. */
   onQuit?: () => void;
   /** How long the ctrl+c guard stays armed. Defaults to two seconds. */
@@ -252,6 +267,7 @@ export function ReviewApp(props: ReviewAppProps) {
   // Above every mode-scoped handler below, so it fires whatever is being typed.
   const leaving = useDoubleCtrlC({ onExit: props.onQuit, windowMs: props.exitWindowMs });
 
+  const [showHints, setShowHints] = useState(props.hints ?? true);
   const [versionB, setVersionB] = useState(props.versionB);
   const [versionA, setVersionA] = useState<number | null>(props.versionA);
   const [selection, setSelection] = useState<SelectionState>(initialSelection);
@@ -396,24 +412,26 @@ export function ReviewApp(props: ReviewAppProps) {
   const space = spaceAction();
   const hintRows = leaving
     ? [red(EXIT_PROMPT)]
-    : hintLines(
-        hintsFor(mode, rows[selection.cursor], {
-          anyFeedback: annotations.length > 0,
-          space,
-          // Where `e` cannot work it is not offered: a key that declines one
-          // press after being advertised teaches the wrong thing.
-          canEdit: versionB === latest,
-          canAnnotate: spanAtCursor(rows, selection) !== null,
-          annotated: Boolean(annotationAtCursor()),
-          hasNote: general.trim().length > 0,
-          selecting: selection.active,
-          plural: spanSize(rows, selection) > 1,
-          diffing: versionA !== null,
-          canDiff: previousVersion !== null,
-          manyVersions: props.versions.length > 1,
-        }),
-        inner,
-      ).map((line) => (line ? dim(line) : ''));
+    : !showHints
+      ? []
+      : hintLines(
+          hintsFor(mode, rows[selection.cursor], {
+            anyFeedback: annotations.length > 0,
+            space,
+            // Where `e` cannot work it is not offered: a key that declines one
+            // press after being advertised teaches the wrong thing.
+            canEdit: versionB === latest,
+            canAnnotate: spanAtCursor(rows, selection) !== null,
+            annotated: Boolean(annotationAtCursor()),
+            hasNote: general.trim().length > 0,
+            selecting: selection.active,
+            plural: spanSize(rows, selection) > 1,
+            diffing: versionA !== null,
+            canDiff: previousVersion !== null,
+            manyVersions: props.versions.length > 1,
+          }),
+          inner,
+        ).map((line) => (line ? dim(line) : ''));
 
   const bodyHeight = Math.max(
     MIN_BODY,
@@ -923,6 +941,20 @@ export function ReviewApp(props: ReviewAppProps) {
 
   /* ---------------------------------------------------------- keyboard */
 
+  /**
+   * The hint rows, away and back — above every mode-scoped handler below, so it
+   * fires while a note or a line is being typed as well as on the plan.
+   *
+   * Except on the help screen, whose bar says `any key to close` and whose next
+   * press is a key: one press, one effect.
+   */
+  useInput((input, key) => {
+    if (mode.kind === 'help' || !isHintToggle(input, key)) return;
+    const next = !showHints;
+    setShowHints(next);
+    props.onHintsChange?.(next);
+  });
+
   useInput(
     (input, key) => {
       setStatus(null);
@@ -1034,8 +1066,13 @@ export function ReviewApp(props: ReviewAppProps) {
       }
       // Ignore the control keys Ink reports as empty input. A pasted chunk
       // arrives whole rather than one keystroke at a time.
+      //
+      // `0x1f` reaches here with `key.ctrl` false, so the toggle would type
+      // itself into the draft. It is filtered after the newlines are folded to
+      // spaces, so a pasted chunk keeps its word breaks.
       if (input && !key.ctrl && !key.meta) {
-        const text = input.replace(/[\r\n]+/g, ' ');
+        const text = typable(input.replace(/[\r\n]+/g, ' '));
+        if (!text) return;
         return setMode({
           ...mode,
           draft: `${mode.draft.slice(0, mode.caret)}${text}${mode.draft.slice(mode.caret)}`,
@@ -1087,7 +1124,8 @@ export function ReviewApp(props: ReviewAppProps) {
         });
       }
       if (input && !key.ctrl && !key.meta) {
-        const text = input.replace(/[\r\n]+/g, ' ');
+        const text = typable(input.replace(/[\r\n]+/g, ' '));
+        if (!text) return;
         return setMode({
           ...mode,
           draft: `${mode.draft.slice(0, mode.caret)}${text}${mode.draft.slice(mode.caret)}`,
@@ -1173,7 +1211,8 @@ export function ReviewApp(props: ReviewAppProps) {
         });
       }
       if (input && !key.ctrl && !key.meta) {
-        const text = input.replace(/[\r\n]+/g, ' ');
+        const text = typable(input.replace(/[\r\n]+/g, ' '));
+        if (!text) return;
         return setMode({
           ...withCommand(
             mode,
@@ -1289,7 +1328,7 @@ export function ReviewApp(props: ReviewAppProps) {
       {hintRows.map((line, i) => (
         <Text key={i}>{frameLine(line, inner)}</Text>
       ))}
-      <Text>{bottomRule(frameWidth, REPO_FOOTER)}</Text>
+      <Text>{bottomRule(frameWidth, REPO_FOOTER, hintFooter(showHints))}</Text>
     </Box>
   );
 }
@@ -1615,6 +1654,19 @@ interface HintContext {
 }
 
 /**
+ * The bar the screen offers, and the entry that puts the bar away.
+ *
+ * The help screen is the exception: its bar is not hints — it says `any key to
+ * close`, and the press that would toggle is a key, so one press stays one
+ * effect. Every other bar carries the entry, and `rank` seats it after `esc`
+ * and `ctrl+c` and before `?`, so each of them ends the same way.
+ */
+function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[] {
+  if (mode.kind === 'help') return [['any key', 'to close']];
+  return [...screenHints(mode, row, ctx), HIDE_HINTS];
+}
+
+/**
  * The hints offer what this row can actually do, in the one order.
  *
  * Approval is conditional — approving a plan you have notes on would say the
@@ -1628,7 +1680,7 @@ interface HintContext {
  * joins them for the same reason: folding every note at once is a thing you do
  * once a session, and it was costing a hint on every row of every plan.
  */
-function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[] {
+function screenHints(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[] {
   if (mode.kind === 'editing')
     return [
       ['enter', 'save'],
@@ -1667,8 +1719,6 @@ function hintsFor(mode: Mode, row: ViewRow | undefined, ctx: HintContext): Hint[
     // What `enter` does on the row you are on: a copy row does not go anywhere.
     return [...hints, ['enter', here && !editable(here) ? 'copy' : 'go'], ['esc', 'back']];
   }
-  if (mode.kind === 'help') return [['any key', 'to close']];
-
   const hints: Hint[] = [
     // The wording follows what the key would do, because that is the half of it
     // you cannot see: `n` writes the version's one note either way.
@@ -1796,6 +1846,7 @@ const HELP: Array<[Hint, 'always' | 'versioned']> = [
   [['space', 'collapse the section you are in, or the note — or expand what is hidden'], 'always'],
   [['v', 'start or end a selection, then ↑ ↓ to extend'], 'always'],
   [['esc', 'back to the list'], 'always'],
+  [['ctrl+_', 'hide the hint rows, or show them again'], 'always'],
   [['?', 'this list'], 'always'],
 ];
 

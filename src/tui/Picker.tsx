@@ -14,7 +14,7 @@ import {
 import { EXIT_PROMPT, useDoubleCtrlC } from './exit.js';
 import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO_FOOTER, topRule } from './frame.js';
 import { fuzzyFilter } from './fuzzy.js';
-import { hintLines, type Hint } from './hints.js';
+import { HIDE_HINTS, hintFooter, hintLines, isHintToggle, typable, type Hint } from './hints.js';
 
 /** Matches the review's floor, so both frames narrow to the same width. */
 const MIN_WIDTH = 48;
@@ -75,6 +75,12 @@ export interface PickerProps<T> {
   enterLabel?: string;
   /** What a second ctrl+c does. Defaults to ending the process with 130. */
   onQuit?: () => void;
+  /**
+   * Whether the hint rows are drawn. The store holds the last answer; the
+   * screen owns the live state and reports every change.
+   */
+  hints?: boolean;
+  onHintsChange?: (shown: boolean) => void;
   onDone: (chosen: T[]) => void;
 }
 
@@ -269,6 +275,8 @@ export function Picker<T>({
   onDelete,
   enterLabel = 'open',
   onQuit,
+  hints: hintsShown = true,
+  onHintsChange,
   onDone,
 }: PickerProps<T>) {
   const { stdout } = useStdout();
@@ -283,6 +291,7 @@ export function Picker<T>({
   );
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set());
   const [confirming, setConfirming] = useState<Confirming | null>(null);
+  const [showHints, setShowHints] = useState(hintsShown);
 
   const rows = useMemo(
     () => flatten(sections, expanded, query, collapsed),
@@ -291,6 +300,13 @@ export function Picker<T>({
 
   const here = rows[cursor];
 
+  const frameWidth = Math.max(MIN_WIDTH, (stdout?.columns ?? 80) - 1);
+  const inner = frameWidth - FRAME_PADDING;
+
+  /** The bar, folded and inset to the same margin every other row sits on. */
+  const bar = (entries: readonly Hint[]): string[] =>
+    hintLines(entries, inner - 2).map((line) => dim(`  ${line}`));
+
   // One row between the list and the hint bar, and one only. The armed ctrl+c
   // line used to have a row of its own down here, reserved on every frame and
   // empty on almost all of them; it takes the hint bar instead, the same way
@@ -298,9 +314,67 @@ export function Picker<T>({
   // and there is a single blank above the bar on every screen planx draws.
   const messageRows = [''];
 
-  // The frame costs four rows of chrome above the list and three below it, plus
-  // the message row.
-  const chrome = 8 + messageRows.length;
+  const hints: Hint[] = [
+    ['↑↓', 'choose'],
+    ['enter', here?.kind === 'header' ? 'show section' : enterLabel],
+    ['ctrl+c', 'exit'],
+  ];
+  // The tree is the only thing on this screen with no key on the bar saying it
+  // is there. Contextual, the way the review varies `d show diff` / `d hide
+  // diff`: a row offers the direction it can actually go, and a filtered list —
+  // which matches plans only, and draws every one of them collapsed — offers
+  // neither, because neither arrow does anything there.
+  const open =
+    here?.kind === 'item' &&
+    rows.some((row) => row.kind === 'item' && row.parent === here.parent && row.child);
+  if (here?.kind === 'header') {
+    hints.push(['→', 'show section']);
+  } else if (!query && here?.kind === 'item') {
+    if (open) hints.push(['←', 'collapse']);
+    else {
+      if (!here.child && here.item.children?.length) hints.push(['→', 'versions']);
+      // Only where there is a header to fold to. `←` is the same key that
+      // closes a plan's versions, so it is offered for one thing at a time:
+      // the versions while they are open, the section once they are not.
+      if (headerIndex(here.sectionKey) !== -1) hints.push(['←', 'hide section']);
+    }
+  }
+  if (here?.kind === 'item' && here.item.deleteAs) hints.push(['ctrl+d', 'delete']);
+  // `orderHints` strips the `ctrl+`, so this lands under `r` — after `enter`,
+  // rather than beside the delete it happens to share a modifier with.
+  if (here?.kind === 'item' && here.item.resume) hints.push(['ctrl+r', 'resume']);
+
+  // An armed ctrl+c takes the bar. It is the only thing that ends the session,
+  // so it outranks both the hints and the delete confirmation's own — `esc
+  // cancel` can wait for the two seconds this takes to lapse. The confirmation
+  // is the gate's bar rather than hints, so it is drawn whatever the toggle
+  // says, and it does not carry the entry that would put it away.
+  const hintRows = leaving
+    ? [`  ${red(EXIT_PROMPT)}`]
+    : confirming !== null
+      ? bar(
+          // `enter delete` appears the moment the word does. The bar says what
+          // the gate wants, and then says it has it.
+          confirmed(confirming)
+            ? [
+                ['enter', 'delete'],
+                ['esc', 'cancel'],
+              ]
+            : [['esc', 'cancel']],
+        )
+      : showHints
+        ? bar([...hints, HIDE_HINTS])
+        : [];
+
+  // Five rows above the list — the top rule, a blank, the title, the subtitle
+  // and a blank — the bottom rule below it, and a row left spare so the frame
+  // never reaches the terminal's last line.
+  //
+  // The message row and the bar are counted rather than assumed. The bar used
+  // to be built below this and taken as one row, so a wrapped one overran the
+  // terminal; hiding it now hands its rows to the list, the way the review
+  // hands them to the plan.
+  const chrome = 7 + messageRows.length + hintRows.length;
   const height = Math.max(3, Math.min(rows.length, (stdout?.rows ?? 24) - chrome));
   // The confirmation is two rows spliced into the list under its own target, so
   // the list gives up two while it is open and the frame is the same either way.
@@ -364,6 +438,16 @@ export function Picker<T>({
   }
 
   useInput((input, key) => {
+    // Above everything else, so it fires with a filter live or the delete
+    // confirmation open. The bar it puts away is the list's own; the gate keeps
+    // its two keys either way.
+    if (isHintToggle(input, key)) {
+      const next = !showHints;
+      setShowHints(next);
+      onHintsChange?.(next);
+      return;
+    }
+
     if (confirming !== null) {
       if (key.escape) return setConfirming(null);
       // Anything short of the word is not an answer, so enter is not one
@@ -375,7 +459,8 @@ export function Picker<T>({
         return setConfirming({ ...confirming, typed: confirming.typed.slice(0, -1) });
       }
       if (input && !key.ctrl && !key.meta) {
-        setConfirming({ ...confirming, typed: confirming.typed + input });
+        const text = typable(input);
+        if (text) setConfirming({ ...confirming, typed: confirming.typed + text });
       }
       return;
     }
@@ -432,14 +517,16 @@ export function Picker<T>({
       return setCursor(firstSelectable(flatten(sections, expanded, nextQuery, collapsed)));
     }
     if (input && !key.ctrl && !key.meta) {
-      const nextQuery = query + input;
+      // `0x1f` arrives with `key.ctrl` false, so without this the toggle would
+      // put a control byte in the query rather than putting the bar away.
+      const text = typable(input);
+      if (!text) return;
+      const nextQuery = query + text;
       setQuery(nextQuery);
       return setCursor(firstSelectable(flatten(sections, expanded, nextQuery, collapsed)));
     }
   });
 
-  const frameWidth = Math.max(MIN_WIDTH, (stdout?.columns ?? 80) - 1);
-  const inner = frameWidth - FRAME_PADDING;
   const labelWidth = Math.max(12, Math.floor((inner - 6) * 0.55));
 
   // The query takes the subtitle's row when there is one, so the frame does not
@@ -452,36 +539,6 @@ export function Picker<T>({
   const count = `${visibleItems}/${totalItems}`;
   const lead = query ? `filter: ${query}${inverse(' ')}` : dim(subtitle ?? '');
   const subtitleRow = `  ${padEnd(lead, inner - 2 - count.length)}${dim(count)}`;
-
-  const hints: Hint[] = [
-    ['↑↓', 'choose'],
-    ['enter', here?.kind === 'header' ? 'show section' : enterLabel],
-    ['ctrl+c', 'exit'],
-  ];
-  // The tree is the only thing on this screen with no key on the bar saying it
-  // is there. Contextual, the way the review varies `d show diff` / `d hide
-  // diff`: a row offers the direction it can actually go, and a filtered list —
-  // which matches plans only, and draws every one of them collapsed — offers
-  // neither, because neither arrow does anything there.
-  const open =
-    here?.kind === 'item' &&
-    rows.some((row) => row.kind === 'item' && row.parent === here.parent && row.child);
-  if (here?.kind === 'header') {
-    hints.push(['→', 'show section']);
-  } else if (!query && here?.kind === 'item') {
-    if (open) hints.push(['←', 'collapse']);
-    else {
-      if (!here.child && here.item.children?.length) hints.push(['→', 'versions']);
-      // Only where there is a header to fold to. `←` is the same key that
-      // closes a plan's versions, so it is offered for one thing at a time:
-      // the versions while they are open, the section once they are not.
-      if (headerIndex(here.sectionKey) !== -1) hints.push(['←', 'hide section']);
-    }
-  }
-  if (here?.kind === 'item' && here.item.deleteAs) hints.push(['ctrl+d', 'delete']);
-  // `orderHints` strips the `ctrl+`, so this lands under `r` — after `enter`,
-  // rather than beside the delete it happens to share a modifier with.
-  if (here?.kind === 'item' && here.item.resume) hints.push(['ctrl+r', 'resume']);
 
   const drawn = [
     `  ${bold(title)}`,
@@ -524,24 +581,7 @@ export function Picker<T>({
     }),
     ...(rows.length ? [] : [dim('  no matches')]),
     ...messageRows,
-    // An armed ctrl+c takes the bar. It is the only thing that ends the
-    // session, so it outranks both the hints and the delete confirmation's own
-    // — `esc cancel` can wait for the two seconds this takes to lapse.
-    ...(leaving
-      ? [`  ${red(EXIT_PROMPT)}`]
-      : hintLines(
-          confirming === null
-            ? hints
-            : // `enter delete` appears the moment the word does. The bar says what
-              // the gate wants, and then says it has it.
-              confirmed(confirming)
-              ? ([
-                  ['enter', 'delete'],
-                  ['esc', 'cancel'],
-                ] satisfies Hint[])
-              : ([['esc', 'cancel']] satisfies Hint[]),
-          inner - 2,
-        ).map((line) => dim(`  ${line}`))),
+    ...hintRows,
   ];
 
   return (
@@ -551,7 +591,7 @@ export function Picker<T>({
       {drawn.map((line, i) => (
         <Text key={i}>{frameLine(line, inner)}</Text>
       ))}
-      <Text>{bottomRule(frameWidth, REPO_FOOTER)}</Text>
+      <Text>{bottomRule(frameWidth, REPO_FOOTER, hintFooter(showHints))}</Text>
     </Box>
   );
 }

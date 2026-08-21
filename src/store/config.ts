@@ -24,6 +24,23 @@ export function writeConfig(config: Config): void {
   writeJson(paths.config(), config);
 }
 
+/** Whether the hint rows are drawn. The last press of `ctrl+_` decides. */
+export function readHints(): boolean {
+  return readConfig().hints;
+}
+
+/**
+ * Remember the toggle.
+ *
+ * Reads first and spreads, exactly like `writeDefault`, so a press of `ctrl+_`
+ * never clobbers a command someone set in another process. `writeConfig` seeds
+ * the store through `ensureDir`, so the first toggle on a machine with no
+ * config yet writes one rather than throwing.
+ */
+export function writeHints(shown: boolean): void {
+  writeConfig({ ...readConfig(), hints: shown });
+}
+
 /** Write the seed config only if there is nothing there — never clobber. */
 export function ensureConfig(): Config {
   const existing = readJson(paths.config(), ConfigSchema, null);

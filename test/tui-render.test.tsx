@@ -11,7 +11,8 @@ import { Defaults } from '../src/tui/Defaults.js';
 import { Picker, type PickerItem, type PickerSection } from '../src/tui/Picker.js';
 import { ReviewApp, type Commands, type ReviewResult } from '../src/tui/ReviewApp.js';
 import { UpdatePrompt, type UpdateChoice } from '../src/tui/UpdatePrompt.js';
-import { brandTitle, MIN_FRAME_WIDTH, topRule } from '../src/tui/frame.js';
+import { bottomRule, brandTitle, MIN_FRAME_WIDTH, REPO_FOOTER, topRule } from '../src/tui/frame.js';
+import { hintFooter } from '../src/tui/hints.js';
 import { Steps, stepLines } from '../src/tui/Steps.js';
 import { noticeFor, setUpdateNotice } from '../src/update/check.js';
 import { SAMPLE_PLAN, tempStore } from './helpers.js';
@@ -118,6 +119,8 @@ interface Harness {
   stdin: FakeStdin;
   /** How many times a second ctrl+c asked to end the process. */
   quits: number[];
+  /** Every value the screen reported for the hint flag, in order. */
+  hintChanges: boolean[];
   unmount: () => void;
   result: Promise<ReviewResult>;
   press: (keys: string) => Promise<void>;
@@ -136,14 +139,18 @@ function mount(
   rows = 30,
   previous: Feedback[] = [],
   commands?: Commands,
-  /** The clocks the review runs on: the held-arrow one, and the exit guard's. */
-  timing: { now?: () => number; exitWindowMs?: number } = {},
+  /**
+   * The clocks the review runs on — the held-arrow one and the exit guard's —
+   * and whether it opens with its hint rows drawn.
+   */
+  timing: { now?: () => number; exitWindowMs?: number; hints?: boolean } = {},
 ): Harness {
   const stdout = new FakeStdout();
   stdout.columns = columns;
   stdout.rows = rows;
   const stdin = new FakeStdin();
   const quits: number[] = [];
+  const hintChanges: boolean[] = [];
   let resolve!: (value: ReviewResult) => void;
   const result = new Promise<ReviewResult>((r) => (resolve = r));
 
@@ -160,6 +167,8 @@ function mount(
       commands={commands}
       now={timing.now}
       exitWindowMs={timing.exitWindowMs}
+      hints={timing.hints}
+      onHintsChange={(shown) => hintChanges.push(shown)}
       onQuit={() => quits.push(Date.now())}
       onDone={resolve}
     />,
@@ -175,6 +184,7 @@ function mount(
     stdout,
     stdin,
     quits,
+    hintChanges,
     unmount: () => instance.unmount(),
     result,
     press: async (keys: string) => {
@@ -234,6 +244,8 @@ const CTRL_A = '\x01';
 const CTRL_D = '\x04';
 const CTRL_R = '\x12';
 const CTRL_C = '\x03';
+/** The byte a terminal sends for ctrl+_ — and for ctrl+/ on most of them. */
+const CTRL_UNDERSCORE = '\x1f';
 /** Option+arrow, as Terminal.app and iTerm each send it. */
 const ALT_LEFT = '\x1b[1;3D';
 const ALT_RIGHT = '\x1b[1;3C';
@@ -335,8 +347,9 @@ describe('the review frame', () => {
     for (let i = 0; i < 6; i++) {
       const rows = bodyRows(app.stdout.lastFrame);
       heights.add(rows.length);
-      // What the bar offers is how the row under the cursor names itself.
-      bars.add(hintBar(rows, 2));
+      // What the bar offers is how the row under the cursor names itself. Three
+      // rows: at this width the browse set folds to that, `ctrl+_` included.
+      bars.add(hintBar(rows, 3));
       await app.press(DOWN);
     }
 
@@ -2055,6 +2068,28 @@ function hintBar(rows: string[], lines = 1): string {
 }
 
 /**
+ * The bar's rows, however many it folded to.
+ *
+ * The trailing run of rows with anything on them: the review pads the block
+ * above the bar out to the frame's height, so what sits between the two is
+ * blank. Only meaningful on a version carrying no feedback and no note, which
+ * is what puts a summary row down there.
+ */
+function hintRowsOf(frame: string): string[] {
+  const text = allBodyRows(frame).map(inner);
+  let end = text.length;
+  while (end > 0 && !text[end - 1]) end--;
+  let start = end;
+  while (start > 0 && text[start - 1]) start--;
+  return text.slice(start, end);
+}
+
+/** Rows of the document proper — the ones carrying a line number in the gutter. */
+function documentRows(frame: string): string[] {
+  return bodyRows(frame).filter((row) => /^[▸ ]?\s*\d+ /.test(inner(row)));
+}
+
+/**
  * The row the cursor is on.
  *
  * By column, not by searching for the glyph: a folded note draws `▸` inside its
@@ -2063,6 +2098,143 @@ function hintBar(rows: string[], lines = 1): string {
 function cursorRow(rows: string[]): string | undefined {
   return rows.find((row) => row[2] === ARROW);
 }
+
+/**
+ * `ctrl+_`, on every screen that draws hints.
+ *
+ * The rows go away whole — all of them, however many the wrap produced — and
+ * the way back is written on the bottom border, which is the only thing that
+ * border ever gains. The freed rows go to whatever the bar was sitting under.
+ */
+describe('hiding the hint rows', () => {
+  it('says how to put itself away, before the ? that ends the line', async () => {
+    const app = mount(seed(), null, 1, [1], 200);
+    await app.frame('ctrl+_ hide hints · ? help');
+    // Nothing on the border while the rows are up — it already says it above.
+    expect(frameRows(app.stdout.lastFrame).at(-1)!).not.toContain('show hints');
+    app.unmount();
+  });
+
+  it('takes every row of a wrapped bar, and says how to get them back', async () => {
+    // Narrow enough that the browse bar needs more than one row.
+    const app = mount(seed(), null, 1, [1], 60);
+    await app.ready();
+    expect(hintRowsOf(app.stdout.lastFrame).length).toBeGreaterThan(1);
+
+    await app.press(CTRL_UNDERSCORE);
+    await app.frame('ctrl+_ show hints');
+    const hidden = app.stdout.lastFrame;
+    for (const gone of ['hide hints', '? help', 'n add note', 'esc back', 'ctrl+c exit']) {
+      expect(hidden).not.toContain(gone);
+    }
+    // On the rule, not on a row inside the frame.
+    expect(frameRows(hidden).at(-1)!).toContain('╰─ ctrl+_ show hints');
+    expect(bodyRows(hidden).join(' ')).not.toContain('show hints');
+
+    await app.press(CTRL_UNDERSCORE);
+    await app.frame('? help');
+    const back = frameRows(app.stdout.lastFrame).at(-1)!;
+    expect(back).not.toContain('show hints');
+    expect(back).not.toContain('? help');
+    expect(back).toContain('Star github.com/thisisnsh/planx');
+    app.unmount();
+  });
+
+  it('hands the freed rows to the plan', async () => {
+    const app = mount(seedLongPlan(), null, 1, [1], 60);
+    await app.ready();
+    const bar = hintRowsOf(app.stdout.lastFrame).length;
+    const before = documentRows(app.stdout.lastFrame).length;
+
+    await app.press(CTRL_UNDERSCORE);
+    await app.frame('show hints');
+    expect(documentRows(app.stdout.lastFrame).length).toBe(before + bar);
+    app.unmount();
+  });
+
+  it('reports every press, so the store can remember it', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+    await app.press(CTRL_UNDERSCORE);
+    await app.frame('show hints');
+    await app.press(CTRL_UNDERSCORE);
+    await app.frame('? help');
+
+    expect(app.hintChanges).toEqual([false, true]);
+    app.unmount();
+  });
+
+  it('opens hidden when that is what was stored', async () => {
+    const app = mount(seed(), null, 1, [1], 100, 30, [], undefined, { hints: false });
+    await app.frame('ctrl+_ show hints');
+    expect(app.stdout.lastFrame).not.toContain('? help');
+    app.unmount();
+  });
+
+  it('is not typed into a note, and works while one is open', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+    await app.press('n');
+    await app.press('a note');
+    await app.frame('a note');
+
+    await app.press(CTRL_UNDERSCORE);
+    await app.frame('show hints');
+    // The draft is what it was: no control byte, and no `enter save` bar.
+    expect(app.stdout.lastFrame).toContain('a note');
+    expect(app.stdout.lastFrame).not.toContain('enter save');
+
+    await app.press(CTRL_UNDERSCORE);
+    await app.frame('enter save');
+    await app.press(ENTER);
+    await app.frame('Global Note: a note');
+    app.unmount();
+  });
+
+  it('leaves an armed ctrl+c saying so, whatever the flag says', async () => {
+    const app = mount(seed(), null, 1);
+    await app.ready();
+    await app.press(CTRL_UNDERSCORE);
+    await app.frame('show hints');
+
+    await app.press(CTRL_C);
+    await app.frame('Press ctrl+c again to exit.');
+    app.unmount();
+  });
+
+  it('closes the help screen rather than toggling under it', async () => {
+    const app = mount(seed(), null, 1, [1], 200);
+    await app.ready();
+    await app.press('?');
+    await app.frame('planx review');
+    expect(app.stdout.lastFrame).toContain('hide the hint rows, or show them again');
+
+    await app.press(CTRL_UNDERSCORE);
+    await app.frame('ctrl+_ hide hints');
+    // One press, one effect: the list closed and the bar is still up.
+    expect(app.stdout.lastFrame).not.toContain('planx review');
+    expect(frameRows(app.stdout.lastFrame).at(-1)!).not.toContain('show hints');
+    app.unmount();
+  });
+
+  it('holds its width on the narrowest frame, dropping the star first', () => {
+    const lead = ' ctrl+_ show hints ';
+    for (let width = MIN_FRAME_WIDTH; width <= 160; width++) {
+      const rule = stripAnsi(bottomRule(width, REPO_FOOTER, lead));
+      expect(rule, `width ${width}`).toHaveLength(width);
+      expect(rule, `width ${width}`).toContain('ctrl+_ show hints');
+    }
+    // The star is the half that goes, and the way back keeps the rule.
+    expect(stripAnsi(bottomRule(MIN_FRAME_WIDTH, REPO_FOOTER, lead))).not.toContain('Star');
+    expect(stripAnsi(bottomRule(160, REPO_FOOTER, lead))).toContain('Star');
+  });
+
+  it('leaves the rule byte for byte as it was while the rows are up', () => {
+    for (let width = MIN_FRAME_WIDTH; width <= 160; width++) {
+      expect(bottomRule(width, REPO_FOOTER, hintFooter(true))).toBe(bottomRule(width, REPO_FOOTER));
+    }
+  });
+});
 
 // Wide enough that nothing is cut, so these are about the order rather than
 // about what happens to fall off the end of a narrow terminal.
@@ -2082,7 +2254,23 @@ describe('the keys, and where they sit', () => {
     const keys = hintBar(bodyRows(app.stdout.lastFrame))
       .split(' · ')
       .map((part) => part.split(' ')[0]!);
-    expect(keys).toEqual(['←→', 'd', 'e', 'f', 'j', 'n', 's', 'space', 'v', 'esc', 'ctrl+c', '?']);
+    expect(keys).toEqual([
+      '←→',
+      'd',
+      'e',
+      'f',
+      'j',
+      'n',
+      's',
+      'space',
+      'v',
+      'esc',
+      'ctrl+c',
+      // The bar's own key, and then the one that recovers everything the width
+      // dropped: `? help` stays the last word of the line.
+      'ctrl+_',
+      '?',
+    ]);
     app.unmount();
   });
 
@@ -2136,11 +2324,22 @@ describe('the keys, and where they sit', () => {
     await app.press(ENTER);
     await app.frame('s submit');
 
-    // The five the fixed order always put last, and so always lost.
+    // The five the fixed order always put last, and so always lost — plus the
+    // key that puts the bar away, which is worth most on exactly the terminal
+    // narrow enough to need three rows of it.
     const bar = hintBar(bodyRows(app.stdout.lastFrame), 3);
-    for (const pair of ['s submit', 'v select lines', 'esc back', 'ctrl+c exit', '? help']) {
+    for (const pair of [
+      's submit',
+      'v select lines',
+      'esc back',
+      'ctrl+c exit',
+      'ctrl+_ hide hints',
+      '? help',
+    ]) {
       expect(bar).toContain(pair);
     }
+    // Both pins survive together, in that order, on the last row.
+    expect(bar).toContain('ctrl+_ hide hints · ? help');
     app.unmount();
   });
 
@@ -2172,6 +2371,7 @@ describe('the keys, and where they sit', () => {
       'space',
       'v',
       'esc',
+      'ctrl+_',
       '?',
       // The way out is the last word of the list, under `?` rather than above
       // it: nothing is dropped from this list, so nothing has to end it.
@@ -2951,10 +3151,11 @@ describe('the update choice before a review', () => {
  * what it draws, and that each write names one key and one value.
  */
 describe('the defaults screen', () => {
-  function mountDefaults(values: DefaultValues) {
+  function mountDefaults(values: DefaultValues, hints?: boolean) {
     const stdout = new FakeStdout();
     const stdin = new FakeStdin();
     const saves: Array<[string, string | null]> = [];
+    const hintChanges: boolean[] = [];
     let resolve!: () => void;
     const done = new Promise<void>((r) => (resolve = r));
     const instance = render(
@@ -2962,6 +3163,8 @@ describe('the defaults screen', () => {
         values={values}
         version="9.9.9"
         onSave={(key, value) => saves.push([key, value])}
+        hints={hints}
+        onHintsChange={(shown) => hintChanges.push(shown)}
         onDone={resolve}
       />,
       {
@@ -2980,10 +3183,47 @@ describe('the defaults screen', () => {
       await new Promise((r) => setTimeout(r, 60));
       await waitFor(() => stdout.frames.length > before, 1_000);
     };
-    return { stdout, stdin, saves, done, press, unmount: () => instance.unmount() };
+    return { stdout, stdin, saves, hintChanges, done, press, unmount: () => instance.unmount() };
   }
 
   const UNSET: DefaultValues = { revise_command: null, execute_command: null };
+
+  it('hides its hint rows too, and shortens the frame', async () => {
+    const app = mountDefaults(UNSET);
+    await waitFor(() => app.stdout.lastFrame.includes('ctrl+_ hide hints'));
+    const before = app.stdout.lastFrame.split('\n').filter((line) => line.trim()).length;
+
+    await app.press(CTRL_UNDERSCORE);
+    await waitFor(() => app.stdout.lastFrame.includes('ctrl+_ show hints'));
+    const hidden = app.stdout.lastFrame;
+    expect(hidden).not.toContain('enter edit');
+    expect(hidden).not.toContain('hide hints');
+    expect(hidden.split('\n').filter((line) => line.trim()).length).toBe(before - 1);
+    expect(app.hintChanges).toEqual([false]);
+    app.unmount();
+  });
+
+  it('opens hidden when that is what was stored', async () => {
+    const app = mountDefaults(UNSET, false);
+    await waitFor(() => app.stdout.lastFrame.includes('ctrl+_ show hints'));
+    expect(app.stdout.lastFrame).not.toContain('enter edit');
+    app.unmount();
+  });
+
+  it('never types itself into a command', async () => {
+    const app = mountDefaults(UNSET);
+    await waitFor(() => app.stdout.lastFrame.includes('Defaults'));
+    await app.press(ENTER);
+    await app.press('codex exec');
+    await waitFor(() => app.stdout.lastFrame.includes('codex exec'));
+
+    await app.press(CTRL_UNDERSCORE);
+    await waitFor(() => app.stdout.lastFrame.includes('show hints'));
+    await app.press(ENTER);
+    await waitFor(() => app.saves.length > 0);
+    expect(app.saves).toEqual([['revise_command', 'codex exec']]);
+    app.unmount();
+  });
 
   it('draws a row per field, and previews the line the highlighted one runs', async () => {
     const app = mountDefaults({ ...UNSET, revise_command: 'codex exec --full-auto' });
@@ -3083,6 +3323,8 @@ interface PickerHarness<T> {
   stdout: FakeStdout;
   quits: number[];
   chosen: Promise<T[]>;
+  /** Every value the screen reported for the hint flag, in order. */
+  hintChanges: boolean[];
   press: (keys: string) => Promise<void>;
   ready: () => Promise<void>;
   frame: (text: string) => Promise<void>;
@@ -3092,10 +3334,13 @@ interface PickerHarness<T> {
 function mountPicker<T>(
   sections: Array<PickerSection<T>>,
   onDelete?: (item: PickerItem<T>) => Array<PickerSection<T>>,
+  /** Whether the list opens with its hint rows drawn. */
+  hints?: boolean,
 ): PickerHarness<T> {
   const stdout = new FakeStdout();
   const stdin = new FakeStdin();
   const quits: number[] = [];
+  const hintChanges: boolean[] = [];
   let resolve!: (value: T[]) => void;
   const chosen = new Promise<T[]>((r) => (resolve = r));
 
@@ -3106,6 +3351,8 @@ function mountPicker<T>(
       sections={sections}
       version="9.9.9"
       onDelete={onDelete}
+      hints={hints}
+      onHintsChange={(shown) => hintChanges.push(shown)}
       onQuit={() => quits.push(Date.now())}
       onDone={resolve}
     />,
@@ -3121,6 +3368,7 @@ function mountPicker<T>(
     stdout,
     quits,
     chosen,
+    hintChanges,
     unmount: () => instance.unmount(),
     press: async (keys: string) => {
       const before = stdout.frames.length;
@@ -3210,6 +3458,107 @@ function planRows(): Array<PickerSection<Pick>> {
   return [{ key: 'plans', items: planItems() }];
 }
 
+/** More plans than the fake terminal has rows, so the list is what is short. */
+function longList(): Array<PickerSection<Pick>> {
+  return [
+    {
+      key: 'plans',
+      items: Array.from({ length: 60 }, (_, i) => ({
+        value: { id: `plan-${i}`, version: 1, row: 'plan' as const },
+        label: `Plan number ${i}`,
+        hint: `${i}h ago   plan-${i}`,
+      })),
+    },
+  ];
+}
+
+/** How many of the list's own rows are drawn. */
+function itemRows(frame: string): number {
+  return bodyRows(frame).filter((row) => /^(❯ )?Plan number \d+/.test(inner(row))).length;
+}
+
+/**
+ * The same key, on the list.
+ *
+ * The rows the bar gives up go to the list rather than to a plan, which is what
+ * the hoisted layout maths is for: the frame used to assume one row of hints
+ * whatever the bar had folded to.
+ */
+describe('hiding the hint rows on the picker', () => {
+  it('offers the key last, and hides every row on the press', async () => {
+    const app = mountPicker(planRows());
+    await app.frame('ctrl+_ hide hints');
+
+    const before = bodyRows(app.stdout.lastFrame).length;
+    await app.press(CTRL_UNDERSCORE);
+    await app.frame('ctrl+_ show hints');
+    const hidden = app.stdout.lastFrame;
+    expect(hidden).not.toContain('hide hints');
+    expect(hidden).not.toContain('enter open');
+    expect(frameRows(hidden).at(-1)!).toContain('╰─ ctrl+_ show hints');
+    expect(app.hintChanges).toEqual([false]);
+
+    // This list is already showing everything it has, so there is nothing to
+    // grow into the row and the frame simply gets shorter by it.
+    expect(bodyRows(hidden).length).toBe(before - 1);
+    app.unmount();
+  });
+
+  it('hands the freed rows to a list too long to fit', async () => {
+    const app = mountPicker(longList());
+    await app.frame('ctrl+_ hide hints');
+    const before = itemRows(app.stdout.lastFrame);
+
+    await app.press(CTRL_UNDERSCORE);
+    await app.frame('ctrl+_ show hints');
+    // One row of bar, one more plan on screen — and the frame is the height it
+    // was, because the list took what the bar gave up.
+    expect(itemRows(app.stdout.lastFrame)).toBe(before + 1);
+    app.unmount();
+  });
+
+  it('opens hidden when that is what was stored, and comes back', async () => {
+    const app = mountPicker(planRows(), undefined, false);
+    await app.frame('ctrl+_ show hints');
+    expect(app.stdout.lastFrame).not.toContain('enter open');
+
+    await app.press(CTRL_UNDERSCORE);
+    await app.frame('enter open');
+    expect(app.hintChanges).toEqual([true]);
+    app.unmount();
+  });
+
+  it('never types itself into the filter', async () => {
+    const app = mountPicker(planRows());
+    await app.ready();
+    await app.press('gu');
+    await app.frame('filter: gu');
+
+    await app.press(CTRL_UNDERSCORE);
+    await app.frame('show hints');
+    expect(app.stdout.lastFrame).toContain('filter: gu');
+    app.unmount();
+  });
+
+  it('leaves the delete confirmation its own two keys', async () => {
+    const app = mountPicker(planRows(), () => []);
+    await app.ready();
+    await app.press(CTRL_UNDERSCORE);
+    await app.frame('show hints');
+
+    await app.press(CTRL_D);
+    await app.frame('cannot be undone');
+    // The gate's bar, drawn whatever the toggle says — and it does not carry
+    // the entry that would put it away.
+    expect(app.stdout.lastFrame).toContain('esc cancel');
+    expect(app.stdout.lastFrame).not.toContain('hide hints');
+
+    await app.press('delete');
+    await app.frame('enter delete');
+    app.unmount();
+  });
+});
+
 describe('the picker as a version tree', () => {
   it('leads with the time, then the id, and shows no version on a plan row', async () => {
     const app = mountPicker(planRows());
@@ -3229,7 +3578,7 @@ describe('the picker as a version tree', () => {
     const keys = inner(bodyRows(app.stdout.lastFrame).at(-1)!)
       .split(' · ')
       .map((part) => part.split(' ')[0]!);
-    expect(keys).toEqual(['→', '↑↓', 'ctrl+d', 'enter', 'ctrl+c']);
+    expect(keys).toEqual(['→', '↑↓', 'ctrl+d', 'enter', 'ctrl+c', 'ctrl+_']);
     app.unmount();
   });
 
@@ -3845,7 +4194,7 @@ describe('deleting from the picker', () => {
     const keys = inner(bodyRows(app.stdout.lastFrame).at(-1)!)
       .split(' · ')
       .map((part) => part.split(' ')[0]!);
-    expect(keys).toEqual(['↑↓', 'ctrl+d', 'enter', 'ctrl+r', 'ctrl+c']);
+    expect(keys).toEqual(['↑↓', 'ctrl+d', 'enter', 'ctrl+r', 'ctrl+c', 'ctrl+_']);
 
     await app.press(DOWN);
     await new Promise((r) => setTimeout(r, 120));

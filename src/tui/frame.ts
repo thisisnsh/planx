@@ -87,9 +87,29 @@ export function topRule(
   return `${signal('╭─')}${title}${blue(text)}${signal(`${'─'.repeat(fill)}╮`)}`;
 }
 
-export function bottomRule(width: number, footer: string): string {
-  const fill = Math.max(0, width - 3 - visible(footer));
-  return `${signal(`╰${'─'.repeat(fill)}`)}${dim(footer)}${signal('─╯')}`;
+/**
+ * `╰─ ctrl+_ show hints ──────────── Star github.com/thisisnsh/planx ─╯`
+ *
+ * The footer is right-aligned; the optional lead sits after the opening corner,
+ * mirroring how `topRule` seats the wordmark. An empty lead is the plain rule,
+ * byte for byte — which is what every frame draws while its hints are up.
+ */
+export function bottomRule(width: number, footer: string, lead = ''): string {
+  if (!lead) {
+    const fill = Math.max(0, width - 3 - visible(footer));
+    return `${signal(`╰${'─'.repeat(fill)}`)}${dim(footer)}${signal('─╯')}`;
+  }
+
+  const fill = width - 4 - visible(lead) - visible(footer);
+  // The lead is the way back to the hints; the star is decoration. On a rule
+  // that cannot hold both, the star goes — and below that the lead itself is
+  // truncated, which is what every other over-long piece of chrome does.
+  if (fill < NOTICE_GAP) {
+    const text = truncate(lead, Math.max(0, width - 4));
+    const dashes = Math.max(0, width - 4 - visible(text));
+    return `${signal('╰─')}${dim(text)}${signal(`${'─'.repeat(dashes)}─╯`)}`;
+  }
+  return `${signal('╰─')}${dim(lead)}${signal('─'.repeat(fill))}${dim(footer)}${signal('─╯')}`;
 }
 
 export function frameLine(content: string, inner: number): string {
