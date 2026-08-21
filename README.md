@@ -49,10 +49,7 @@ plan, being reviewed._
 Using the planning skill, the agent researches the work, writes a structured
 plan, captures it as a version and hands it back for review.
 
-```text
-Codex       $planx we need to build something that ...
-Claude Code /planx we need to create something that ...
-```
+![Skill in claude & codex](docs/images/skill.png)
 
 More in
 [The skill](https://github.com/thisisnsh/planx/wiki/The-Skill#invoking-it).
