@@ -1,9 +1,13 @@
 ---
 name: planx
 description: >-
-  Plan something as a reviewable artifact the user annotates, revise or execute
-  a plan they already have, or answer a question about how PlanX itself works
-  from its wiki. Use for /planx and anything mentioning planx.
+  Plan a feature, refactor or migration as a reviewable, versioned artifact the
+  user annotates line by line before any code is written, instead of a plan that
+  scrolls away in chat. Also revises or executes a plan they already have, or
+  answers a question about how PlanX itself works from its wiki. Requires the
+  planx CLI (`npm install --global @thisisnsh/planx`). Use for /planx, when the
+  user wants to plan work or review and approve a plan before building, and for
+  anything mentioning planx.
 argument-hint: <task> | revise <id> v<n> | execute <id> v<n> | help <question>
 ---
 
@@ -40,8 +44,11 @@ front matter already showed them, in the slash menu, before enter was pressed â€
 repeating them after is a wall of text in answer to someone who is ready to
 talk about their task.
 
-If `planx` is not installed, say so and stop. Do not fall back to writing the
-plan into chat: the user asked for something they can annotate.
+If `planx` is not installed, do not fall back to writing the plan into chat â€”
+the user asked for something they can annotate. Say the CLI is missing, and
+offer to install it: `npm install --global @thisisnsh/planx`. Run it if they
+agree, check that `planx --version` answers, and carry on with the branch you
+were on. If they decline, or the install fails, stop and leave them the command.
 
 ## True on every branch
 

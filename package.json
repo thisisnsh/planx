@@ -1,7 +1,7 @@
 {
   "name": "@thisisnsh/planx",
   "version": "0.13.0",
-  "description": "Turn an agent's plan into a versioned artifact you can annotate, lock, and execute.",
+  "description": "A planning skill for Claude Code and Codex, plus a terminal interface for reviewing an AI agent's plans: versions, diffs, inline feedback, direct edits.",
   "keywords": [
     "claude-code",
     "codex",
@@ -9,7 +9,17 @@
     "plan",
     "review",
     "cli",
-    "tui"
+    "tui",
+    "claude-code-skill",
+    "claude-skill",
+    "codex-skill",
+    "ai-agent",
+    "coding-agent",
+    "agentic-coding",
+    "planning",
+    "code-review",
+    "plan-review",
+    "developer-tools"
   ],
   "homepage": "https://github.com/thisisnsh/planx",
   "repository": {

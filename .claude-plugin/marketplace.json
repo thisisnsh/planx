@@ -1,0 +1,34 @@
+{
+  "name": "planx",
+  "owner": {
+    "name": "thisisnsh",
+    "url": "https://github.com/thisisnsh"
+  },
+  "description": "PlanX — review an AI agent's plan before it writes any code.",
+  "plugins": [
+    {
+      "name": "planx",
+      "source": "./",
+      "description": "A planning skill for Claude Code and Codex, plus a terminal interface for reviewing an AI agent's plans: versions, diffs, inline feedback, direct edits. Requires the planx CLI: npm install --global @thisisnsh/planx",
+      "version": "0.13.0",
+      "author": {
+        "name": "thisisnsh",
+        "url": "https://github.com/thisisnsh"
+      },
+      "homepage": "https://github.com/thisisnsh/planx/wiki",
+      "repository": "https://github.com/thisisnsh/planx",
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": [
+        "claude-code",
+        "codex",
+        "planning",
+        "plan-review",
+        "code-review",
+        "ai-agent",
+        "agentic-coding",
+        "developer-tools"
+      ]
+    }
+  ]
+}
