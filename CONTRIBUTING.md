@@ -129,7 +129,7 @@ No prefixes — no `feat:`, `fix:`, or `chore:`. A commit message is a sentence
 case title and then a list of points:
 
 ```
-Check again when the cached answer is one you already ran past
+Check again when the cached answer is spent
 
 - An upgrade leaves `update.json` naming a version below the one now
   installed, and `shouldCheck` only asked how old the file was — so planx
@@ -143,7 +143,10 @@ Check again when the cached answer is one you already ran past
 ```
 
 The title is one line, capitalised, imperative, and says what changed — not what
-area was touched. The body is `-` points, never a prose paragraph.
+area was touched. Keep it to 50 characters or fewer — GitHub truncates longer
+titles in the commit list and in the PR view, and a title that ends in an
+ellipsis is a title nobody can read at a glance. If it will not fit, the detail
+belongs in a point below. The body is `-` points, never a prose paragraph.
 
 Each point says **why**, especially for a behaviour change: what the old
 behaviour was and why it was wrong. Do not list the files you changed — the
