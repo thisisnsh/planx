@@ -12,7 +12,7 @@ import {
   truncate,
 } from '../render/ansi.js';
 import { EXIT_PROMPT, useDoubleCtrlC } from './exit.js';
-import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO, topRule } from './frame.js';
+import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO_FOOTER, topRule } from './frame.js';
 import { fuzzyFilter } from './fuzzy.js';
 import { hintLines, type Hint } from './hints.js';
 
@@ -551,7 +551,7 @@ export function Picker<T>({
       {drawn.map((line, i) => (
         <Text key={i}>{frameLine(line, inner)}</Text>
       ))}
-      <Text>{bottomRule(frameWidth, ` ★ ${REPO} `)}</Text>
+      <Text>{bottomRule(frameWidth, REPO_FOOTER)}</Text>
     </Box>
   );
 }

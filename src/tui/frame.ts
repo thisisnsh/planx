@@ -29,6 +29,15 @@ import { updateNotice, type UpdateNotice } from '../update/check.js';
  */
 export const REPO = 'github.com/thisisnsh/planx';
 
+/**
+ * ` Read code & star github.com/thisisnsh/planx ` — the bottom edge of every
+ * frame.
+ *
+ * It was a bare `★` before, which reads as decoration next to a URL rather than
+ * as the thing it is asking for. The words are the ask.
+ */
+export const REPO_FOOTER = ` Read code & star ${REPO} `;
+
 /** `│ ` on the left and ` │` on the right of every row. */
 export const FRAME_PADDING = 4;
 /** Narrow enough to still be a frame, wide enough for a gutter and some text. */
@@ -116,7 +125,7 @@ export function frameBlock(lines: readonly string[], opts: FrameBlockOptions = {
     frameLine('', inner),
     ...lines.flatMap((line) => wrapToFrame(line, inner).map((part) => frameLine(part, inner))),
     frameLine('', inner),
-    bottomRule(width, opts.footer ?? ` ★ ${REPO} `),
+    bottomRule(width, opts.footer ?? REPO_FOOTER),
   ].join('\n');
 }
 

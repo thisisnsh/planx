@@ -21,7 +21,7 @@ import type { LineEdit } from '../store/plans.js';
 import { contextSha } from '../store/text.js';
 import type { Annotation, Feedback } from '../store/types.js';
 import { EXIT_PROMPT, useDoubleCtrlC } from './exit.js';
-import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO, topRule } from './frame.js';
+import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO_FOOTER, topRule } from './frame.js';
 import { hintLines, orderHints, type Hint } from './hints.js';
 import {
   BOX_PADDING,
@@ -1254,7 +1254,7 @@ export function ReviewApp(props: ReviewAppProps) {
       {hintRows.map((line, i) => (
         <Text key={i}>{frameLine(line, inner)}</Text>
       ))}
-      <Text>{bottomRule(frameWidth, ` ★ ${REPO} `)}</Text>
+      <Text>{bottomRule(frameWidth, REPO_FOOTER)}</Text>
     </Box>
   );
 }

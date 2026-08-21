@@ -15,7 +15,7 @@ import { customLaunchLine, promptFor } from '../exec/launch.js';
 import { DEFAULT_FIELDS, type DefaultKey } from '../store/defaults.js';
 import type { Defaults as DefaultValues } from '../store/types.js';
 import { EXIT_PROMPT, useDoubleCtrlC } from './exit.js';
-import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO, topRule } from './frame.js';
+import { bottomRule, brandTitle, frameLine, FRAME_PADDING, REPO_FOOTER, topRule } from './frame.js';
 import { hintLines, type Hint } from './hints.js';
 
 /** Matches the review's floor and the picker's, so every frame narrows alike. */
@@ -182,7 +182,7 @@ export function Defaults({ values, version, onSave, onQuit, onDone }: DefaultsPr
       ).map((line, i) => (
         <Text key={i}>{frameLine(line, inner)}</Text>
       ))}
-      <Text>{bottomRule(frameWidth, ` ★ ${REPO} `)}</Text>
+      <Text>{bottomRule(frameWidth, REPO_FOOTER)}</Text>
     </Box>
   );
 }
