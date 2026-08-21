@@ -32,8 +32,6 @@ npm install --global @thisisnsh/planx
 ```
 
 That installs the `planx` TUI you review plans in, and installs the PlanX skill for Codex and Claude Code.
-Full setup detail is in
-[Installation](https://github.com/thisisnsh/planx/wiki/Installation).
 
 ## How it works
 
