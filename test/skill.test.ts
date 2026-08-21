@@ -10,6 +10,7 @@ const router = readFileSync(join(SKILL_DIR, 'SKILL.md'), 'utf8');
 const plan = readFileSync(join(SKILL_DIR, 'references', 'plan.md'), 'utf8');
 const revise = readFileSync(join(SKILL_DIR, 'references', 'revise.md'), 'utf8');
 const execute = readFileSync(join(SKILL_DIR, 'references', 'execute.md'), 'utf8');
+const help = readFileSync(join(SKILL_DIR, 'references', 'help.md'), 'utf8');
 const handoff = 'Plan created. Exit the agent, then run `planx <plan-id> v<n>`';
 
 // There is no size budget here on purpose. File size was the wrong proxy for
@@ -31,6 +32,29 @@ describe('the shipped planx skill', () => {
     expect(route('/planx <anything else>')).toBe('references/plan.md');
     expect(route('/planx revise <id>')).toBe('references/revise.md');
     expect(route('/planx execute <id>')).toBe('references/execute.md');
+    expect(route('/planx help <question>')).toBe('references/help.md');
+  });
+
+  // `help` sits in front of the catch-all row, so every task whose first word
+  // is help would otherwise route to the wiki instead of being planned.
+  it('separates a question about PlanX from a task that says help', () => {
+    expect(router).toContain('`help` is a question about PlanX itself');
+    expect(router).toContain('takes the plan branch');
+    expect(help).toContain('not that');
+  });
+
+  it('answers a help question from the wiki and changes nothing', () => {
+    expect(help).toContain('https://raw.githubusercontent.com/wiki/thisisnsh/planx/');
+    expect(help).toContain('https://github.com/thisisnsh/planx/wiki/<Page>');
+    // The shipped page table ages; Home is the list that does not.
+    expect(help).toContain('If no row fits, fetch `Home.md` first');
+    expect(help).toContain('The wiki decides');
+    expect(help).toContain('discussions/categories/q-a');
+    expect(help).toContain('Do not fill the gap with a plausible key or flag');
+    // Nothing on this branch writes, and it never slides into planning.
+    expect(help).toContain('no `capture`, no `revise`, no `execute`');
+    expect(help).toContain('Ask whether to start a plan');
+    expect(help).not.toContain('planx capture --stdin');
   });
 
   it('leaves planning-only instructions out of the router', () => {

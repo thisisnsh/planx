@@ -31,9 +31,7 @@ review it, Codex builds it — or any two agents you like, in any order.
 npm install --global @thisisnsh/planx
 ```
 
-That installs the `planx` TUI you review plans in, and runs
-[`planx add-skills`](https://github.com/thisisnsh/planx/wiki/Installation#planx-add-skills),
-which writes the PlanX skill into every Codex and Claude Code install it finds.
+That installs the `planx` TUI you review plans in, and installs the PlanX skill for Codex and Claude Code.
 Full setup detail is in
 [Installation](https://github.com/thisisnsh/planx/wiki/Installation).
 
@@ -165,7 +163,19 @@ Every key, command and flag is written down in the
 
 ## Questions and ideas
 
-Ask anything in
+Ask your agent first. `/planx help <question>` — or `$planx help <question>` in
+Codex — sends it to the [wiki](https://github.com/thisisnsh/planx/wiki), and it
+answers in chat with the page it read.
+
+```
+/planx help how do I comment on a single line?
+```
+
+It only answers questions about PlanX; `/planx help me split the auth module` is
+still a task, and gets planned. More in
+[Asking for help](https://github.com/thisisnsh/planx/wiki/Help).
+
+Anything the wiki does not cover goes in
 [Q&A](https://github.com/thisisnsh/planx/discussions/categories/q-a) — how a key
 works, whether a workflow is supported, why something behaves the way it does.
 

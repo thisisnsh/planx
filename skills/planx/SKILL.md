@@ -1,10 +1,10 @@
 ---
 name: planx
 description: >-
-  Plan something as a reviewable artifact the user annotates, or revise or
-  execute a plan they already have. Use for /planx and anything mentioning
-  planx.
-argument-hint: <task> | revise <id> v<n> | execute <id> v<n>
+  Plan something as a reviewable artifact the user annotates, revise or execute
+  a plan they already have, or answer a question about how PlanX itself works
+  from its wiki. Use for /planx and anything mentioning planx.
+argument-hint: <task> | revise <id> v<n> | execute <id> v<n> | help <question>
 ---
 
 # planx
@@ -21,9 +21,14 @@ Match on what followed `/planx`:
 | `/planx` alone | say you are ready, and ask what to plan |
 | `/planx revise <id>` | read `references/revise.md` |
 | `/planx execute <id>` | read `references/execute.md` |
+| `/planx help <question>` | read `references/help.md` |
 | `/planx <anything else>` | read `references/plan.md` |
 
 Read only the file for the branch you took.
+
+`help` is a question about PlanX itself — a key, a command, where something is
+stored. `/planx help me split the auth module` is a task with the word help in
+it, and takes the plan branch. Ask when a line reads both ways.
 
 **A version in the invocation travels with it.** `revise` and `execute` both
 arrive as `<id> v<n>` — the version the user reviewed. Every planx command you
