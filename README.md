@@ -13,10 +13,14 @@ you to decide what will be built.
 PlanX turns the giant blob of text you read once and lose in chat into a
 versioned artifact you can actually review:
 
-- Create structured plans.
-- Compare every revision.
-- Give feedback on exact lines.
-- Execute the version you approve.
+- [[1]](https://github.com/thisisnsh/planx/wiki/Planning) Create structured
+  plans.
+- [[2]](https://github.com/thisisnsh/planx/wiki/Versions-and-Diffs#the-diff)
+  Compare every revision.
+- [[3]](https://github.com/thisisnsh/planx/wiki/Feedback-and-Edits#line-feedback)
+  Give feedback on exact lines.
+- [[4]](https://github.com/thisisnsh/planx/wiki/Hand-offs#what-planx-execute-does)
+  Execute the version you approve.
 
 Plan with one agent and build with another. Claude Code writes the plan, you
 review it, Codex builds it — or any two agents you like, in any order.
@@ -37,9 +41,8 @@ Full setup detail is in
 
 `PLAN → REVIEW → REVISE → EXECUTE → RESUME`
 
-> [!NOTE]
-> _Fun fact: this README was recreated using PlanX. Every image below is that
-> plan, being reviewed._
+_Fun fact: this README was recreated using PlanX. Every image below is that
+plan, being reviewed._
 
 ### 1. Plan with the skill
 
@@ -51,7 +54,8 @@ Codex       $planx we need to build something that ...
 Claude Code /planx we need to create something that ...
 ```
 
-More in [The skill](https://github.com/thisisnsh/planx/wiki/The-Skill).
+More in
+[The skill](https://github.com/thisisnsh/planx/wiki/The-Skill#invoking-it).
 
 ### 2. Review what it wrote
 
@@ -66,10 +70,15 @@ More in [Planning](https://github.com/thisisnsh/planx/wiki/Planning) and
 
 ### 3. Read it without drowning
 
-Press `space` to collapse the section, feedback box or unchanged diff run under
-the cursor, `h` to fold every comment at once, `j` to jump between comments, and
-`?` for the full key list. A long plan stays walkable instead of becoming a
-scroll.
+Press
+[`space`](https://github.com/thisisnsh/planx/wiki/Reviewing#reading-a-long-plan)
+to collapse the section, feedback box or unchanged diff run under the cursor,
+[`h`](https://github.com/thisisnsh/planx/wiki/Reviewing#reading-a-long-plan) to
+fold every comment at once,
+[`j`](https://github.com/thisisnsh/planx/wiki/Reviewing#reading-a-long-plan) to
+jump between comments, and
+[`?`](https://github.com/thisisnsh/planx/wiki/Reviewing#every-key) for the full
+key list. A long plan stays walkable instead of becoming a scroll.
 
 ![Read it without drowning](docs/images/read.png)
 
@@ -77,10 +86,15 @@ More in [Reviewing](https://github.com/thisisnsh/planx/wiki/Reviewing).
 
 ### 4. Say exactly what is wrong
 
-Put the cursor on a line and press `v`, extend the selection with the arrows,
-then press `f`. The comment attaches to those exact lines, not to the plan in
-general. Press `n` for a note about the whole plan, or `e` to rewrite a line
-yourself when the right wording is already obvious.
+Put the cursor on a line and press
+[`v`](https://github.com/thisisnsh/planx/wiki/Feedback-and-Edits#line-feedback),
+extend the selection with the arrows, then press
+[`f`](https://github.com/thisisnsh/planx/wiki/Feedback-and-Edits#line-feedback).
+The comment attaches to those exact lines, not to the plan in general. Press
+[`n`](https://github.com/thisisnsh/planx/wiki/Feedback-and-Edits#the-plan-wide-note)
+for a note about the whole plan, or
+[`e`](https://github.com/thisisnsh/planx/wiki/Feedback-and-Edits#direct-edits) to
+rewrite a line yourself when the right wording is already obvious.
 
 ![Say exactly what is wrong](docs/images/feedback.png)
 
@@ -89,10 +103,11 @@ More in
 
 ### 5. Revise in the same session, or a different agent
 
-Press `s` and pick a hand-off. PlanX can resume the session that wrote the plan,
-so it revises with the repository research still in context — or send the same
-review to another agent entirely, which starts from the plan and your comments
-and nothing else.
+Press [`s`](https://github.com/thisisnsh/planx/wiki/Hand-offs#the-six-exits) and
+pick a hand-off. PlanX can resume the session that wrote the plan, so it revises
+with the repository research still in context — or send the same review to
+another agent entirely, which starts from the plan and your comments and nothing
+else.
 
 ![Revise in the same session, or a different agent](docs/images/revise.png)
 
@@ -102,7 +117,8 @@ More in [Hand-offs](https://github.com/thisisnsh/planx/wiki/Hand-offs).
 
 Each revision is a new version of the same plan. Open it and PlanX shows a
 word-level diff against the one before, with unchanged runs collapsed, so a
-rewritten approach cannot slip past as a wall of re-flowed text. Press `d` to
+rewritten approach cannot slip past as a wall of re-flowed text. Press
+[`d`](https://github.com/thisisnsh/planx/wiki/Versions-and-Diffs#the-diff) to
 show or hide the diff.
 
 ![Compare what actually changed](docs/images/compare.png)
@@ -113,9 +129,11 @@ More in
 ### 7. Build it with any agent
 
 Any agent command that takes a trailing prompt can build the plan. Set them once
-with `planx defaults` — one command to revise, another to execute, whichever
-pair you like — and the review offers them beside the built-in routes. The
-receiving agent needs nothing but the PlanX skill.
+with
+[`planx defaults`](https://github.com/thisisnsh/planx/wiki/CLI-Reference#planx-defaults)
+— one command to revise, another to execute, whichever pair you like — and the
+review offers them beside the built-in routes. The receiving agent needs nothing
+but the PlanX skill.
 
 ![Build it with any agent](docs/images/build.png)
 
@@ -130,9 +148,12 @@ planx remove-skills
 npm uninstall --global @thisisnsh/planx
 ```
 
-`remove-skills` takes back only what PlanX wrote, and offers to delete the store.
-Every other command and flag — `planx update`, `planx add-skills`,
-`planx defaults` — is in the
+[`remove-skills`](https://github.com/thisisnsh/planx/wiki/CLI-Reference#planx-remove-skills)
+takes back only what PlanX wrote, and offers to delete the store. Every other
+command and flag —
+[`planx update`](https://github.com/thisisnsh/planx/wiki/CLI-Reference#planx-update),
+[`planx add-skills`](https://github.com/thisisnsh/planx/wiki/CLI-Reference#planx-add-skills),
+[`planx defaults`](https://github.com/thisisnsh/planx/wiki/CLI-Reference#planx-defaults) — is in the
 [CLI reference](https://github.com/thisisnsh/planx/wiki/CLI-Reference).
 
 ## Documentation
