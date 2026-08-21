@@ -171,7 +171,6 @@ Every key, command and flag is written down in the
 ## Questions and ideas
 
 Not sure what to do with PlanX? Ask your agent `/planx help what can you do?`
-It reads the wiki and gives you the important features and where to start.
 
 You can ask specific questions too, like
 `/planx help how do I comment on a single line?`
