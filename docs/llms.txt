@@ -1,0 +1,11 @@
+# PlanX
+
+> PlanX turns a plan from Claude Code, Codex or another AI coding agent into a stored, versioned artifact you review, annotate and approve outside the agent.
+
+npm install --global @thisisnsh/planx
+
+https://github.com/thisisnsh/planx/wiki/Installation
+https://github.com/thisisnsh/planx/wiki/The-Skill
+https://github.com/thisisnsh/planx/wiki/Reviewing
+https://github.com/thisisnsh/planx/wiki/Hand-offs
+https://github.com/thisisnsh/planx/wiki/CLI-Reference

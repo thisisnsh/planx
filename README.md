@@ -45,6 +45,9 @@ Or install the skill on its own with
 npx skills add thisisnsh/planx
 ```
 
+Also listed on [Smithery](https://smithery.ai/skills/thisisnsh/planx) and
+[LobeHub](https://lobehub.com/skills/thisisnsh-planx-planx).
+
 ## How it works
 
 `PLAN → REVIEW → REVISE → EXECUTE → RESUME`
@@ -201,4 +204,6 @@ Feel free to contact author at `hello at thisisnsh dot com`
 [Ideas](https://github.com/thisisnsh/planx/discussions/categories/ideas) ·
 [Contributing](CONTRIBUTING.md) ·
 [Security](SECURITY.md) ·
-[MIT License](LICENSE)
+[MIT License](LICENSE) ·
+[Smithery](https://smithery.ai/skills/thisisnsh/planx) ·
+[LobeHub](https://lobehub.com/skills/thisisnsh-planx-planx)
