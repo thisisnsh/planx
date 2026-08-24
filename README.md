@@ -35,11 +35,10 @@ review it, Codex builds it — or any two agents you like, in any order.
 npm install --global @thisisnsh/planx
 ```
 
-That installs the `planx` TUI you review plans in, and automatically installs
-the PlanX skill for detected Claude Code and Codex installations.
+That installs the skill for detected Claude Code and Codex installations, and the `planx` TUI you review plans in.
 
-Or install the skill on its own with
-[`skills`](https://skills.sh):
+Or install the skill with
+[`skills`](https://skills.sh) for other agents:
 
 ```bash
 npx skills add thisisnsh/planx
